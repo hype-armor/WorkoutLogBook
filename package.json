@@ -1,0 +1,14 @@
+{
+  "name": "logbook",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A lifting logbook that works offline",
+  "scripts": {
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "serve": "node tests/server.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}

@@ -1,0 +1,157 @@
+const { test, expect } = require('@playwright/test');
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
+const { FILE_URL, phone, watchErrors, seed, blankDb } = require('./helpers');
+
+test.describe('backup, restore and export', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, ctx, dir, backupPath;
+
+  test.beforeAll(async ({ browser }) => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'logbook-'));
+    ctx = await phone(browser, { acceptDownloads: true });
+    page = await ctx.newPage();
+    page.on('dialog', d => d.accept());
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('.ex[data-ex="Deadlift"]');
+    await page.fill('#wt', '225');
+    await page.fill('#reps', '5');
+    for (let i = 0; i < 5; i++) await page.click('#logset');
+    await page.click('#close');
+  });
+
+  test.afterAll(async () => {
+    await ctx?.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('a JSON backup downloads with the data intact', async () => {
+    await page.click('#gear');
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#backup')]);
+    backupPath = path.join(dir, 'backup.json');
+    await dl.saveAs(backupPath);
+
+    const backup = JSON.parse(fs.readFileSync(backupPath, 'utf8'));
+    expect(backup.sets).toHaveLength(5);
+    expect(backup.sets.every(s => s.u === 'lb')).toBe(true);
+    expect(backup.sets.every(s => s.dy === 'A')).toBe(true);
+  });
+
+  test('CSV quotes fields instead of stripping commas', async () => {
+    await page.click('#setdone');
+    await page.fill('#notes', 'felt "sharp", low back, set 3');
+    await expect(page.locator('#notestate')).toHaveText('Note saved.');
+
+    await page.click('#gear');
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#export')]);
+    const csvPath = path.join(dir, 'out.csv');
+    await dl.saveAs(csvPath);
+
+    const lines = fs.readFileSync(csvPath, 'utf8').trim().split('\n');
+    expect(lines).toHaveLength(6); // header + 5 sets
+    expect(lines[0]).toContain('unit');
+    expect(lines[1]).toContain('"felt ""sharp"", low back, set 3"');
+  });
+
+  test('a backup restores over wiped storage and persists', async () => {
+    await page.click('#setdone');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await expect(page.locator('.ex[data-ex="Deadlift"] .count')).toHaveText('0/4');
+
+    await page.click('#gear');
+    await page.setInputFiles('#restorefile', backupPath);
+    await expect(page.locator('#toast')).toContainText(/restored/i);
+    await page.click('#setdone');
+    await expect(page.locator('.ex[data-ex="Deadlift"] .count')).toHaveText('5/4');
+
+    await page.reload();
+    await expect(page.locator('.ex[data-ex="Deadlift"] .count')).toHaveText('5/4');
+  });
+
+  test('a file that is not a backup is rejected without losing data', async () => {
+    const bad = path.join(dir, 'bad.json');
+    fs.writeFileSync(bad, '{"nope":true}');
+    await page.click('#gear');
+    await page.setInputFiles('#restorefile', bad);
+    await expect(page.locator('#toast')).toContainText(/not a valid/i);
+    expect(await page.evaluate(() =>
+      JSON.parse(localStorage.getItem('logbook-v1')).sets.length)).toBe(5);
+  });
+});
+
+test('the pain chart scales with the rating', async ({ browser }) => {
+  const ctx = await phone(browser);
+  const page = await ctx.newPage();
+  const days = {};
+  [1, 3, 5, 8, 10, 2, 4].forEach((v, i) => { days[`2026-08-0${i + 1}`] = { pain: v }; });
+  await seed(page, blankDb({ days }));
+  await page.goto(FILE_URL);
+  await page.click('#tab-history');
+
+  const bars = await page.$$eval('.painstrip div', els =>
+    els.map(e => +e.getBoundingClientRect().height.toFixed(1)));
+  // this used to read the day record instead of its pain value, so every bar
+  // collapsed to the 2px minimum and the chart was a flat line
+  expect(bars).toHaveLength(7);
+  expect(bars[4]).toBe(44);            // pain 10 fills the strip
+  expect(bars[4]).toBeGreaterThan(bars[3]);
+  expect(bars[3]).toBeGreaterThan(bars[2]);
+  expect(bars[0]).toBeLessThan(bars[2]);
+
+  const label = await page.getAttribute('.painstrip', 'aria-label');
+  expect(label).toContain('2026-08-05: 10');
+  expect(label).not.toContain('object Object');
+  await ctx.close();
+});
+
+test('blocked storage is reported, not retried forever', async ({ browser }) => {
+  const ctx = await phone(browser);
+  const page = await ctx.newPage();
+  await page.addInitScript(() => {
+    // private mode / quota exceeded
+    Object.getPrototypeOf(localStorage).setItem = function () {
+      throw new DOMException('QuotaExceededError');
+    };
+  });
+  await page.goto(FILE_URL);
+  await page.waitForSelector('.ex');
+  await page.click('.ex[data-ex="Deadlift"]');
+  await page.fill('#wt', '135');
+  await page.fill('#reps', '5');
+  await page.click('#logset');
+
+  await expect(page.locator('#banners')).toContainText(/blocking saved data/i, { timeout: 10000 });
+  await expect(page.locator('#toast')).not.toContainText(/retrying/i);
+  await ctx.close();
+});
+
+test('a v1 database migrates', async ({ browser }) => {
+  const ctx = await phone(browser);
+  const page = await ctx.newPage();
+  await page.addInitScript(() => {
+    localStorage.setItem('logbook-v1', JSON.stringify({
+      sets: [{ id: 'x1', d: '2026-08-01', e: 'Deadlift', w: 315, r: 3, rir: 1, rest: 200 }],
+      days: { '2026-08-01': { pain: 4, notes: 'ok' } },
+      bars: { Deadlift: 45 },
+      rests: { Deadlift: 240 },
+      settings: { fractional: true }
+    }));
+  });
+  await page.goto(FILE_URL);
+  await page.waitForSelector('.ex');
+
+  await page.click('#tab-history');
+  await expect(page.locator('#trends')).toContainText('Deadlift');
+  await expect(page.locator('#paincard')).toContainText('4.0');
+
+  await page.click('#tab-train');
+  await page.click('.ex[data-ex="Deadlift"]');
+  // v1 kept bar and rest overrides in flat maps and assumed pounds
+  await expect(page.locator('#bars button[aria-pressed="true"]')).toHaveText('45 bar');
+  expect(await page.isChecked('#fracbox')).toBe(true);
+  await ctx.close();
+});
