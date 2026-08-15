@@ -7,7 +7,12 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="color-scheme" content="dark">
+<meta name="description" content="A lifting logbook that works offline: sets, plate math, rest timer, and back-pain tracking.">
 <title>Logbook</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <style>
   :root{
     --iron:#14161a;
@@ -659,6 +664,7 @@ const RIR_HINT = {
 let db = blank();
 let state = {day:'A', ex:null, rir:2, tab:'train', date:todayISO(), editing:null, progEdit:false, editingEx:null};
 let undoBuf = null, saveFails = 0, storageBroken = false;
+let pendingWorker = null, installPrompt = null;
 
 function blank(){
   return {v:2, sets:[], days:{}, pairs:{}, ex:{}, program:null,
@@ -807,6 +813,10 @@ function renderBanners(){
     <button data-act="backup">Back up</button></div>`);
   if(state.date !== todayISO()) out.push(`<div class="banner">Logging for ${esc(prettyDate(state.date))}, not today.
     <button data-act="today">Today</button></div>`);
+  if(pendingWorker) out.push(`<div class="banner">A new version is ready.
+    <button data-act="update">Reload</button></div>`);
+  if(installPrompt) out.push(`<div class="banner">Add Logbook to your home screen to use it offline.
+    <button data-act="install">Install</button></div>`);
   $('#banners').innerHTML = out.join('');
 }
 
@@ -1382,6 +1392,8 @@ $('#banners').addEventListener('click', e=>{
   const b = e.target.closest('[data-act]'); if(!b) return;
   if(b.dataset.act === 'today'){ state.date = todayISO(); refreshDate(); }
   if(b.dataset.act === 'backup') downloadBackup();
+  if(b.dataset.act === 'update') applyUpdate();
+  if(b.dataset.act === 'install') promptInstall();
 });
 
 $('#dateinput').addEventListener('change', e=>{
@@ -1787,6 +1799,58 @@ function suggestDay(){
 
   rerenderAll();
 })();
+
+/* ---------- offline install ---------- */
+// A new version never reloads the page on its own — that would throw away a
+// half-entered set. It offers, and the user decides when.
+function applyUpdate(){
+  if(!pendingWorker) return;
+  pendingWorker.postMessage('SKIP_WAITING');
+  pendingWorker = null;
+  renderBanners();
+}
+
+async function promptInstall(){
+  if(!installPrompt) return;
+  const p = installPrompt;
+  installPrompt = null;
+  renderBanners();
+  try{ await p.prompt(); }catch(e){ /* dismissed */ }
+}
+
+window.addEventListener('beforeinstallprompt', e=>{
+  e.preventDefault();
+  installPrompt = e;
+  renderBanners();
+});
+window.addEventListener('appinstalled', ()=>{ installPrompt = null; renderBanners(); });
+
+// Only meaningful over http(s). Opened straight from disk the app still runs,
+// it just has no offline cache to install.
+if('serviceWorker' in navigator && location.protocol.startsWith('http')){
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', ()=>{
+    if(reloading) return;
+    reloading = true;
+    location.reload();
+  });
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').then(reg=>{
+      reg.addEventListener('updatefound', ()=>{
+        const nw = reg.installing;
+        if(!nw) return;
+        nw.addEventListener('statechange', ()=>{
+          // Installed while another worker controls the page means an update
+          // is waiting, not a first install.
+          if(nw.state === 'installed' && navigator.serviceWorker.controller){
+            pendingWorker = nw;
+            renderBanners();
+          }
+        });
+      });
+    }).catch(()=>{ /* blocked or unsupported: the app works without it */ });
+  });
+}
 </script>
 </body>
 </html>
