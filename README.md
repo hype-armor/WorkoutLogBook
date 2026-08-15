@@ -83,11 +83,22 @@ of Settings.
 ## Deploying
 
 `.github/workflows/pages.yml` publishes the repository root on every push to
-`main`. It needs Pages switched on once, by hand:
+`main`, but only after the test workflow it calls has passed. Live at
+<https://hype-armor.github.io/WorkoutLogBook/>.
 
-**Settings → Pages → Build and deployment → Source: GitHub Actions.**
+Two repository settings have to be set once, by hand:
 
-Until that is set the workflow fails with a "Pages site not found" error.
+- **Settings → Pages → Build and deployment → Source: GitHub Actions.** Until
+  this is set the deploy fails with "Pages site not found".
+- **Settings → Actions → General → Workflow permissions → Allow GitHub Actions
+  to create and approve pull requests.** Without it Release Please fails with
+  `GitHub Actions is not permitted to create or approve pull requests`, and no
+  release PR is ever opened.
+
+Turning Pages on also offers to commit a starter workflow of its own,
+`static.yml`. Decline it, or delete it afterwards: it uploads and deploys with
+no test step, so a red build would publish anyway, and two workflows sharing
+the `pages` concurrency group only queue behind each other.
 
 ## Your data
 
