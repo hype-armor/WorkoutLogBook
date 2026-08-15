@@ -5,13 +5,14 @@
  * waits on the network; a fresh copy is fetched in the background and used on
  * the next launch.
  *
- * Releasing: bump VERSION. A browser only looks for a new worker when this
- * file's bytes change, so editing index.html alone reaches installed users
- * one launch later (via the background refresh) and never shows them the
- * "new version is ready" prompt. Bumping VERSION does both, and purges the
- * previous cache on activate.
+ * Releasing: VERSION is maintained by Release Please — the annotation below is
+ * what it rewrites, so merging a release PR is what ships an update. A browser
+ * only looks for a new worker when this file's bytes change, so editing
+ * index.html alone would reach installed users one launch later (via the
+ * background refresh) without ever offering them the prompt. The version bump
+ * does both, and purges the previous cache on activate.
  */
-const VERSION = 'v1';
+const VERSION = '1.0.0'; // x-release-please-version
 const CACHE = `logbook-${VERSION}`;
 
 // Relative so the app works from a subdirectory (e.g. GitHub Pages projects).

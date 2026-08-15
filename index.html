@@ -559,6 +559,8 @@
     <div class="eyebrow">Program</div>
     <button class="btn danger small wide" id="resetprog">Reset program to default</button>
     <div class="hint">Removes your exercise edits. Logged sets are never touched.</div>
+
+    <div class="hint" id="appversion" style="margin-top:22px;text-align:center"></div>
   </div>
   <div class="restdock"></div>
   <div class="sheetfoot"><button class="btn" id="setdone">Done</button></div>
@@ -587,6 +589,7 @@
 <script>
 'use strict';
 const KEY = 'logbook-v1';
+const APP_VERSION = '1.0.0'; // x-release-please-version
 
 /* ---------- program ---------- */
 const DEFAULT_PROGRAM = [
@@ -1666,6 +1669,7 @@ function openSettings(){
     : (window.storage ? 'Saved to this app.' : 'Saved in this browser.');
   $('#datastat').textContent =
     `${db.sets.length} sets across ${new Set(db.sets.map(s=>s.d)).size} days.`;
+  $('#appversion').textContent = `Logbook ${APP_VERSION}`;
   openPanel($('#settings'), $('#set-title'));
 }
 

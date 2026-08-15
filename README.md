@@ -12,6 +12,7 @@ nothing is uploaded anywhere.
 | `sw.js` | service worker — precaches the app so it opens with no signal |
 | `manifest.webmanifest` | name, colours and icons for installing to a home screen |
 | `icon-*.png`, `apple-touch-icon.png`, `favicon-32.png` | app icons |
+| `version.txt`, `release-please-config.json` | release automation, see below |
 
 ## Running it
 
@@ -32,14 +33,39 @@ full-screen and offline.
 
 ## Shipping a change
 
-**Bump `VERSION` in `sw.js`.** A browser only checks for a new service worker
-when that file's bytes change. Edit `index.html` alone and installed users pick
-the change up a launch later, via the background refresh, without ever being
-offered it. Bumping `VERSION` shows them a "new version is ready" prompt and
-purges the old cache.
+Pushing to `main` deploys to GitHub Pages and updates a standing release PR.
 
-The prompt never reloads the page on its own — that would discard a set being
-entered. It waits for a tap.
+Releases are handled by [Release Please](https://github.com/googleapis/release-please),
+driven by commit messages:
+
+```
+feat: add a plate calculator for dumbbells     -> minor bump
+fix: rest timer drifts when the tab is hidden  -> patch bump
+docs: ...  ci: ...  chore: ...                 -> no release
+```
+
+Anything without one of those prefixes is ignored, so it never reaches the
+changelog. Add `!` (`feat!:`) or a `BREAKING CHANGE:` footer for a major bump.
+
+Merging the release PR tags the version, writes `CHANGELOG.md`, and rewrites
+the version in `version.txt`, `sw.js` and `index.html`. That last part matters:
+a browser only checks for a new service worker when `sw.js` itself changes, so
+the bump is what makes installed clients notice a release at all. Edit
+`index.html` alone and users pick the change up a launch later, via the
+background refresh, without ever being offered it.
+
+The update prompt never reloads the page on its own — that would discard a set
+being entered. It waits for a tap. The running version is shown at the bottom
+of Settings.
+
+## Deploying
+
+`.github/workflows/pages.yml` publishes the repository root on every push to
+`main`. It needs Pages switched on once, by hand:
+
+**Settings → Pages → Build and deployment → Source: GitHub Actions.**
+
+Until that is set the workflow fails with a "Pages site not found" error.
 
 ## Your data
 
