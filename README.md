@@ -31,6 +31,28 @@ relative, so serving from a subdirectory (`user.github.io/WorkoutLogBook/`) is
 fine. On the phone, use the browser's "Add to Home Screen"; after that it opens
 full-screen and offline.
 
+## Tests
+
+```sh
+npm ci
+npx playwright install chromium
+npm test
+```
+
+45 assertions in `tests/`, run on every pull request and again before any
+deploy. They cover the things that actually broke: that a logged set survives a
+reload, that `Log set` and the RIR selector are never underneath the rest
+timer at phone sizes, that unit switching converts rather than corrupts, that
+a backup round-trips, that blocked storage is reported instead of retried
+forever, and that the app opens and keeps working with the network off.
+
+Layout assertions read real bounding boxes at 375×667 and 390×844, so a
+regression that hides a control fails the build rather than being noticed in a
+gym. Failures upload a Playwright report with traces, screenshots and video.
+
+If your machine has a preinstalled Chromium that Playwright cannot download,
+point at it with `CHROMIUM_PATH=/path/to/chrome npm test`.
+
 ## Shipping a change
 
 Pushing to `main` deploys to GitHub Pages and updates a standing release PR.

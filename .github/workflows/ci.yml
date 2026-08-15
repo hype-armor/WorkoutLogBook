@@ -1,0 +1,38 @@
+name: Tests
+
+# Runs directly on pull requests, and is called by the Pages workflow so a
+# failing suite blocks the deploy instead of publishing a broken app.
+on:
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  playwright:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx playwright install --with-deps chromium
+
+      - run: npx playwright test
+
+      # The report carries traces, screenshots and video for anything that
+      # failed, which is the only way to debug a layout assertion after the fact.
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14

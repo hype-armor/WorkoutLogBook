@@ -758,8 +758,20 @@ function migrate(d){
 let saveTimer;
 function save(){
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(doSave, 250);
+  saveTimer = setTimeout(()=>{ saveTimer = null; doSave(); }, 250);
 }
+
+// The debounce is there to avoid thrashing storage, but it means a set logged
+// in the last quarter second is still only in memory. Phones kill backgrounded
+// tabs without warning, so flush on the way out.
+function flushSave(){
+  if(!saveTimer) return;
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  doSave();
+}
+window.addEventListener('pagehide', flushSave);
+document.addEventListener('visibilitychange', ()=>{ if(document.hidden) flushSave(); });
 async function doSave(){
   try{
     await store.set(KEY, JSON.stringify(db));
@@ -1840,18 +1852,25 @@ if('serviceWorker' in navigator && location.protocol.startsWith('http')){
   });
   window.addEventListener('load', ()=>{
     navigator.serviceWorker.register('sw.js').then(reg=>{
-      reg.addEventListener('updatefound', ()=>{
-        const nw = reg.installing;
-        if(!nw) return;
-        nw.addEventListener('statechange', ()=>{
-          // Installed while another worker controls the page means an update
-          // is waiting, not a first install.
-          if(nw.state === 'installed' && navigator.serviceWorker.controller){
-            pendingWorker = nw;
-            renderBanners();
-          }
-        });
-      });
+      // A worker that reached "installed" while another one controls the page
+      // is an update waiting to be applied, not a first install.
+      const offer = w => {
+        if(!w || !navigator.serviceWorker.controller) return;
+        pendingWorker = w;
+        renderBanners();
+      };
+      const track = w => {
+        if(!w) return;
+        if(w.state === 'installed') return offer(w);
+        w.addEventListener('statechange', ()=>{ if(w.state === 'installed') offer(w); });
+      };
+
+      // The browser re-fetches sw.js as part of the navigation, so by the time
+      // this promise resolves the new worker may already be installing or done.
+      // Checking both before subscribing is what stops the prompt being missed.
+      track(reg.installing);
+      if(reg.waiting) offer(reg.waiting);
+      reg.addEventListener('updatefound', ()=>track(reg.installing));
     }).catch(()=>{ /* blocked or unsupported: the app works without it */ });
   });
 }

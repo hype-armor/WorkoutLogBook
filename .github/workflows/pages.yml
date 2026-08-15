@@ -17,7 +17,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Never publish a build the suite rejects.
+  test:
+    uses: ./.github/workflows/ci.yml
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     environment:
       name: github-pages
