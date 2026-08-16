@@ -119,6 +119,19 @@ test.describe('installable and offline', () => {
       ).toBe(true);
 
       await page.goto(base);
+
+      // A rest timer running when the update lands must come back on the far
+      // side of the reload — the update prompt is most likely to be tapped
+      // mid-session, between sets.
+      await page.click('.ex[data-ex="Deadlift"]');
+      await page.fill('#wt', '225');
+      await page.fill('#reps', '5');
+      await page.click('#logset');
+      await page.click('#close');
+      await page.waitForTimeout(2500);
+      const clockBefore = await page.textContent('#restclock');
+      expect(clockBefore).not.toBe('0:00');
+
       await expect(page.locator('#banners')).toContainText(/new version/i, { timeout: 20000 });
       // it must not reload on its own: that would discard a half-entered set
       expect(await page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
@@ -133,6 +146,13 @@ test.describe('installable and offline', () => {
 
       const keys = await page.evaluate(() => caches.keys());
       expect(keys).toHaveLength(1); // the previous cache is purged
+
+      await page.waitForSelector('.ex');
+      await expect(page.locator('#rest')).toHaveClass(/show/);
+      const toSecs = t => { const [m, s] = t.trim().split(':').map(Number); return m * 60 + s; };
+      const before = toSecs(clockBefore);
+      expect(toSecs(await page.textContent('#restclock'))).toBeGreaterThanOrEqual(before);
+      await expect(page.locator('#resttarget')).toHaveText('3:30 target');
     } finally {
       fs.writeFileSync(SW_PATH, original);
     }

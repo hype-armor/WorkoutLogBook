@@ -214,6 +214,68 @@ test.describe('editing the program', () => {
   });
 });
 
+test.describe('the rest timer outlives the page', () => {
+  const secs = t => { const [m, s] = t.trim().split(':').map(Number); return m * 60 + s; };
+
+  test('a reload keeps the elapsed time, not just the timer', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    await page.click('.ex[data-ex="Deadlift"]');
+    await page.fill('#wt', '225');
+    await page.fill('#reps', '5');
+    await page.click('#logset');
+    await page.click('#close');
+    await page.waitForTimeout(3000);
+
+    const before = secs(await page.textContent('#restclock'));
+    expect(before).toBeGreaterThanOrEqual(2);
+
+    await page.reload();
+    await page.waitForSelector('.ex');
+    await expect(page.locator('#rest')).toHaveClass(/show/);
+
+    // start is stored as an absolute timestamp, so the clock has to pick up
+    // where it left off rather than restarting at zero
+    const after = secs(await page.textContent('#restclock'));
+    expect(after).toBeGreaterThanOrEqual(before);
+    await expect(page.locator('#resttarget')).toHaveText('3:30 target');
+
+    await page.waitForTimeout(2200);
+    expect(secs(await page.textContent('#restclock'))).toBeGreaterThan(after);
+    await ctx.close();
+  });
+
+  test('a timer abandoned mid-session is dropped, not resumed', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('.ex[data-ex="Deadlift"]');
+    await page.fill('#wt', '225');
+    await page.fill('#reps', '5');
+    await page.click('#logset');
+    await page.click('#close');
+    await expect(page.locator('#rest')).toHaveClass(/show/);
+
+    // saving is debounced, so the timer is not on disk the instant it starts
+    await expect.poll(async () => page.evaluate(() =>
+      !!JSON.parse(localStorage.getItem('logbook-v1') || '{}').rest)).toBe(true);
+
+    await page.evaluate(() => {
+      const db = JSON.parse(localStorage.getItem('logbook-v1'));
+      db.rest.start = Date.now() - (db.rest.target + 1000) * 1000;
+      localStorage.setItem('logbook-v1', JSON.stringify(db));
+    });
+    await page.reload();
+    await page.waitForSelector('.ex');
+    await expect(page.locator('#rest')).not.toHaveClass(/show/);
+    await ctx.close();
+  });
+});
+
 test.describe('accessibility', () => {
   test('sheets are inert when closed and trap focus when open', async ({ browser }) => {
     const ctx = await phone(browser);
