@@ -205,6 +205,9 @@
     text-align:left;padding:11px 4px;cursor:pointer;min-height:44px;border-radius:var(--r-sm);
   }
   .setrow.editing{background:var(--accent-soft);border-radius:var(--r-sm)}
+  .setrow.warm .load{color:var(--ink-2);font-weight:450}
+  .setrow.warm .idx{color:var(--accent-ink)}
+  .setrow.warm .rir{font-size:12px;text-transform:uppercase;letter-spacing:.05em}
   .setrow .idx{color:var(--ink-3);width:18px;flex:none;font-size:14px;font-weight:600}
   .setrow .load{flex:1;min-width:0;font-weight:560}
   .setrow .rir{font-size:13px;font-weight:560;color:var(--ink-2);flex:none;letter-spacing:-.005em}
@@ -535,6 +538,8 @@
 
     <div id="setlist"></div>
 
+    <div class="bars" id="setkind" style="margin:14px 0 4px;justify-content:flex-start"></div>
+
     <label class="f" style="margin-top:12px">
       <span class="lab" id="wtlab">Weight</span>
       <div class="stepper">
@@ -565,9 +570,11 @@
       <div class="pmwarn hide" id="pmwarn"></div>
     </div>
 
-    <div class="eyebrow" id="rirlab" style="margin:16px 0 0">Reps in reserve</div>
-    <div class="plates" id="plates"></div>
-    <div class="rirhint" id="rirhint">How many more reps could you have done?</div>
+    <div id="rirblock">
+      <div class="eyebrow" id="rirlab" style="margin:16px 0 0">Reps in reserve</div>
+      <div class="plates" id="plates"></div>
+      <div class="rirhint" id="rirhint">How many more reps could you have done?</div>
+    </div>
   </div>
 
   <div class="restdock"></div>
@@ -780,7 +787,7 @@ const RIR_HINT = {
 
 /* ---------- state ---------- */
 let db = blank();
-let state = {day:'A', ex:null, rir:2, tab:'train', date:todayISO(), editing:null, progEdit:false, editingEx:null};
+let state = {day:'A', ex:null, rir:2, tab:'train', date:todayISO(), editing:null, progEdit:false, editingEx:null, warmup:false};
 let undoBuf = null, saveFails = 0, storageBroken = false;
 let pendingWorker = null, installPrompt = null;
 
@@ -995,6 +1002,10 @@ function renderDays(){
 }
 
 const setsFor = (date, ex) => db.sets.filter(s => s.d === date && s.e === ex);
+// Warm-ups are logged, but they are not the work. Targets, trends and the
+// session summary all mean working sets.
+const isWarmup = s => !!s.wu;
+const workingSets = list => list.filter(s => !isWarmup(s));
 
 function renderExercises(){
   const day = dayById(state.day);
@@ -1002,7 +1013,7 @@ function renderExercises(){
     (db.days[state.date]?.done ? ' — finished' : ' — exercises');
   $('#addex').classList.toggle('hide', !state.progEdit);
   const rows = day.ex.map(([name,target], i)=>{
-    const n = setsFor(state.date, name).length;
+    const n = workingSets(setsFor(state.date, name)).length;
     const goal = targetSets(target);
     const p = partnerOf(name);
     const full = goal && n >= goal;
@@ -1034,10 +1045,12 @@ function setTime(s){
 }
 
 function sessionStats(date){
-  const sets = db.sets.filter(s => s.d === date);
-  const times = sets.map(setTime).filter(Boolean);
+  const all = db.sets.filter(s => s.d === date);
+  const sets = workingSets(all);
+  const times = all.map(setTime).filter(Boolean); // warming up is still time spent
   return {
     count: sets.length,
+    warmups: all.length - sets.length,
     exercises: new Set(sets.map(s => s.e)).size,
     tonnage: sets.reduce((a,s)=> a + (kindOf(s.e) === 'distance' ? 0 : loadOf(s) * s.r), 0),
     start: times.length ? Math.min(...times) : null
@@ -1045,10 +1058,11 @@ function sessionStats(date){
 }
 
 function sessionSummary(date){
-  const {count, exercises, tonnage, start} = sessionStats(date);
+  const {count, warmups, exercises, tonnage, start} = sessionStats(date);
   const done = db.days[date]?.done;
   const parts = [`${count} set${count === 1 ? '' : 's'}`,
                  `${exercises} exercise${exercises === 1 ? '' : 's'}`];
+  if(warmups) parts.push(`${warmups} warm-up${warmups === 1 ? '' : 's'}`);
   if(tonnage > 0) parts.push(`${Math.round(tonnage).toLocaleString()} ${U().label} moved`);
   if(done && start && done > start) parts.push(`${Math.max(1, Math.round((done - start)/60000))} min`);
   return parts.join(' · ');
@@ -1106,6 +1120,21 @@ function renderPain(){
   $('#notestate').textContent = 'Notes save as you type.';
 }
 
+function renderSetKind(){
+  $('#setkind').innerHTML = [['work','Working'],['warm','Warm-up']].map(([v,label]) =>
+    `<button data-kind="${v}" aria-pressed="${(state.warmup ? 'warm' : 'work') === v}">${label}</button>`).join('');
+  // Reps in reserve is a question about proximity to failure. A warm-up has no
+  // meaningful answer, so it is not asked.
+  $('#rirblock').classList.toggle('hide', state.warmup);
+  if(!state.editing) $('#logset').textContent = state.warmup ? 'Log warm-up' : 'Log set';
+}
+
+$('#setkind').addEventListener('click', e=>{
+  const b = e.target.closest('[data-kind]'); if(!b) return;
+  state.warmup = b.dataset.kind === 'warm';
+  renderSetKind();
+});
+
 function renderPlates(){
   $('#plates').innerHTML = [0,1,2,3,4].map(v=>
     `<button class="plate" data-v="${v}" aria-pressed="${state.rir===v}"
@@ -1116,16 +1145,19 @@ function renderPlates(){
 function renderSetList(){
   const rows = setsFor(state.date, state.ex);
   const k = kindOf(state.ex);
+  let n = 0;
   $('#setlist').innerHTML = rows.length ? rows.map((s,i)=>{
+    const warm = isWarmup(s);
+    const idx = warm ? 'W' : ++n;
     let load;
     if(k === 'distance') load = `${fmtW(s.r)} ${U().dist}${toDisplay(s) > 0 ? ` @ ${fmtW(toDisplay(s))}` : ''}`;
     else if(k === 'bodyweight') load = `${toDisplay(s) > 0 ? `BW+${fmtW(toDisplay(s))}` : 'BW'} × ${s.r}`;
     else load = `${fmtW(toDisplay(s))} × ${s.r}`;
-    return `<div class="setrow ${state.editing===s.id?'editing':''}">
-       <button class="tap" data-edit="${esc(s.id)}" aria-label="Edit set ${i+1}">
-         <span class="idx">${i+1}</span>
+    return `<div class="setrow ${warm?'warm':''} ${state.editing===s.id?'editing':''}">
+       <button class="tap" data-edit="${esc(s.id)}" aria-label="Edit ${warm?'warm-up':'set '+n}">
+         <span class="idx">${idx}</span>
          <span class="load">${esc(load)}</span>
-         <span class="rir">${s.rir}${s.rir===4?'+':''} RIR</span>
+         <span class="rir">${warm ? 'warm-up' : `${s.rir}${s.rir===4?'+':''} RIR`}</span>
          ${s.rest!=null?`<span class="rir" style="color:var(--ink-3)">${mmss(s.rest)}</span>`:''}
        </button>
        <button class="del" data-del="${esc(s.id)}" aria-label="Delete set ${i+1}">&#215;</button>
@@ -1461,7 +1493,7 @@ function renderSheetSub(){
   const ex = state.ex, u = U(), target = state.target || '';
   // "last" means the previous session's set, not the one just logged.
   const prev = db.sets.filter(s => s.e === ex && s.d !== state.date).slice(-1)[0];
-  const done = setsFor(state.date, ex).length, goal = targetSets(target);
+  const done = workingSets(setsFor(state.date, ex)).length, goal = targetSets(target);
   const goalSets = targetSets(target);
   const bits = [`Target ${target}` +
     (isUnilateral(ex) && goalSets ? ` (${goalSets/2} per side)` : '')];
@@ -1477,7 +1509,7 @@ function openSheet(ex){
   const day = dayById(state.day);
   const row = day.ex.find(([n]) => n === ex);
   const target = row ? row[1] : '';
-  state.ex = ex; state.editing = null;
+  state.ex = ex; state.editing = null; state.warmup = false;
   const k = kindOf(ex), u = U();
   $('#sheet-title').textContent = ex;
 
@@ -1500,7 +1532,8 @@ function openSheet(ex){
 
   $('#canceledit').classList.add('hide');
   $('#logset').textContent = 'Log set';
-  renderPlates(); renderSetList(); renderPlateMath(); refreshStepperLabels(); renderPairSelect();
+  renderSetKind(); renderPlates(); renderSetList(); renderPlateMath();
+  refreshStepperLabels(); renderPairSelect();
   openPanel($('#sheet'), $('#sheet-title'));
 }
 
@@ -1533,6 +1566,7 @@ function renderHistory(){
   const u = U();
   const byEx = {};
   db.sets.forEach(s=>{
+    if(isWarmup(s)) return; // a ramp-up rep is not evidence of a max
     const val = kindOf(s.e) === 'distance' ? s.r : e1rm(s);
     if(!val) return;
     (byEx[s.e] ||= {})[s.d] = Math.max(byEx[s.e][s.d] || 0, val);
@@ -1759,10 +1793,13 @@ $('#logset').addEventListener('click', ()=>{
   }
   if(state.editing){
     const s = db.sets.find(x => x.id === state.editing);
-    if(s){ s.w = w; s.r = r; s.rir = state.rir; s.u = units(); }
+    if(s){
+      s.w = w; s.r = r; s.rir = state.rir; s.u = units();
+      if(state.warmup) s.wu = true; else delete s.wu;
+    }
     state.editing = null;
     $('#canceledit').classList.add('hide');
-    $('#logset').textContent = 'Log set';
+    renderSetKind();
     save(); renderSetList(); renderSheetSub(); toast('Set updated');
     return;
   }
@@ -1773,12 +1810,19 @@ $('#logset').addEventListener('click', ()=>{
   if(db.days[state.date]?.done) delete db.days[state.date].done;
   db.sets.push({id: now+''+Math.random().toString(36).slice(2,6), t: now,
                 d: state.date, e: state.ex, dy: state.day,
-                w, r, rir: state.rir, rest: restTaken, u: units()});
+                w, r, rir: state.rir, rest: restTaken, u: units(),
+                ...(state.warmup ? {wu: true} : {})});
   save(); renderSetList(); renderSheetSub();
-  const done = setsFor(state.date, state.ex).length;
-  const goal = targetSets(state.target);
-  toast(goal && done <= goal ? `Set ${done} of ${goal}` : `Set ${done} logged`);
-  startRest(state.ex);
+  if(state.warmup){
+    toast('Warm-up logged');
+    // No rest timer: three and a half minutes between ramp-up sets is not a
+    // thing anyone wants, and any timer already running is left alone.
+  } else {
+    const done = workingSets(setsFor(state.date, state.ex)).length;
+    const goal = targetSets(state.target);
+    toast(goal && done <= goal ? `Set ${done} of ${goal}` : `Set ${done} logged`);
+    startRest(state.ex);
+  }
   // Deliberately no focus() here: it opens the numeric keyboard over the
   // rest timer you just started.
   document.activeElement?.blur?.();
@@ -1787,7 +1831,7 @@ $('#logset').addEventListener('click', ()=>{
 $('#canceledit').addEventListener('click', ()=>{
   state.editing = null;
   $('#canceledit').classList.add('hide');
-  $('#logset').textContent = 'Log set';
+  renderSetKind();
   renderSetList();
 });
 
@@ -1811,10 +1855,12 @@ $('#setlist').addEventListener('click', e=>{
   if(!ed) return;
   const s = db.sets.find(x => x.id === ed.dataset.edit); if(!s) return;
   state.editing = s.id;
+  state.warmup = isWarmup(s);
   $('#wt').value = fmtW(toDisplay(s));
   $('#reps').value = s.r;
   state.rir = s.rir;
   $('#canceledit').classList.remove('hide');
+  renderSetKind();
   $('#logset').textContent = 'Save';
   renderPlates(); renderSetList(); renderPlateMath();
 });
@@ -2045,9 +2091,10 @@ function downloadBackup(){
 
 function csv(){
   const q = v => { v = String(v ?? ''); return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; };
-  const rows = [['date','day','exercise','kind','weight','unit','reps_or_distance','rir',
+  const rows = [['date','day','exercise','kind','warmup','weight','unit','reps_or_distance','rir',
                  'est_max','rest_sec','back_pain','notes']];
-  db.sets.forEach(s=>rows.push([s.d, s.dy || '', s.e, kindOf(s.e), s.w, s.u || 'lb', s.r, s.rir,
+  db.sets.forEach(s=>rows.push([s.d, s.dy || '', s.e, kindOf(s.e), isWarmup(s) ? 'yes' : '',
+    s.w, s.u || 'lb', s.r, s.rir,
     kindOf(s.e)==='distance' ? '' : e1rm(s).toFixed(1), s.rest ?? '',
     db.days[s.d]?.pain ?? '', db.days[s.d]?.notes || ''].map(q)));
   return rows.map(r=>r.join(',')).join('\n');
