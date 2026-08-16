@@ -272,6 +272,32 @@ test.describe('rest alert setting', () => {
   }
 });
 
+test('an odd target saved before the rule existed is corrected on load', async ({ browser }) => {
+  const ctx = await phone(browser);
+  const page = await ctx.newPage();
+  // a customised program keeps its own copy, so it never saw the fixed defaults
+  await page.addInitScript(() => {
+    localStorage.setItem('logbook-v1', JSON.stringify({
+      v: 2, sets: [], days: {}, pairs: {}, ex: {},
+      program: [{ id: 'A', name: 'Lower A', tag: 'Deadlift focus', ex: [
+        ['Suitcase carry', '3 × 40m'],
+        ['Bulgarian split squat', '5 × 10'],
+        ['Leg curl', '3 × 12']
+      ]}],
+      settings: { units: 'lb', transition: 30, bw: { lb: 0, kg: 0 }, lastDay: 'A', alert: 'both' },
+      rest: null
+    }));
+  });
+  await page.goto(FILE_URL);
+  await page.waitForSelector('.ex');
+
+  await expect(page.locator('.ex[data-ex="Suitcase carry"] .target')).toHaveText('4 × 40m');
+  await expect(page.locator('.ex[data-ex="Bulgarian split squat"] .target')).toHaveText('6 × 10');
+  // the two-sided one is untouched
+  await expect(page.locator('.ex[data-ex="Leg curl"] .target')).toHaveText('3 × 12');
+  await ctx.close();
+});
+
 test('the pain chart scales with the rating', async ({ browser }) => {
   const ctx = await phone(browser);
   const page = await ctx.newPage();

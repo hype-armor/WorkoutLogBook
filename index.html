@@ -589,7 +589,13 @@
         <option value="bodyweight">Bodyweight — pull-up, dip, push-up</option>
         <option value="distance">Distance — carries, sled</option>
       </select></label>
-    <label class="f" style="margin-top:10px"><span class="lab">Plate math</span>
+    <label class="toggle" style="margin-top:14px">
+      <input type="checkbox" id="exuni">
+      <span>One side at a time
+        <span class="sub">Keeps the target even, so both sides get the same work.</span></span>
+    </label>
+
+    <label class="f" style="margin-top:14px"><span class="lab">Plate math</span>
       <select id="exbar"></select></label>
     <label class="f" style="margin-top:10px"><span class="lab">Rest target</span>
       <select id="exrest"></select></label>
@@ -678,12 +684,12 @@ const APP_VERSION = '1.3.0'; // x-release-please-version
 const DEFAULT_PROGRAM = [
   {id:'A', name:'Lower A', tag:'Deadlift focus', ex:[
     ['Deadlift','4 × 4'],['Leg press','3 × 10'],['Romanian deadlift','3 × 8'],
-    ['Leg curl','3 × 12'],['Suitcase carry','3 × 40m']]},
+    ['Leg curl','3 × 12'],['Suitcase carry','4 × 40m']]},
   {id:'B', name:'Upper A', tag:'Press focus', ex:[
     ['Overhead press','4 × 6'],['Chest-supported row','4 × 10'],['Incline DB press','3 × 10'],
     ['Lat pulldown','3 × 12'],['Lateral raise','3 × 15'],['Triceps pushdown','3 × 12']]},
   {id:'C', name:'Lower B', tag:'Squat focus', ex:[
-    ['Front squat','4 × 8'],['Trap bar deadlift','3 × 6'],['Bulgarian split squat','3 × 10'],
+    ['Front squat','4 × 8'],['Trap bar deadlift','3 × 6'],['Bulgarian split squat','4 × 10'],
     ['Calf raise','3 × 15'],['Dead bug','3 × 10']]},
   {id:'D', name:'Upper B', tag:'Vertical pull', ex:[
     ['Weighted dip','4 × 8'],['Pull-up','4 × max'],['Seated DB press','3 × 10'],
@@ -701,6 +707,12 @@ const DEFAULT_BAR = {
 // Exercises the barbell numbers don't describe.
 const DEFAULT_KIND = {
   'Pull-up':'bodyweight', 'Weighted dip':'bodyweight', 'Suitcase carry':'distance'
+};
+
+// Worked one side at a time, so the set count has to be even — an odd target
+// sends you home having done more on one arm or leg than the other.
+const DEFAULT_UNILATERAL = {
+  'Suitcase carry':true, 'Bulgarian split squat':true
 };
 
 // The plate hues below mirror physical plates — a 45 is red and a 10 is green
@@ -844,6 +856,11 @@ function migrate(d){
   if(!UNITS[out.settings.units]) out.settings.units = 'lb';
   if(!out.settings.bw || typeof out.settings.bw !== 'object') out.settings.bw = {lb:0,kg:0};
   out.ex = d.ex && typeof d.ex === 'object' ? d.ex : {};
+  if(Array.isArray(out.program)){
+    out.program.forEach(day => day.ex?.forEach(row => {
+      if(DEFAULT_UNILATERAL[row[0]] || out.ex?.[row[0]]?.uni) row[1] = evenTarget(row[1]);
+    }));
+  }
   if(!out.settings.plates || typeof out.settings.plates !== 'object'){
     out.settings.plates = {};
     for(const [k, u] of Object.entries(UNITS)){
@@ -904,6 +921,15 @@ function ownProgram(){
 }
 const meta = ex => db.ex?.[ex] || {};
 const kindOf = ex => meta(ex).kind || DEFAULT_KIND[ex] || 'weight';
+const isUnilateral = ex => meta(ex).uni ?? !!DEFAULT_UNILATERAL[ex];
+
+// Round a target up to an even number of sets, leaving the rest of the string
+// ("× 40m") alone.
+function evenTarget(target){
+  const n = targetSets(target);
+  if(!n || n % 2 === 0) return target;
+  return String(target).replace(/^(\s*)(\d+)/, (_, sp) => sp + (n + 1));
+}
 function barFor(ex){
   const m = meta(ex);
   if(m.bar && typeof m.bar === 'object') return m.bar[units()] ?? null;
@@ -1412,7 +1438,9 @@ function renderSheetSub(){
   // "last" means the previous session's set, not the one just logged.
   const prev = db.sets.filter(s => s.e === ex && s.d !== state.date).slice(-1)[0];
   const done = setsFor(state.date, ex).length, goal = targetSets(target);
-  const bits = [`Target ${target}`];
+  const goalSets = targetSets(target);
+  const bits = [`Target ${target}` +
+    (isUnilateral(ex) && goalSets ? ` (${goalSets/2} per side)` : '')];
   if(goal) bits.push(`${done}/${goal} done`);
   else if(done) bits.push(`${done} logged`);
   bits.push(prev
@@ -1819,6 +1847,7 @@ function openExEditor(name){
   $('#exname').value = name || '';
   $('#extarget').value = row ? row[1] : '3 × 10';
   $('#exkind').value = name ? kindOf(name) : 'weight';
+  $('#exuni').checked = name ? isUnilateral(name) : false;
   $('#exbar').innerHTML = [`<option value="">No plate math</option>`]
     .concat(u.bars.map(b => `<option value="${b}">${esc(u.barLabel[b])}</option>`)).join('');
   $('#exbar').value = name && isLoadable(name) ? String(barFor(name)) : '';
@@ -1832,7 +1861,12 @@ function openExEditor(name){
 $('#exsave').addEventListener('click', ()=>{
   const name = $('#exname').value.trim();
   if(!name){ toast('Name it first'); return; }
-  const target = $('#extarget').value.trim() || '3 × 10';
+  const typed = $('#extarget').value.trim() || '3 × 10';
+  const uni = $('#exuni').checked;
+  // Two arms, two legs: an odd target on a one-sided exercise cannot be shared
+  // evenly, so it goes up rather than being accepted as written.
+  const target = uni ? evenTarget(typed) : typed;
+  const rounded = target !== typed;
   const day = ownProgram().find(d => d.id === state.day);
   const old = state.editingEx;
 
@@ -1854,6 +1888,7 @@ $('#exsave').addEventListener('click', ()=>{
 
   const m = (db.ex[name] ||= {});
   m.kind = $('#exkind').value;
+  m.uni = uni;
   m.rest = +$('#exrest').value;
   const barVal = $('#exbar').value;
   if(barVal === '') delete m.bar;
@@ -1861,7 +1896,7 @@ $('#exsave').addEventListener('click', ()=>{
 
   save(); renderDays(); renderExercises();
   closePanel($('#exsheet'), ()=>exButton(name) || $('#editprog'));
-  toast(old ? 'Saved' : 'Added');
+  toast(rounded ? `Rounded to ${targetSets(target)} sets — one side each` : (old ? 'Saved' : 'Added'));
 });
 
 $('#exdelete').addEventListener('click', ()=>{
