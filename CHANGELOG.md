@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.1.1...logbook-v1.2.0) (2026-08-16)
+
+
+### Features
+
+* rebuild the interface on a modern design system ([#8](https://github.com/hype-armor/WorkoutLogBook/issues/8)) ([50e6af7](https://github.com/hype-armor/WorkoutLogBook/commit/50e6af735ed931ba6ee73665e44bb1f1eb34c18d))
+
+
+### Bug Fixes
+
+* keep the header out from under the iOS status bar ([#6](https://github.com/hype-armor/WorkoutLogBook/issues/6)) ([3df8790](https://github.com/hype-armor/WorkoutLogBook/commit/3df87909c549457915330d8474b9c25deb19cf68))
+
 ## [1.1.1](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.1.0...logbook-v1.1.1) (2026-08-16)
 
 
