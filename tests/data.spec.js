@@ -94,10 +94,11 @@ test('the pain chart scales with the rating', async ({ browser }) => {
 
   const bars = await page.$$eval('.painstrip div', els =>
     els.map(e => +e.getBoundingClientRect().height.toFixed(1)));
+  const strip = await page.locator('.painstrip').boundingBox();
   // this used to read the day record instead of its pain value, so every bar
   // collapsed to the 2px minimum and the chart was a flat line
   expect(bars).toHaveLength(7);
-  expect(bars[4]).toBe(44);            // pain 10 fills the strip
+  expect(bars[4]).toBeCloseTo(strip.height, 0); // pain 10 fills the strip
   expect(bars[4]).toBeGreaterThan(bars[3]);
   expect(bars[3]).toBeGreaterThan(bars[2]);
   expect(bars[0]).toBeLessThan(bars[2]);
