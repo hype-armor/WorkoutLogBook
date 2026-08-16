@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.2.0...logbook-v1.3.0) (2026-08-16)
+
+
+### Features
+
+* add a way to mark a workout finished ([#10](https://github.com/hype-armor/WorkoutLogBook/issues/10)) ([d59a25b](https://github.com/hype-armor/WorkoutLogBook/commit/d59a25b67a66a21c01d818ff272f0edb08779bb7))
+
 ## [1.2.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.1.1...logbook-v1.2.0) (2026-08-16)
 
 
