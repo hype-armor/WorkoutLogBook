@@ -621,8 +621,15 @@
     <div class="hint">Used to score pull-ups and dips. Without it, a bodyweight set
       estimates out at zero and its trend line stays flat.</div>
 
-    <label class="f" style="margin-top:16px"><span class="lab">Superset transition</span>
+    <div class="eyebrow">Timers</div>
+    <label class="f"><span class="lab">Superset transition</span>
       <select id="transel"></select></label>
+
+    <label class="f" style="margin-top:16px"><span class="lab">When a rest timer ends</span>
+      <select id="alertsel"></select></label>
+    <button class="btn ghost small wide" id="testalert" style="margin-top:10px">Test alert</button>
+    <div class="hint">Plays exactly what a finished timer plays, so you can find out
+      whether it carries over the room before you are mid-set.</div>
 
     <div class="eyebrow">Data</div>
     <button class="btn ghost small wide" id="backup">Download backup (JSON)</button>
@@ -738,6 +745,15 @@ const REST_DEFAULT = {
 const REST_OPTIONS = [60,90,120,150,180,210,240,300];
 const TRANSITION_OPTIONS = [15,20,30,45,60,90];
 
+// What a finished rest timer does. A gym is either too loud to hear a chime or
+// quiet enough that one is rude, so this needs to be a real choice.
+const ALERT_OPTIONS = [
+  ['both',    'Sound and vibration'],
+  ['sound',   'Sound only'],
+  ['vibrate', 'Vibration only'],
+  ['silent',  'Silent']
+];
+
 const RIR_HINT = {
   0:'Failure. Could not have done another rep.',
   1:'One more rep was in there.',
@@ -754,7 +770,8 @@ let pendingWorker = null, installPrompt = null;
 
 function blank(){
   return {v:2, sets:[], days:{}, pairs:{}, ex:{}, program:null,
-          settings:{units:'lb', fractional:false, transition:30, bw:{lb:0,kg:0}, lastDay:'A'},
+          settings:{units:'lb', fractional:false, transition:30, bw:{lb:0,kg:0},
+                    lastDay:'A', alert:'both'},
           rest:null};
 }
 
@@ -1195,6 +1212,19 @@ async function requestWake(){
 }
 function releaseWake(){ try{ wakeLock?.release(); }catch(e){} wakeLock = null; }
 
+const alertMode = () => {
+  const m = db.settings.alert;
+  return ALERT_OPTIONS.some(([v]) => v === m) ? m : 'both';
+};
+const wantsSound = () => alertMode() === 'both' || alertMode() === 'sound';
+const wantsBuzz  = () => alertMode() === 'both' || alertMode() === 'vibrate';
+
+// `short` is the superset transition, which gets one beep rather than two.
+function fireAlert(short){
+  if(wantsSound()) chime(short ? [0] : [0, .18]);
+  if(wantsBuzz() && navigator.vibrate) navigator.vibrate(short ? [90] : [130,70,130]);
+}
+
 function chime(times){
   try{
     const AC = window.AudioContext || window.webkitAudioContext; if(!AC) return;
@@ -1229,8 +1259,10 @@ function startRest(ex){
   rest.start = Date.now();
   rest.alerted = false;
   // warm up audio inside the tap that logged the set, so the chime can fire later
-  try{ const AC = window.AudioContext||window.webkitAudioContext;
-       if(AC){ rest.ac ||= new AC(); rest.ac.resume(); } }catch(e){}
+  if(wantsSound()){
+    try{ const AC = window.AudioContext||window.webkitAudioContext;
+         if(AC){ rest.ac ||= new AC(); rest.ac.resume(); } }catch(e){}
+  }
   requestWake();
   showRest();
   persistRest();
@@ -1270,8 +1302,7 @@ function tickRest(){
   $('#rest').classList.toggle('ready', ready);
   if(ready && !rest.alerted){
     rest.alerted = true;
-    chime(rest.mode === 'transition' ? [0] : [0, .18]);
-    if(navigator.vibrate) navigator.vibrate(rest.mode === 'transition' ? [90] : [130,70,130]);
+    fireAlert(rest.mode === 'transition');
     // The clock itself is aria-live="off"; this is the one moment worth saying.
     announce(rest.mode === 'transition' ? 'Go now' : 'Rest complete');
   }
@@ -1839,6 +1870,9 @@ function openSettings(){
   $('#transel').innerHTML = TRANSITION_OPTIONS.map(v =>
     `<option value="${v}">${v}s</option>`).join('');
   $('#transel').value = String(db.settings.transition ?? TRANSITION);
+  $('#alertsel').innerHTML = ALERT_OPTIONS.map(([v,label]) =>
+    `<option value="${v}">${esc(label)}</option>`).join('');
+  $('#alertsel').value = alertMode();
   $('#storagesub').textContent = storageBroken
     ? 'Saving is blocked on this device.'
     : (window.storage ? 'Saved to this app.' : 'Saved in this browser.');
@@ -1871,6 +1905,20 @@ $('#bwinput').addEventListener('change', e=>{
   const v = parseFloat(e.target.value);
   (db.settings.bw ||= {})[units()] = isNaN(v) ? 0 : v;
   save();
+});
+
+$('#alertsel').addEventListener('change', e=>{
+  db.settings.alert = e.target.value;
+  save();
+  // Preview on change: picking "sound only" should tell you what that sounds
+  // like now, not in three minutes.
+  fireAlert(false);
+});
+
+$('#testalert').addEventListener('click', ()=>{
+  fireAlert(false);
+  const label = (ALERT_OPTIONS.find(([v]) => v === alertMode()) || [])[1] || '';
+  toast(alertMode() === 'silent' ? 'Alerts are silent' : label);
 });
 
 $('#transel').addEventListener('change', e=>{

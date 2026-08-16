@@ -120,6 +120,90 @@ test('small plates are a settings toggle, not a per-set control', async ({ brows
   await ctx.close();
 });
 
+test.describe('rest alert setting', () => {
+  // Count what the alert actually does rather than trusting the setting:
+  // stub the oscillator and the vibrator before any app code runs.
+  const instrument = page => page.addInitScript(() => {
+    window.__beeps = 0;
+    window.__buzzes = [];
+    const AC = window.AudioContext || window.webkitAudioContext;
+    class Counting extends AC {
+      createOscillator() { window.__beeps++; return super.createOscillator(); }
+    }
+    window.AudioContext = Counting;
+    window.webkitAudioContext = Counting;
+    navigator.vibrate = pattern => { window.__buzzes.push(pattern); return true; };
+  });
+
+  const counts = page => page.evaluate(() => ({ beeps: window.__beeps, buzzes: window.__buzzes.length }));
+
+  for (const [mode, sound, buzz] of [
+    ['both', true, true],
+    ['sound', true, false],
+    ['vibrate', false, true],
+    ['silent', false, false]
+  ]) {
+    test(`"${mode}" plays ${sound ? 'sound' : 'no sound'} and ${buzz ? 'vibrates' : 'does not vibrate'}`,
+      async ({ browser }) => {
+        const ctx = await phone(browser);
+        const page = await ctx.newPage();
+        await instrument(page);
+        await page.goto(FILE_URL);
+        await page.waitForSelector('.ex');
+
+        await page.click('#gear');
+        await page.selectOption('#alertsel', mode);
+        await page.evaluate(() => { window.__beeps = 0; window.__buzzes = []; }); // ignore the preview
+        await page.click('#testalert');
+        await page.waitForTimeout(300);
+
+        const c = await counts(page);
+        expect(c.beeps > 0, 'made a sound').toBe(sound);
+        expect(c.buzzes > 0, 'vibrated').toBe(buzz);
+        await ctx.close();
+      });
+  }
+
+  // Both ends of the range against a real timer, so "silent stayed silent"
+  // cannot pass just because the timer never fired.
+  for (const [mode, shouldAlert] of [['silent', false], ['both', true]]) {
+    test(`a real timer honours "${mode}" and the choice survives a reload`, async ({ browser }) => {
+      const ctx = await phone(browser);
+      const page = await ctx.newPage();
+      await instrument(page);
+      // a one-second rest target, so the alert can be observed without waiting
+      await page.addInitScript(m => {
+        localStorage.setItem('logbook-v1', JSON.stringify({
+          v: 2, sets: [], days: {}, pairs: {}, ex: { Deadlift: { rest: 1 } }, program: null,
+          settings: { units: 'lb', fractional: false, transition: 30, bw: { lb: 0, kg: 0 },
+                      lastDay: 'A', alert: m },
+          rest: null
+        }));
+      }, mode);
+      await page.goto(FILE_URL);
+      await page.waitForSelector('.ex');
+
+      await page.click('#gear');
+      expect(await page.locator('#alertsel').inputValue()).toBe(mode);
+      await page.click('#setdone');
+
+      await page.click('.ex[data-ex="Deadlift"]');
+      await page.fill('#wt', '225');
+      await page.fill('#reps', '5');
+      await page.click('#logset');
+      await expect(page.locator('#rest')).toHaveClass(/ready/);
+      await page.waitForTimeout(400);
+
+      const c = await counts(page);
+      expect(c.beeps > 0, 'made a sound').toBe(shouldAlert);
+      expect(c.buzzes > 0, 'vibrated').toBe(shouldAlert);
+      // the visual ready state lands either way — that is the point of silent
+      await expect(page.locator('#rest')).toHaveClass(/ready/);
+      await ctx.close();
+    });
+  }
+});
+
 test('the pain chart scales with the rating', async ({ browser }) => {
   const ctx = await phone(browser);
   const page = await ctx.newPage();
