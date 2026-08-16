@@ -12,7 +12,7 @@
  * background refresh) without ever offering them the prompt. The version bump
  * does both, and purges the previous cache on activate.
  */
-const VERSION = '1.3.0'; // x-release-please-version
+const VERSION = '1.4.0'; // x-release-please-version
 const CACHE = `logbook-${VERSION}`;
 
 // Relative so the app works from a subdirectory (e.g. GitHub Pages projects).
