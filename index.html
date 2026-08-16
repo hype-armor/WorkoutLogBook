@@ -215,7 +215,9 @@
   .setrow .del:active{background:var(--surface-2);color:var(--danger)}
 
   /* sheets */
-  .scrim{position:fixed;inset:0;background:rgba(6,8,11,.7);backdrop-filter:blur(3px);z-index:40;opacity:0;pointer-events:none;transition:opacity .18s}
+  .scrim{position:fixed;inset:0;background:rgba(6,8,11,.7);backdrop-filter:blur(3px);
+    overscroll-behavior:contain;touch-action:none;
+    z-index:40;opacity:0;pointer-events:none;transition:opacity .18s}
   .scrim.open{opacity:1;pointer-events:auto}
   .sheet{
     position:fixed;left:0;right:0;bottom:0;z-index:50;
@@ -238,7 +240,8 @@
   .sheet h2:focus{outline:none}
   .sheet .sub{color:var(--ink-3);font-size:13.5px;line-height:1.4;letter-spacing:-.005em}
   /* Only the body scrolls, so the primary action never leaves the screen. */
-  .sheetbody{flex:1;min-height:0;overflow:auto;padding:16px 18px 6px;-webkit-overflow-scrolling:touch}
+  .sheetbody{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;
+    padding:16px 18px 6px;-webkit-overflow-scrolling:touch}
   .sheetfoot{
     flex:none;padding:12px 18px calc(14px + var(--safe-bottom));
     border-top:1px solid var(--line);background:var(--surface);
@@ -436,6 +439,9 @@
   }
   nav button[aria-selected="true"]{color:var(--accent-ink);background:var(--accent-soft)}
 
+  /* Pinned rather than overflow:hidden, which iOS Safari ignores on the
+     document. The offset preserves the reading position, restored on close. */
+  body.locked{position:fixed;left:0;right:0;width:100%;overflow:hidden}
   .hide{display:none!important}
   /* Sits clear of the rest bar rather than behind it. */
   .toast{
@@ -1359,6 +1365,22 @@ function tickRest(){
 /* ---------- sheets ---------- */
 const FOCUSABLE = 'button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[href],[tabindex]:not([tabindex="-1"])';
 
+// Scroll lock. The page keeps its position across open/close: pinning the body
+// sets scrollY to 0, so it has to be remembered and put back.
+let lockedScrollY = 0;
+function lockScroll(){
+  if(document.body.classList.contains('locked')) return;
+  lockedScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+  document.body.style.top = `-${lockedScrollY}px`;
+  document.body.classList.add('locked');
+}
+function unlockScroll(){
+  if(!document.body.classList.contains('locked')) return;
+  document.body.classList.remove('locked');
+  document.body.style.top = '';
+  window.scrollTo(0, lockedScrollY);
+}
+
 const sheetStack = [];
 const topSheet = () => sheetStack[sheetStack.length - 1] || null;
 
@@ -1386,6 +1408,7 @@ function openPanel(el, focusEl){
   $('#scrim').classList.add('open');
   el.classList.add('open');
   document.body.classList.add('sheetopen');
+  lockScroll();
   dockRest();
   (focusEl || el.querySelector('h2')).focus();
   requestWake();
@@ -1402,6 +1425,7 @@ function closePanel(el, pickFocus){
   if(!sheetStack.length){
     $('#scrim').classList.remove('open');
     document.body.classList.remove('sheetopen');
+    unlockScroll();
     if(!rest.start) releaseWake();
   }
   dockRest();

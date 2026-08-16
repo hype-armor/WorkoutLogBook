@@ -71,6 +71,77 @@ for (const size of SIZES) {
   });
 }
 
+test.describe('an open sheet locks the page behind it', () => {
+  const openAt = async (browser, y) => {
+    const ctx = await browser.newContext({ ...PHONE });
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.evaluate(n => window.scrollTo(0, n), y);
+    return { ctx, page };
+  };
+
+  test('the page cannot be scrolled behind the sheet, and does not jump', async ({ browser }) => {
+    const { ctx, page } = await openAt(browser, 120);
+    const headingBefore = await page.locator('h1').boundingBox();
+
+    await page.click('.ex[data-ex="Deadlift"]');
+    await settle(page);
+
+    // pinned rather than merely overflow:hidden, which iOS ignores
+    expect(await page.evaluate(() => getComputedStyle(document.body).position)).toBe('fixed');
+    // and pinned at an offset, so nothing visibly moves when it locks
+    const headingDuring = await page.locator('h1').boundingBox();
+    expect(headingDuring.y).toBeCloseTo(headingBefore.y, 0);
+
+    for (const [x, y] of [[195, 60], [195, 300]]) {
+      const before = await page.evaluate(() => window.scrollY);
+      await page.mouse.move(x, y);
+      await page.mouse.wheel(0, 1500);
+      await page.waitForTimeout(200);
+      expect(await page.evaluate(() => window.scrollY), `wheel at ${x},${y} leaked`).toBe(before);
+    }
+    await ctx.close();
+  });
+
+  test('closing restores the reading position', async ({ browser }) => {
+    const { ctx, page } = await openAt(browser, 140);
+    await page.click('.ex[data-ex="Deadlift"]');
+    await settle(page);
+    await page.click('#close');
+    await expect(page.locator('#sheet')).not.toHaveClass(/open/);
+
+    expect(await page.evaluate(() => getComputedStyle(document.body).position)).toBe('static');
+    expect(await page.evaluate(() => window.scrollY)).toBe(140);
+    await ctx.close();
+  });
+
+  test('the lock lifts for every way a sheet closes', async ({ browser }) => {
+    const { ctx, page } = await openAt(browser, 90);
+    const isLocked = () => page.evaluate(() => document.body.classList.contains('locked'));
+
+    await page.click('.ex[data-ex="Deadlift"]');
+    expect(await isLocked()).toBe(true);
+    await page.keyboard.press('Escape');
+    expect(await isLocked()).toBe(false);
+
+    await page.click('.ex[data-ex="Deadlift"]');
+    expect(await isLocked()).toBe(true);
+    await page.click('#scrim', { position: { x: 10, y: 10 } });
+    expect(await isLocked()).toBe(false);
+
+    // reaching the gear scrolls the header into view, so whatever the position
+    // is at the moment of locking is what has to come back
+    await page.click('#gear');
+    expect(await isLocked()).toBe(true);
+    const atLock = await page.evaluate(() => Math.abs(parseInt(document.body.style.top, 10)) || 0);
+    await page.click('#setdone');
+    expect(await isLocked()).toBe(false);
+    expect(await page.evaluate(() => window.scrollY)).toBe(atLock);
+    await ctx.close();
+  });
+});
+
 // Installed to the home screen, iOS hands the page the whole screen including
 // the status bar. env() is always zero in a desktop browser, so the insets are
 // injected through the variables they are read from.
