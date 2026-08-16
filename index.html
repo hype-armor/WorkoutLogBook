@@ -32,7 +32,12 @@
     --body:'Barlow','Helvetica Neue',system-ui,-apple-system,sans-serif;
     --restbar:0px; /* height the rest bar reserves at the bottom */
   }
-  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  /* Tapping Log set twice in a row should log two sets, not zoom the page.
+     `manipulation` drops only the double-tap-to-zoom gesture — panning and
+     pinch-to-zoom still work, so the page can be enlarged deliberately. It is
+     set here rather than via user-scalable=no, which would take zooming away
+     entirely. As a bonus it removes the legacy 300ms click delay. */
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
   html,body{margin:0;padding:0}
   body{
     background:var(--iron);color:var(--chalk);font-family:var(--body);
