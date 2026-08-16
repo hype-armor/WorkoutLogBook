@@ -83,41 +83,109 @@ test.describe('backup, restore and export', () => {
   });
 });
 
-test('small plates are a settings toggle, not a per-set control', async ({ browser }) => {
-  const ctx = await phone(browser);
-  const page = await ctx.newPage();
-  await page.goto(FILE_URL);
-  await page.waitForSelector('.ex');
+test.describe('plate inventory', () => {
+  const pressed = page => page.$$eval('#platesel button[aria-pressed="true"]',
+    b => b.map(x => x.textContent.trim()));
 
-  // it used to sit inside the plate diagram, which is a per-set surface for
-  // something that is a fact about the gym
-  await page.click('.ex[data-ex="Deadlift"]');
-  await expect(page.locator('#platemath #fracbox')).toHaveCount(0);
-  await expect(page.locator('#wup')).toHaveText('+5');
-  await page.fill('#wt', '227.5');
-  await expect(page.locator('#pmwarn')).toContainText(/small plates in settings/i);
-  await page.click('#close');
+  test('a gym with no 35s is never told to load one', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
 
-  await page.click('#gear');
-  await expect(page.locator('#settings #fracbox')).toBeVisible();
-  await expect(page.locator('#fraclab')).toHaveText('I have 1.25 lb plates');
-  await page.check('#fracbox');
-  await page.click('#setdone');
+    // 225 = 45 bar + 45+45 a side by default, so use a load that wants a 35
+    await page.click('.ex[data-ex="Deadlift"]');
+    await page.fill('#wt', '205');
+    await expect(page.locator('#pmtext')).toContainText('35');
+    await page.click('#close');
 
-  // it drives both the loader's stock and the size of the stepper's jump
-  await page.click('.ex[data-ex="Deadlift"]');
-  await expect(page.locator('#wup')).toHaveText('+2.5');
-  await page.fill('#wt', '227.5');
-  await expect(page.locator('#pmwarn')).toBeHidden();
-  await expect(page.locator('#pmtext')).toContainText('1.25');
-  await page.click('#close');
+    await page.click('#gear');
+    await expect(page.locator('#platesel')).toBeVisible();
+    await page.click('#platesel [data-plate="35"]');
+    expect(await pressed(page)).not.toContain('35');
+    await page.click('#setdone');
 
-  // and the label follows the unit it describes
-  await page.click('#gear');
-  await page.click('[data-unit="kg"]');
-  await expect(page.locator('#fraclab')).toHaveText('I have 1.25 and 0.5 kg plates');
-  expect(await page.isChecked('#fracbox')).toBe(true);
-  await ctx.close();
+    await page.click('.ex[data-ex="Deadlift"]');
+    await page.fill('#wt', '205');
+    // 80 a side now has to come from 45 + 25 + 10 instead of 45 + 35
+    await expect(page.locator('#pmtext')).not.toContainText('35');
+    await expect(page.locator('#pmtext')).toContainText('25');
+    await ctx.close();
+  });
+
+  test('the weight step follows the smallest plate kept', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    await page.click('.ex[data-ex="Deadlift"]');
+    await expect(page.locator('#wup')).toHaveText('+5');   // two 2.5s
+    await page.fill('#wt', '227.5');
+    await expect(page.locator('#pmwarn')).toContainText(/smaller plates in settings/i);
+    await page.click('#close');
+
+    await page.click('#gear');
+    await page.click('#platesel [data-plate="1.25"]');
+    await page.click('#setdone');
+
+    await page.click('.ex[data-ex="Deadlift"]');
+    await expect(page.locator('#wup')).toHaveText('+2.5'); // two 1.25s
+    await page.fill('#wt', '227.5');
+    await expect(page.locator('#pmwarn')).toBeHidden();
+    await expect(page.locator('#pmtext')).toContainText('1.25');
+    await page.click('#close');
+
+    // drop the 2.5s and 1.25s and the step doubles again
+    await page.click('#gear');
+    await page.click('#platesel [data-plate="1.25"]');
+    await page.click('#platesel [data-plate="2.5"]');
+    await page.click('#setdone');
+    await page.click('.ex[data-ex="Deadlift"]');
+    await expect(page.locator('#wup')).toHaveText('+10');  // two 5s
+    await ctx.close();
+  });
+
+  test('the rack is per unit and the last plate cannot be removed', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    await page.click('#gear');
+    await page.click('#platesel [data-plate="35"]');
+    expect(await pressed(page)).toEqual(['45', '25', '10', '5', '2.5']);
+
+    // kg has its own rack, untouched by an edit made in pounds
+    await page.click('[data-unit="kg"]');
+    expect(await pressed(page)).toEqual(['25', '20', '15', '10', '5', '2.5']);
+
+    for (const w of ['20', '15', '10', '5', '2.5']) await page.click(`#platesel [data-plate="${w}"]`);
+    expect(await pressed(page)).toEqual(['25']);
+    await page.click('#platesel [data-plate="25"]');
+    await expect(page.locator('#toast')).toContainText(/keep at least one plate/i);
+    expect(await pressed(page)).toEqual(['25']);
+
+    await page.click('[data-unit="lb"]');
+    expect(await pressed(page)).toEqual(['45', '25', '10', '5', '2.5']);
+    await ctx.close();
+  });
+
+  test('the rack survives a reload', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('#gear');
+    await page.click('#platesel [data-plate="35"]');
+    await page.click('#setdone');
+
+    await page.reload();
+    await page.waitForSelector('.ex');
+    await page.click('#gear');
+    expect(await pressed(page)).not.toContain('35');
+    await ctx.close();
+  });
 });
 
 test.describe('rest alert setting', () => {
@@ -276,7 +344,10 @@ test('a v1 database migrates', async ({ browser }) => {
   await expect(page.locator('#bars button[aria-pressed="true"]')).toHaveText('45 bar');
   await page.click('#close');
 
+  // v1 stored a "fractional" boolean, which was one answer to the broader
+  // question the rack now asks — it has to arrive as the 1.25s being owned
   await page.click('#gear');
-  expect(await page.isChecked('#fracbox')).toBe(true);
+  expect(await page.$$eval('#platesel button[aria-pressed="true"]',
+    b => b.map(x => x.textContent.trim()))).toContain('1.25');
   await ctx.close();
 });

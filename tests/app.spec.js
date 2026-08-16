@@ -72,7 +72,10 @@ test.describe('logging a session', () => {
     // 235 lb is ~106.6 kg
     await expect(page.locator('.setrow .load').first()).toContainText(/10[67]/);
     await expect(page.locator('#wtlab')).toContainText('kg');
-    await expect(page.locator('#wup')).toHaveText('+2.5');
+    // 5 kg, not 2.5: the step is two of the smallest plate in the rack, and a
+    // default kg rack stops at 2.5s. Stepping by 2.5 kg total asked for 1.25 a
+    // side, which is not loadable without plates most gyms do not stock.
+    await expect(page.locator('#wup')).toHaveText('+5');
     await expect(page.locator('#bars')).toContainText('20 bar');
   });
 

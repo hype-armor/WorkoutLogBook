@@ -610,11 +610,11 @@
     <div class="eyebrow" style="margin-top:0">Units</div>
     <div class="bars" id="unitsel" style="justify-content:flex-start"></div>
 
-    <label class="toggle" style="margin-top:12px">
-      <input type="checkbox" id="fracbox">
-      <span><span id="fraclab">I have small plates</span>
-        <span class="sub">Lets the loader use the smallest plates, and halves the weight step.</span></span>
-    </label>
+    <div class="eyebrow">Plates you have</div>
+    <div class="bars" id="platesel" style="justify-content:flex-start"></div>
+    <div class="hint">Tap to match your rack — plenty of gyms have no 35s, and
+      plenty have no 1.25s. Plates you turn off are never suggested, and the
+      weight step follows the smallest one you keep.</div>
 
     <label class="f" style="margin-top:16px"><span class="lab" id="bwlab">Bodyweight</span>
       <input type="number" id="bwinput" inputmode="decimal" step="any" aria-labelledby="bwlab"></label>
@@ -717,8 +717,7 @@ const UNITS = {
     plates:[{w:45,c:'#E5484D',h:60,t:11},{w:35,c:'#3E7BFA',h:52,t:10},{w:25,c:'#B08C0E',h:44,t:9},
             {w:10,c:'#29AA63',h:32,t:7},{w:5,c:'#C6CEDA',h:24,t:6},{w:2.5,c:'#8A94A6',h:18,t:5},
             {w:1.25,c:'#5A6373',h:14,t:4}],
-    minPlate:2.5, fracPlates:[1.25], fracLabel:'I have 1.25 lb plates',
-    step:5, fracStep:2.5, otherStep:5, dist:'m'
+    minPlate:2.5, fracPlates:[1.25], otherStep:5, dist:'m'
   },
   kg:{
     label:'kg', defaultBar:20, bars:[20,15,25,0],
@@ -726,8 +725,7 @@ const UNITS = {
     plates:[{w:25,c:'#E5484D',h:60,t:11},{w:20,c:'#3E7BFA',h:54,t:10},{w:15,c:'#B08C0E',h:48,t:9},
             {w:10,c:'#29AA63',h:38,t:8},{w:5,c:'#C6CEDA',h:28,t:6},{w:2.5,c:'#8A94A6',h:20,t:5},
             {w:1.25,c:'#5A6373',h:15,t:4},{w:0.5,c:'#454E5D',h:12,t:3}],
-    minPlate:2.5, fracPlates:[1.25,0.5], fracLabel:'I have 1.25 and 0.5 kg plates',
-    step:2.5, fracStep:1.25, otherStep:2.5, dist:'m'
+    minPlate:2.5, fracPlates:[1.25,0.5], otherStep:2.5, dist:'m'
   }
 };
 const LB_PER_KG = 2.2046226218;
@@ -770,7 +768,7 @@ let pendingWorker = null, installPrompt = null;
 
 function blank(){
   return {v:2, sets:[], days:{}, pairs:{}, ex:{}, program:null,
-          settings:{units:'lb', fractional:false, transition:30, bw:{lb:0,kg:0},
+          settings:{units:'lb', plates:null, transition:30, bw:{lb:0,kg:0},
                     lastDay:'A', alert:'both'},
           rest:null};
 }
@@ -846,6 +844,14 @@ function migrate(d){
   if(!UNITS[out.settings.units]) out.settings.units = 'lb';
   if(!out.settings.bw || typeof out.settings.bw !== 'object') out.settings.bw = {lb:0,kg:0};
   out.ex = d.ex && typeof d.ex === 'object' ? d.ex : {};
+  if(!out.settings.plates || typeof out.settings.plates !== 'object'){
+    out.settings.plates = {};
+    for(const [k, u] of Object.entries(UNITS)){
+      out.settings.plates[k] = u.plates
+        .filter(p => p.w >= u.minPlate || (out.settings.fractional && u.fracPlates.includes(p.w)))
+        .map(p => p.w);
+    }
+  }
   // v1 kept bar and rest overrides in flat maps, and weights were always lb.
   if(d.bars) for(const [name, v] of Object.entries(d.bars))
     (out.ex[name] ||= {}).bar = typeof v === 'number' ? {lb:v, kg:+(v/LB_PER_KG).toFixed(1)} : v;
@@ -1096,9 +1102,23 @@ function renderSetList(){
 }
 
 /* ---------- plate math ---------- */
-function solvePlates(perSide, useFractional){
+// The plates actually in the rack. Everything downstream — what the loader may
+// use, and how far the stepper jumps — follows from this one list.
+function availablePlates(){
   const u = U();
-  const stock = u.plates.filter(p => p.w >= u.minPlate || (useFractional && u.fracPlates.includes(p.w)));
+  const list = db.settings.plates?.[units()];
+  const owned = Array.isArray(list) && list.length
+    ? new Set(list)
+    : new Set(u.plates.filter(p => p.w >= u.minPlate).map(p => p.w));
+  return u.plates.filter(p => owned.has(p.w));
+}
+const smallestPlate = () => {
+  const a = availablePlates();
+  return a.length ? a[a.length - 1].w : U().minPlate;
+};
+
+function solvePlates(perSide){
+  const stock = availablePlates();
   const out = []; let left = perSide;
   for(const p of stock){
     while(left >= p.w - 1e-9){ out.push(p); left = +(left - p.w).toFixed(4); }
@@ -1128,7 +1148,7 @@ function renderPlateMath(){
   }
 
   const perSide = (total - bar) / 2;
-  const {plates, remainder} = solvePlates(perSide, db.settings.fractional);
+  const {plates, remainder} = solvePlates(perSide);
 
   // draw: bar shaft left to right, plates stacked outward from the collar
   const mid = 38, shaftY = mid - 3;
@@ -1159,9 +1179,10 @@ function renderPlateMath(){
 
   if(remainder > 0.01){
     const actual = +(bar + (perSide - remainder) * 2).toFixed(2);
-    warn.textContent = db.settings.fractional
-      ? `Closest is ${actual} ${u.label} — ${total} isn't loadable.`
-      : `Closest is ${actual} ${u.label}. Turn on small plates in settings to hit ${total}.`;
+    const couldHelp = u.plates.some(p => p.w < smallestPlate());
+    warn.textContent = couldHelp
+      ? `Closest is ${actual} ${u.label}. Add smaller plates in settings to hit ${total}.`
+      : `Closest is ${actual} ${u.label} — ${total} isn't loadable.`;
     warn.classList.remove('hide');
   } else warn.classList.add('hide');
 }
@@ -1554,7 +1575,8 @@ function renderSessions(){
 function weightStep(){
   const u = U();
   if(!isLoadable(state.ex)) return u.otherStep;
-  return db.settings.fractional ? u.fracStep : u.step;
+  // The smallest real-world jump is one plate on each side.
+  return smallestPlate() * 2;
 }
 
 function nudgeWeight(dir){
@@ -1863,8 +1885,9 @@ function openSettings(){
   const u = U();
   $('#unitsel').innerHTML = Object.keys(UNITS).map(k =>
     `<button data-unit="${k}" aria-pressed="${k===units()}">${UNITS[k].label}</button>`).join('');
-  $('#fracbox').checked = !!db.settings.fractional;
-  $('#fraclab').textContent = u.fracLabel;
+  const owned = new Set(availablePlates().map(p => p.w));
+  $('#platesel').innerHTML = u.plates.map(p =>
+    `<button data-plate="${p.w}" aria-pressed="${owned.has(p.w)}">${p.w}</button>`).join('');
   $('#bwlab').textContent = `Bodyweight (${u.label})`;
   $('#bwinput').value = bw() || '';
   $('#transel').innerHTML = TRANSITION_OPTIONS.map(v =>
@@ -1893,11 +1916,21 @@ $('#unitsel').addEventListener('click', e=>{
   toast('Now in ' + U().label);
 });
 
-$('#fracbox').addEventListener('change', e=>{
-  db.settings.fractional = e.target.checked;
+$('#platesel').addEventListener('click', e=>{
+  const b = e.target.closest('[data-plate]'); if(!b) return;
+  const w = +b.dataset.plate;
+  const owned = new Set(availablePlates().map(p => p.w));
+  if(owned.has(w)){
+    // A rack with nothing in it cannot load anything, so the last one stays.
+    if(owned.size === 1){ toast('Keep at least one plate'); return; }
+    owned.delete(w);
+  } else owned.add(w);
+  (db.settings.plates ||= {})[units()] = U().plates
+    .filter(p => owned.has(p.w)).map(p => p.w);
   save();
-  // Owning smaller plates changes both what the loader may use and how far the
-  // stepper moves, so a sheet left open behind settings has to catch up.
+  openSettings();
+  // Both the loader's stock and the stepper's jump follow from this, so a
+  // sheet left open behind settings has to catch up.
   if(state.ex){ renderPlateMath(); refreshStepperLabels(); }
 });
 
