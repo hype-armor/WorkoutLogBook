@@ -217,6 +217,122 @@ test.describe('editing the program', () => {
   });
 });
 
+test.describe('warm-up sets', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('.ex[data-ex="Deadlift"]');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('the sheet opens on working sets and asks for reps in reserve', async () => {
+    await expect(page.locator('#setkind [data-kind="work"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#rirblock')).toBeVisible();
+    await expect(page.locator('#logset')).toHaveText('Log set');
+  });
+
+  test('choosing warm-up drops the reps-in-reserve question', async () => {
+    await page.click('#setkind [data-kind="warm"]');
+    // there is no meaningful RIR for a ramp-up set
+    await expect(page.locator('#rirblock')).toBeHidden();
+    await expect(page.locator('#logset')).toHaveText('Log warm-up');
+  });
+
+  test('a warm-up is listed as W and starts no rest timer', async () => {
+    await page.fill('#wt', '135');
+    await page.fill('#reps', '5');
+    await page.click('#logset');
+
+    await expect(page.locator('.setrow')).toHaveCount(1);
+    await expect(page.locator('.setrow .idx')).toHaveText('W');
+    await expect(page.locator('.setrow .rir')).toHaveText('warm-up');
+    await expect(page.locator('#toast')).toContainText(/warm-up logged/i);
+    // 3:30 between ramp-up sets is not something anyone wants
+    await expect(page.locator('#rest')).not.toHaveClass(/show/);
+  });
+
+  test('warm-ups do not count towards the target', async () => {
+    await page.fill('#wt', '185');
+    await page.click('#logset');
+    await expect(page.locator('.setrow')).toHaveCount(2);
+    await expect(page.locator('#sheet-sub')).toContainText('0/4 done');
+  });
+
+  test('working sets number from one and do start the timer', async () => {
+    await page.click('#setkind [data-kind="work"]');
+    await expect(page.locator('#rirblock')).toBeVisible();
+    await page.fill('#wt', '315');
+    await page.click('#logset');
+
+    await expect(page.locator('#toast')).toContainText(/set 1 of 4/i);
+    await expect(page.locator('#rest')).toHaveClass(/show/);
+    // the two warm-ups did not consume set numbers
+    const idx = await page.$$eval('.setrow .idx', e => e.map(x => x.textContent.trim()));
+    expect(idx).toEqual(['W', 'W', '1']);
+    await expect(page.locator('#sheet-sub')).toContainText('1/4 done');
+  });
+
+  test('the exercise badge counts working sets only', async () => {
+    await page.click('#close');
+    await expect(page.locator('.ex[data-ex="Deadlift"] .count')).toHaveText('1/4');
+  });
+
+  test('an exercise with only warm-ups produces no trend at all', async () => {
+    // est. max takes the best set, so a light warm-up could never win on its
+    // own — the case that actually pollutes is an exercise you only warmed up on
+    await page.click('.ex[data-ex="Leg press"]');
+    await page.click('#setkind [data-kind="warm"]');
+    await page.fill('#wt', '90');
+    await page.fill('#reps', '10');
+    await page.click('#logset');
+    await page.click('#close');
+
+    await page.click('#tab-history');
+    const named = await page.$$eval('#trends .card h3', h => h.map(x => x.textContent.trim()));
+    expect(named).toContain('Deadlift');       // has a working set
+    expect(named).not.toContain('Leg press');  // warm-ups only
+    await page.click('#tab-train');
+  });
+
+  test('the session summary separates them', async () => {
+    // one working set on Deadlift; two warm-ups there plus one on Leg press
+    await expect(page.locator('#finishwrap')).toContainText('1 set');
+    await expect(page.locator('#finishwrap')).toContainText('1 exercise');
+    await expect(page.locator('#finishwrap')).toContainText('3 warm-ups');
+  });
+
+  test('a set can be reclassified after the fact', async () => {
+    await page.click('.ex[data-ex="Deadlift"]');
+    await page.click('.setrow:last-child .tap');       // the working set
+    await expect(page.locator('#setkind [data-kind="work"]')).toHaveAttribute('aria-pressed', 'true');
+    await page.click('#setkind [data-kind="warm"]');
+    await page.click('#logset');
+
+    const idx = await page.$$eval('.setrow .idx', e => e.map(x => x.textContent.trim()));
+    expect(idx).toEqual(['W', 'W', 'W']);
+    await expect(page.locator('#sheet-sub')).toContainText('0/4 done');
+
+    // and back again
+    await page.click('.setrow:last-child .tap');
+    await page.click('#setkind [data-kind="work"]');
+    await page.click('#logset');
+    await expect(page.locator('#sheet-sub')).toContainText('1/4 done');
+    await page.click('#close');
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
+
 test.describe('one-sided exercises get an even target', () => {
   test('the defaults are even, and say what half of them means', async ({ browser }) => {
     const ctx = await phone(browser);
