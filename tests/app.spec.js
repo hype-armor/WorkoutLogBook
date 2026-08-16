@@ -214,6 +214,110 @@ test.describe('editing the program', () => {
   });
 });
 
+test.describe('finishing a session', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  const logSet = async (ex, w, r) => {
+    await page.click(`.ex[data-ex="${ex}"]`);
+    await page.fill('#wt', String(w));
+    await page.fill('#reps', String(r));
+    await page.click('#logset');
+    await page.click('#close');
+  };
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('there is nothing to finish before anything is logged', async () => {
+    await expect(page.locator('#finish')).toHaveCount(0);
+    await expect(page.locator('#finishwrap')).toBeEmpty();
+  });
+
+  test('the button appears with a running summary once sets exist', async () => {
+    await logSet('Deadlift', 225, 5);
+    await logSet('Deadlift', 225, 5);
+    await logSet('Leg press', 300, 10);
+    await expect(page.locator('#finish')).toBeVisible();
+    // 2×225×5 + 300×10 = 5250
+    await expect(page.locator('#finishwrap')).toContainText('3 sets');
+    await expect(page.locator('#finishwrap')).toContainText('2 exercises');
+    await expect(page.locator('#finishwrap')).toContainText('5,250 lb moved');
+  });
+
+  test('finishing records it, stops the timer and nudges for a pain rating', async () => {
+    await expect(page.locator('#rest')).toHaveClass(/show/);
+    await page.click('#finish');
+
+    await expect(page.locator('.card.done')).toBeVisible();
+    await expect(page.locator('#finishwrap')).toContainText('Session finished');
+    await expect(page.locator('#rest')).not.toHaveClass(/show/);
+    await expect(page.locator('#exlabel')).toContainText('finished');
+    // pain was never rated, so the toast points at it rather than staying quiet
+    await expect(page.locator('#toast')).toContainText(/rate your back pain/i);
+    expect(await page.evaluate(() =>
+      !!JSON.parse(localStorage.getItem('logbook-v1')).days[Object.keys(
+        JSON.parse(localStorage.getItem('logbook-v1')).days)[0]].done)).toBe(true);
+  });
+
+  test('a finished session reports a duration', async () => {
+    await expect(page.locator('#finishwrap')).toContainText(/\d+ min/);
+  });
+
+  test('it survives a reload', async () => {
+    await page.reload();
+    await page.waitForSelector('.ex');
+    await expect(page.locator('.card.done')).toBeVisible();
+    await expect(page.locator('#exlabel')).toContainText('finished');
+  });
+
+  test('reopening puts the button back', async () => {
+    await page.click('#reopen');
+    await expect(page.locator('#finish')).toBeVisible();
+    await expect(page.locator('.card.done')).toHaveCount(0);
+    await expect(page.locator('#exlabel')).not.toContainText('finished');
+  });
+
+  test('logging another set un-finishes a finished session', async () => {
+    await page.click('#finish');
+    await expect(page.locator('.card.done')).toBeVisible();
+    await logSet('Leg curl', 90, 12);
+    // still adding sets means the session was not over
+    await expect(page.locator('#finish')).toBeVisible();
+    await expect(page.locator('.card.done')).toHaveCount(0);
+  });
+
+  test('history shows the session as finished', async () => {
+    await page.click('#finish');
+    await page.click('#tab-history');
+    await expect(page.locator('#sessions .card').first()).toContainText('finished');
+    await page.click('#tab-train');
+  });
+
+  test('a different date has its own finished state', async () => {
+    await page.evaluate(() => {
+      const i = document.querySelector('#dateinput');
+      i.value = '2026-08-10';
+      i.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await expect(page.locator('#finishwrap')).toBeEmpty();
+    await page.click('#banners button'); // back to today
+    await expect(page.locator('.card.done')).toBeVisible();
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
+
 test.describe('the rest timer outlives the page', () => {
   const secs = t => { const [m, s] = t.trim().split(':').map(Number); return m * 60 + s; };
 

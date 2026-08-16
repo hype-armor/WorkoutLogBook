@@ -295,11 +295,13 @@
   .pmtext{font-size:17px;font-weight:600;letter-spacing:-.02em;text-align:center;margin-top:8px}
   .pmtext .per{color:var(--ink-3);font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase}
   .pmwarn{color:var(--warn);font-size:13px;text-align:center;margin-top:6px}
-  .frac{
-    display:flex;align-items:center;justify-content:center;gap:10px;
-    margin-top:10px;color:var(--ink-3);font-size:13px;cursor:pointer;min-height:44px;
+  .toggle{
+    display:flex;align-items:center;gap:13px;
+    background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-md);
+    padding:13px 15px;min-height:52px;cursor:pointer;font-size:15px;color:var(--ink);
   }
-  .frac input{width:19px;height:19px;accent-color:var(--accent)}
+  .toggle input{width:20px;height:20px;accent-color:var(--accent);flex:none}
+  .toggle .sub{display:block;color:var(--ink-3);font-size:13px;margin-top:3px;line-height:1.4}
 
   .stepper{display:flex;gap:8px;align-items:stretch}
   .stepper input{flex:1;min-width:0}
@@ -395,6 +397,8 @@
 
   /* history */
   .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:16px;margin-bottom:10px}
+  .card.done{border-color:var(--good);background:linear-gradient(180deg,rgba(41,170,99,.10),transparent 60%)}
+  .card.done h3{color:var(--good)}
   .card h3{font-size:16px;font-weight:660;letter-spacing:-.02em;margin:0 0 8px}
   .metric{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
   .metric b{font-size:34px;font-weight:720;line-height:1;letter-spacing:-.04em}
@@ -490,6 +494,8 @@
     <textarea id="notes" rows="2" placeholder="Notes — what aggravated it, what helped" style="margin-top:10px"></textarea>
     <div class="hint" id="notestate">Notes save as you type.</div>
   </div>
+
+  <div id="finishwrap"></div>
 </main>
 
 <!-- ============ HISTORY ============ -->
@@ -551,7 +557,6 @@
       <svg class="barsvg" id="barsvg" viewBox="0 0 300 86" preserveAspectRatio="xMidYMid meet" role="img"></svg>
       <div class="pmtext" id="pmtext"></div>
       <div class="pmwarn hide" id="pmwarn"></div>
-      <label class="frac"><input type="checkbox" id="fracbox"> <span id="fraclab">I have small plates</span></label>
     </div>
 
     <div class="eyebrow" id="rirlab" style="margin:16px 0 0">Reps in reserve</div>
@@ -604,6 +609,12 @@
   <div class="sheetbody">
     <div class="eyebrow" style="margin-top:0">Units</div>
     <div class="bars" id="unitsel" style="justify-content:flex-start"></div>
+
+    <label class="toggle" style="margin-top:12px">
+      <input type="checkbox" id="fracbox">
+      <span><span id="fraclab">I have small plates</span>
+        <span class="sub">Lets the loader use the smallest plates, and halves the weight step.</span></span>
+    </label>
 
     <label class="f" style="margin-top:16px"><span class="lab" id="bwlab">Bodyweight</span>
       <input type="number" id="bwinput" inputmode="decimal" step="any" aria-labelledby="bwlab"></label>
@@ -932,7 +943,8 @@ const setsFor = (date, ex) => db.sets.filter(s => s.d === date && s.e === ex);
 
 function renderExercises(){
   const day = dayById(state.day);
-  $('#exlabel').textContent = day.name + ' — exercises';
+  $('#exlabel').textContent = day.name +
+    (db.days[state.date]?.done ? ' — finished' : ' — exercises');
   $('#addex').classList.toggle('hide', !state.progEdit);
   const rows = day.ex.map(([name,target], i)=>{
     const n = setsFor(state.date, name).length;
@@ -953,7 +965,83 @@ function renderExercises(){
   });
   $('#exlist').innerHTML = rows.join('') ||
     `<div class="empty">No exercises in this day yet. Tap Edit, then Add exercise.</div>`;
+  renderFinish();
 }
+
+/* ---------- finishing a session ---------- */
+// Sets have carried a timestamp only since this was added; before that the id
+// was Date.now() plus a random suffix, so the epoch prefix is recoverable and
+// old sessions still get a duration.
+function setTime(s){
+  if(s.t) return s.t;
+  const n = parseInt(String(s.id).slice(0, 13), 10);
+  return Number.isFinite(n) && n > 1e12 ? n : null;
+}
+
+function sessionStats(date){
+  const sets = db.sets.filter(s => s.d === date);
+  const times = sets.map(setTime).filter(Boolean);
+  return {
+    count: sets.length,
+    exercises: new Set(sets.map(s => s.e)).size,
+    tonnage: sets.reduce((a,s)=> a + (kindOf(s.e) === 'distance' ? 0 : loadOf(s) * s.r), 0),
+    start: times.length ? Math.min(...times) : null
+  };
+}
+
+function sessionSummary(date){
+  const {count, exercises, tonnage, start} = sessionStats(date);
+  const done = db.days[date]?.done;
+  const parts = [`${count} set${count === 1 ? '' : 's'}`,
+                 `${exercises} exercise${exercises === 1 ? '' : 's'}`];
+  if(tonnage > 0) parts.push(`${Math.round(tonnage).toLocaleString()} ${U().label} moved`);
+  if(done && start && done > start) parts.push(`${Math.max(1, Math.round((done - start)/60000))} min`);
+  return parts.join(' · ');
+}
+
+function renderFinish(){
+  const el = $('#finishwrap');
+  const done = db.days[state.date]?.done;
+  const {count} = sessionStats(state.date);
+  // Nothing logged and nothing finished: there is no session to end.
+  if(!count && !done){ el.innerHTML = ''; return; }
+  el.innerHTML = done
+    ? `<div class="card done">
+         <h3>Session finished</h3>
+         <div class="sessmeta">${esc(sessionSummary(state.date))}</div>
+         <button class="btn ghost small wide" id="reopen" style="margin-top:14px">Reopen session</button>
+       </div>`
+    : `<button class="btn wide" id="finish">Finish session</button>
+       <div class="hint" style="text-align:center">${esc(sessionSummary(state.date))}</div>`;
+}
+
+function finishSession(){
+  (db.days[state.date] ||= {}).done = Date.now();
+  stopRest(); // you are not resting between sets any more
+  save(); flushSave();
+  renderExercises();
+  const rated = typeof db.days[state.date].pain === 'number';
+  if(rated){
+    toast('Session finished');
+  } else {
+    // The card says to rate once, after the session — this is that moment.
+    toast('Finished — rate your back pain');
+    $('#painscale').scrollIntoView({block:'center', behavior:'smooth'});
+  }
+  announce('Session finished. ' + sessionSummary(state.date));
+}
+
+function reopenSession(){
+  if(db.days[state.date]) delete db.days[state.date].done;
+  save();
+  renderExercises();
+  toast('Session reopened');
+}
+
+$('#finishwrap').addEventListener('click', e=>{
+  if(e.target.closest('#finish')) finishSession();
+  else if(e.target.closest('#reopen')) reopenSession();
+});
 
 function renderPain(){
   const v = db.days[state.date]?.pain;
@@ -1009,8 +1097,6 @@ function renderPlateMath(){
   const u = U(), bar = barFor(state.ex);
   $('#bars').innerHTML = u.bars.map(b =>
     `<button data-bar="${b}" aria-pressed="${b===bar}">${esc(u.barLabel[b])}</button>`).join('');
-  $('#fracbox').checked = !!db.settings.fractional;
-  $('#fraclab').textContent = u.fracLabel;
 
   const total = parseFloat($('#wt').value);
   const svg = $('#barsvg'), txt = $('#pmtext'), warn = $('#pmwarn');
@@ -1058,7 +1144,7 @@ function renderPlateMath(){
     const actual = +(bar + (perSide - remainder) * 2).toFixed(2);
     warn.textContent = db.settings.fractional
       ? `Closest is ${actual} ${u.label} — ${total} isn't loadable.`
-      : `Closest is ${actual} ${u.label}. With smaller plates you could hit ${total}.`;
+      : `Closest is ${actual} ${u.label}. Turn on small plates in settings to hit ${total}.`;
     warn.classList.remove('hide');
   } else warn.classList.add('hide');
 }
@@ -1423,7 +1509,9 @@ function renderSessions(){
         <span class="sessmeta">${sets.length} sets${open?' ▴':' ▾'}</span>
       </button>
       <div class="sessmeta" style="margin-top:4px">${Math.round(tonnage).toLocaleString()} ${esc(u.label)} volume${
-        typeof pain === 'number' ? ` · pain ${pain}` : ''}</div>
+        typeof pain === 'number' ? ` · pain ${pain}` : ''}${
+        db.days[date]?.done ? ` · finished${(()=>{ const st=sessionStats(date).start, dn=db.days[date].done;
+          return st && dn > st ? ' in ' + Math.max(1, Math.round((dn-st)/60000)) + ' min' : ''; })()}` : ''}</div>
       ${open ? `<div class="sessbody">${lines}${note?`<div class="sessnote">${esc(note)}</div>`:''}</div>` : ''}
     </div>`;
   }).join('');
@@ -1539,11 +1627,6 @@ $('#bars').addEventListener('click', e=>{
   save(); renderPlateMath(); refreshStepperLabels();
 });
 
-$('#fracbox').addEventListener('change', e=>{
-  db.settings.fractional = e.target.checked;
-  save(); renderPlateMath(); refreshStepperLabels();
-});
-
 $('#plates').addEventListener('click', e=>{
   const b = e.target.closest('[data-v]'); if(!b) return;
   state.rir = +b.dataset.v; renderPlates();
@@ -1580,7 +1663,10 @@ $('#logset').addEventListener('click', ()=>{
   }
   // actual rest since the previous set, when the timer was running
   const restTaken = rest.start ? Math.round((Date.now()-rest.start)/1000) : null;
-  db.sets.push({id: Date.now()+''+Math.random().toString(36).slice(2,6),
+  const now = Date.now();
+  // Still adding sets, so the session is not finished after all.
+  if(db.days[state.date]?.done) delete db.days[state.date].done;
+  db.sets.push({id: now+''+Math.random().toString(36).slice(2,6), t: now,
                 d: state.date, e: state.ex, dy: state.day,
                 w, r, rir: state.rir, rest: restTaken, u: units()});
   save(); renderSetList(); renderSheetSub();
@@ -1746,6 +1832,8 @@ function openSettings(){
   const u = U();
   $('#unitsel').innerHTML = Object.keys(UNITS).map(k =>
     `<button data-unit="${k}" aria-pressed="${k===units()}">${UNITS[k].label}</button>`).join('');
+  $('#fracbox').checked = !!db.settings.fractional;
+  $('#fraclab').textContent = u.fracLabel;
   $('#bwlab').textContent = `Bodyweight (${u.label})`;
   $('#bwinput').value = bw() || '';
   $('#transel').innerHTML = TRANSITION_OPTIONS.map(v =>
@@ -1769,6 +1857,14 @@ $('#unitsel').addEventListener('click', e=>{
   db.settings.units = b.dataset.unit;
   save(); openSettings(); rerenderAll();
   toast('Now in ' + U().label);
+});
+
+$('#fracbox').addEventListener('change', e=>{
+  db.settings.fractional = e.target.checked;
+  save();
+  // Owning smaller plates changes both what the loader may use and how far the
+  // stepper moves, so a sheet left open behind settings has to catch up.
+  if(state.ex){ renderPlateMath(); refreshStepperLabels(); }
 });
 
 $('#bwinput').addEventListener('change', e=>{
@@ -1870,6 +1966,9 @@ function suggestDay(){
   const p = program();
   if(last?.dy){
     const i = p.findIndex(d => d.id === last.dy);
+    // Stay on today's workout for the rest of the day, finished or not —
+    // advancing the moment you tap Finish leaves the Train tab showing one
+    // day while the summary below it describes another.
     if(i >= 0) return last.d === todayISO() ? p[i].id : p[(i+1) % p.length].id;
   }
   return db.settings.lastDay || p[0].id;
