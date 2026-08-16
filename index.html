@@ -295,11 +295,13 @@
   .pmtext{font-size:17px;font-weight:600;letter-spacing:-.02em;text-align:center;margin-top:8px}
   .pmtext .per{color:var(--ink-3);font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase}
   .pmwarn{color:var(--warn);font-size:13px;text-align:center;margin-top:6px}
-  .frac{
-    display:flex;align-items:center;justify-content:center;gap:10px;
-    margin-top:10px;color:var(--ink-3);font-size:13px;cursor:pointer;min-height:44px;
+  .toggle{
+    display:flex;align-items:center;gap:13px;
+    background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-md);
+    padding:13px 15px;min-height:52px;cursor:pointer;font-size:15px;color:var(--ink);
   }
-  .frac input{width:19px;height:19px;accent-color:var(--accent)}
+  .toggle input{width:20px;height:20px;accent-color:var(--accent);flex:none}
+  .toggle .sub{display:block;color:var(--ink-3);font-size:13px;margin-top:3px;line-height:1.4}
 
   .stepper{display:flex;gap:8px;align-items:stretch}
   .stepper input{flex:1;min-width:0}
@@ -555,7 +557,6 @@
       <svg class="barsvg" id="barsvg" viewBox="0 0 300 86" preserveAspectRatio="xMidYMid meet" role="img"></svg>
       <div class="pmtext" id="pmtext"></div>
       <div class="pmwarn hide" id="pmwarn"></div>
-      <label class="frac"><input type="checkbox" id="fracbox"> <span id="fraclab">I have small plates</span></label>
     </div>
 
     <div class="eyebrow" id="rirlab" style="margin:16px 0 0">Reps in reserve</div>
@@ -608,6 +609,12 @@
   <div class="sheetbody">
     <div class="eyebrow" style="margin-top:0">Units</div>
     <div class="bars" id="unitsel" style="justify-content:flex-start"></div>
+
+    <label class="toggle" style="margin-top:12px">
+      <input type="checkbox" id="fracbox">
+      <span><span id="fraclab">I have small plates</span>
+        <span class="sub">Lets the loader use the smallest plates, and halves the weight step.</span></span>
+    </label>
 
     <label class="f" style="margin-top:16px"><span class="lab" id="bwlab">Bodyweight</span>
       <input type="number" id="bwinput" inputmode="decimal" step="any" aria-labelledby="bwlab"></label>
@@ -1090,8 +1097,6 @@ function renderPlateMath(){
   const u = U(), bar = barFor(state.ex);
   $('#bars').innerHTML = u.bars.map(b =>
     `<button data-bar="${b}" aria-pressed="${b===bar}">${esc(u.barLabel[b])}</button>`).join('');
-  $('#fracbox').checked = !!db.settings.fractional;
-  $('#fraclab').textContent = u.fracLabel;
 
   const total = parseFloat($('#wt').value);
   const svg = $('#barsvg'), txt = $('#pmtext'), warn = $('#pmwarn');
@@ -1139,7 +1144,7 @@ function renderPlateMath(){
     const actual = +(bar + (perSide - remainder) * 2).toFixed(2);
     warn.textContent = db.settings.fractional
       ? `Closest is ${actual} ${u.label} — ${total} isn't loadable.`
-      : `Closest is ${actual} ${u.label}. With smaller plates you could hit ${total}.`;
+      : `Closest is ${actual} ${u.label}. Turn on small plates in settings to hit ${total}.`;
     warn.classList.remove('hide');
   } else warn.classList.add('hide');
 }
@@ -1622,11 +1627,6 @@ $('#bars').addEventListener('click', e=>{
   save(); renderPlateMath(); refreshStepperLabels();
 });
 
-$('#fracbox').addEventListener('change', e=>{
-  db.settings.fractional = e.target.checked;
-  save(); renderPlateMath(); refreshStepperLabels();
-});
-
 $('#plates').addEventListener('click', e=>{
   const b = e.target.closest('[data-v]'); if(!b) return;
   state.rir = +b.dataset.v; renderPlates();
@@ -1832,6 +1832,8 @@ function openSettings(){
   const u = U();
   $('#unitsel').innerHTML = Object.keys(UNITS).map(k =>
     `<button data-unit="${k}" aria-pressed="${k===units()}">${UNITS[k].label}</button>`).join('');
+  $('#fracbox').checked = !!db.settings.fractional;
+  $('#fraclab').textContent = u.fracLabel;
   $('#bwlab').textContent = `Bodyweight (${u.label})`;
   $('#bwinput').value = bw() || '';
   $('#transel').innerHTML = TRANSITION_OPTIONS.map(v =>
@@ -1855,6 +1857,14 @@ $('#unitsel').addEventListener('click', e=>{
   db.settings.units = b.dataset.unit;
   save(); openSettings(); rerenderAll();
   toast('Now in ' + U().label);
+});
+
+$('#fracbox').addEventListener('change', e=>{
+  db.settings.fractional = e.target.checked;
+  save();
+  // Owning smaller plates changes both what the loader may use and how far the
+  // stepper moves, so a sheet left open behind settings has to catch up.
+  if(state.ex){ renderPlateMath(); refreshStepperLabels(); }
 });
 
 $('#bwinput').addEventListener('change', e=>{

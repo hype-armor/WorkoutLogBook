@@ -83,6 +83,43 @@ test.describe('backup, restore and export', () => {
   });
 });
 
+test('small plates are a settings toggle, not a per-set control', async ({ browser }) => {
+  const ctx = await phone(browser);
+  const page = await ctx.newPage();
+  await page.goto(FILE_URL);
+  await page.waitForSelector('.ex');
+
+  // it used to sit inside the plate diagram, which is a per-set surface for
+  // something that is a fact about the gym
+  await page.click('.ex[data-ex="Deadlift"]');
+  await expect(page.locator('#platemath #fracbox')).toHaveCount(0);
+  await expect(page.locator('#wup')).toHaveText('+5');
+  await page.fill('#wt', '227.5');
+  await expect(page.locator('#pmwarn')).toContainText(/small plates in settings/i);
+  await page.click('#close');
+
+  await page.click('#gear');
+  await expect(page.locator('#settings #fracbox')).toBeVisible();
+  await expect(page.locator('#fraclab')).toHaveText('I have 1.25 lb plates');
+  await page.check('#fracbox');
+  await page.click('#setdone');
+
+  // it drives both the loader's stock and the size of the stepper's jump
+  await page.click('.ex[data-ex="Deadlift"]');
+  await expect(page.locator('#wup')).toHaveText('+2.5');
+  await page.fill('#wt', '227.5');
+  await expect(page.locator('#pmwarn')).toBeHidden();
+  await expect(page.locator('#pmtext')).toContainText('1.25');
+  await page.click('#close');
+
+  // and the label follows the unit it describes
+  await page.click('#gear');
+  await page.click('[data-unit="kg"]');
+  await expect(page.locator('#fraclab')).toHaveText('I have 1.25 and 0.5 kg plates');
+  expect(await page.isChecked('#fracbox')).toBe(true);
+  await ctx.close();
+});
+
 test('the pain chart scales with the rating', async ({ browser }) => {
   const ctx = await phone(browser);
   const page = await ctx.newPage();
@@ -153,6 +190,9 @@ test('a v1 database migrates', async ({ browser }) => {
   await page.click('.ex[data-ex="Deadlift"]');
   // v1 kept bar and rest overrides in flat maps and assumed pounds
   await expect(page.locator('#bars button[aria-pressed="true"]')).toHaveText('45 bar');
+  await page.click('#close');
+
+  await page.click('#gear');
   expect(await page.isChecked('#fracbox')).toBe(true);
   await ctx.close();
 });
