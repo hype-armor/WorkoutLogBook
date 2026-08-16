@@ -15,29 +15,56 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <style>
   :root{
-    --iron:#14161a;
-    --surface:#1d2026;
-    --surface-2:#262a31;
-    --line:#343943;
-    --chalk:#f2f0eb;
-    --steel:#9aa1ab;
-    --p25:#d8342b;
-    --p20:#1b6fc4;
-    --p15:#e8b324;
-    --p10:#2e9e5b;
-    /* No webfont: the gym is the one place the network is worst, and a
-       blocking font request is the difference between working and not. */
-    --display:'Barlow Condensed','Oswald','Roboto Condensed','Arial Narrow',
-              'Helvetica Neue',system-ui,sans-serif;
-    --body:'Barlow','Helvetica Neue',system-ui,-apple-system,sans-serif;
-    --restbar:0px; /* height the rest bar reserves at the bottom */
-    /* Installed to the home screen the app draws under the status bar and the
-       home indicator, so every edge of the layout has to pay the inset. Held
-       in variables so the insets can be exercised in a test, where env()
-       always resolves to zero. */
+    color-scheme:dark;
+
+    /* Surfaces: a cool near-black ramp. Elevation comes from stepping the
+       surface, not from shadows, which stay invisible on a dark UI anyway. */
+    --bg:#0A0C10;
+    --surface:#13161C;
+    --surface-2:#1B1F27;
+    --surface-3:#242A34;
+    --line:#232833;
+    --line-2:#333B49;
+
+    /* Ink. Every step clears 4.5:1 against the darkest surface it is used on,
+       including --ink-3: it carries real content (target reps, the "last time"
+       line), so AA-large would not have been good enough. */
+    --ink:#F2F5F9;
+    --ink-2:#A6B1C2;
+    --ink-3:#7C889C;
+    --on-light:#0A0C10;
+
+    --accent:#7C6BFF;
+    --accent-ink:#B9AEFF;
+    --accent-soft:rgba(124,107,255,.16);
+
+    /* Plate hues, snapped into the dark lightness band (OKLCH L 0.48–0.67) and
+       validated against --surface. See the note above PLATES in the script:
+       these mirror physical plates, so they are not free to re-hue. */
+    --p45:#E5484D;
+    --p35:#3E7BFA;
+    --p25:#B08C0E;
+    --p10:#29AA63;
+    --good:#29AA63;
+    --warn:#B08C0E;
+    --danger:#E5484D;
+
+    /* One family, hierarchy from weight and tracking. system-ui resolves to
+       SF Pro on iOS and Roboto on Android — no network, no fallback to a
+       condensed face that looks like a 2005 print ad. */
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+    --display:var(--sans);
+    --body:var(--sans);
+
+    --r-sm:10px;
+    --r-md:14px;
+    --r-lg:18px;
+    --r-xl:24px;
+
     --safe-top:env(safe-area-inset-top, 0px);
     --safe-bottom:env(safe-area-inset-bottom, 0px);
   }
+
   /* Tapping Log set twice in a row should log two sets, not zoom the page.
      `manipulation` drops only the double-tap-to-zoom gesture — panning and
      pinch-to-zoom still work, so the page can be enlarged deliberately. It is
@@ -46,11 +73,15 @@
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
   html,body{margin:0;padding:0}
   body{
-    background:var(--iron);color:var(--chalk);font-family:var(--body);
-    font-size:16px;line-height:1.45;
-    padding-bottom:calc(84px + var(--safe-bottom));
+    background:var(--bg);color:var(--ink);font-family:var(--body);
+    font-size:16px;line-height:1.45;letter-spacing:-.01em;
+    -webkit-font-smoothing:antialiased;
+    padding-bottom:calc(96px + var(--safe-bottom));
   }
-  .wrap{max-width:520px;margin:0 auto;padding:0 14px}
+  /* Every number in the app is compared against another number, so they all
+     get fixed-width digits. */
+  input,.count,.metric b,.setrow,.clock,.sessmeta,.pmtext,.datestamp{font-variant-numeric:tabular-nums}
+  .wrap{max-width:560px;margin:0 auto;padding:0 16px}
   .sr-only{
     position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
     clip:rect(0 0 0 0);white-space:nowrap;border:0;
@@ -60,122 +91,138 @@
     /* Without the top inset the title sits underneath the clock and the gear
        lands behind the battery, because black-translucent hands us the whole
        screen including the status bar. */
-    padding:calc(14px + var(--safe-top)) 14px 10px;
-    max-width:520px;margin:0 auto;
+    padding:calc(10px + var(--safe-top)) 16px 6px;
+    max-width:560px;margin:0 auto;
     display:flex;align-items:center;justify-content:space-between;gap:10px;
   }
   h1{
-    font-family:var(--display);font-weight:700;font-size:30px;line-height:1;
-    letter-spacing:.06em;text-transform:uppercase;margin:0;
+    font-family:var(--display);font-weight:800;font-size:30px;line-height:1.1;
+    letter-spacing:-.035em;margin:0;
   }
-  .hdrright{display:flex;align-items:center;gap:4px}
+  .hdrright{display:flex;align-items:center;gap:2px}
   .datewrap{position:relative;display:inline-flex;align-items:center}
   .datestamp{
-    font-family:var(--display);font-size:15px;letter-spacing:.14em;color:var(--steel);
-    text-transform:uppercase;padding:11px 8px;display:block;white-space:nowrap;
+    font-size:14px;font-weight:560;letter-spacing:-.01em;color:var(--ink-2);
+    padding:12px 10px;display:block;white-space:nowrap;border-radius:var(--r-sm);
   }
-  .datewrap.past .datestamp{color:var(--p15)}
+  .datewrap.past .datestamp{color:var(--warn)}
   /* Transparent native date input laid over the styled text: one tap opens the
      platform picker, and we keep the typography. */
   .datewrap input{
     position:absolute;inset:0;width:100%;height:100%;opacity:0;
     border:0;padding:0;margin:0;cursor:pointer;background:none;color-scheme:dark;
   }
-  .datewrap input:focus-visible + .datestamp{outline:2px solid var(--chalk);outline-offset:2px;border-radius:6px}
+  .datewrap input:focus-visible + .datestamp{outline:2px solid var(--accent);outline-offset:2px}
   .icon{
-    background:none;border:0;color:var(--steel);font-size:19px;line-height:1;
-    min-width:44px;min-height:44px;padding:0;cursor:pointer;border-radius:8px;
+    background:none;border:0;color:var(--ink-2);font-size:19px;line-height:1;
+    min-width:44px;min-height:44px;padding:0;cursor:pointer;border-radius:var(--r-md);
   }
-  .icon:active{background:var(--surface-2)}
+  .icon:active{background:var(--surface-2);color:var(--ink)}
 
   .eyebrow{
-    font-family:var(--display);font-size:13px;letter-spacing:.18em;
-    text-transform:uppercase;color:var(--steel);margin:22px 0 8px;
+    font-size:12px;font-weight:620;letter-spacing:.06em;
+    text-transform:uppercase;color:var(--ink-3);margin:26px 0 10px;
   }
-  .rowhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:22px 0 8px}
+  .rowhead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:26px 0 10px}
   .rowhead .eyebrow{margin:0}
   .linkbtn{
-    background:none;border:0;color:var(--steel);font-family:var(--display);
-    font-size:13px;letter-spacing:.14em;text-transform:uppercase;
-    padding:6px 4px;cursor:pointer;border-radius:6px;
+    background:none;border:0;color:var(--ink-3);font-family:inherit;
+    font-size:13px;font-weight:600;letter-spacing:-.01em;
+    padding:8px 10px;margin:-8px -10px;cursor:pointer;border-radius:var(--r-sm);
   }
-  .linkbtn[aria-pressed="true"]{color:var(--chalk)}
+  .linkbtn[aria-pressed="true"]{color:var(--accent-ink);background:var(--accent-soft)}
 
   .banner{
-    background:var(--surface-2);border:1px solid var(--p15);border-radius:9px;
-    padding:9px 11px;font-size:13.5px;color:var(--chalk);margin-bottom:10px;
-    display:flex;align-items:center;gap:10px;
+    background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r-md);
+    padding:12px 14px;font-size:14px;color:var(--ink);margin-bottom:10px;
+    display:flex;align-items:center;gap:12px;line-height:1.35;
   }
   .banner button{
-    margin-left:auto;flex:none;background:var(--chalk);color:var(--iron);border:0;
-    border-radius:7px;font-family:var(--display);font-size:13px;letter-spacing:.1em;
-    text-transform:uppercase;padding:7px 10px;cursor:pointer;
+    margin-left:auto;flex:none;background:var(--ink);color:var(--on-light);border:0;
+    border-radius:var(--r-sm);font-family:inherit;font-size:13px;font-weight:680;
+    letter-spacing:-.01em;padding:9px 13px;cursor:pointer;
   }
-  .banner.bad{border-color:var(--p25)}
+  .banner.bad{border-color:var(--danger)}
 
   /* session picker */
-  .days{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+  .days{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
   .day{
-    background:var(--surface);border:1px solid var(--line);border-radius:10px;
-    padding:11px 12px;text-align:left;color:var(--chalk);font-family:var(--body);
-    font-size:14px;cursor:pointer;
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+    padding:14px;text-align:left;color:var(--ink);font-family:inherit;
+    font-size:14px;cursor:pointer;transition:background .15s,border-color .15s;
   }
-  .day b{display:block;font-family:var(--display);font-size:19px;letter-spacing:.05em;text-transform:uppercase;font-weight:600}
-  .day span{color:var(--steel);font-size:12.5px}
-  .day[aria-pressed="true"]{border-color:var(--chalk);background:var(--surface-2)}
+  .day b{display:block;font-size:17px;font-weight:680;letter-spacing:-.02em;margin-bottom:2px}
+  .day span{color:var(--ink-3);font-size:13px;letter-spacing:-.005em}
+  .day[aria-pressed="true"]{
+    border-color:var(--accent);background:var(--accent-soft);
+  }
+  .day[aria-pressed="true"] b{color:var(--ink)}
 
   /* exercise list */
-  .exrow{display:flex;align-items:stretch;gap:6px;margin-bottom:7px}
+  .exrow{display:flex;align-items:stretch;gap:8px;margin-bottom:8px}
   .ex{
-    flex:1;min-width:0;display:flex;align-items:center;gap:12px;
-    background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--line);
-    border-radius:8px;padding:13px 12px;color:var(--chalk);
-    font-family:var(--body);font-size:16px;text-align:left;cursor:pointer;
+    position:relative;flex:1;min-width:0;display:flex;align-items:center;gap:12px;
+    background:var(--surface);border:1px solid var(--line);
+    border-radius:var(--r-lg);padding:15px 15px 15px 17px;color:var(--ink);
+    font-family:inherit;font-size:16px;letter-spacing:-.015em;text-align:left;cursor:pointer;
+    transition:background .15s;
   }
-  .ex.done{border-left-color:var(--p10)}
-  .ex .name{flex:1;min-width:0}
-  .ex .target{color:var(--steel);font-family:var(--display);font-size:16px;letter-spacing:.06em}
+  .ex:active{background:var(--surface-2)}
+  /* A rounded pill reads as a status light; a full-height border reads as a
+     table rule. */
+  .ex::before{
+    content:'';position:absolute;left:0;top:14px;bottom:14px;width:3px;
+    border-radius:0 3px 3px 0;background:transparent;
+  }
+  .ex.done::before{background:var(--good)}
+  .ex.paired::before{background:var(--p35)}
+  .ex.paired.done::before{background:var(--good)}
+  .ex .name{flex:1;min-width:0;font-weight:500}
+  .ex .target{color:var(--ink-3);font-size:15px;letter-spacing:-.01em}
   .ex .count{
-    font-family:var(--display);font-size:15px;letter-spacing:.05em;
-    background:var(--surface-2);border-radius:20px;padding:1px 9px;color:var(--steel);min-width:34px;text-align:center;
+    font-size:13px;font-weight:640;letter-spacing:-.01em;
+    background:var(--surface-3);border-radius:999px;padding:4px 10px;color:var(--ink-2);
+    min-width:44px;text-align:center;
   }
-  .ex.done .count{color:var(--chalk)}
-  .ex.full .count{background:var(--p10);color:var(--iron)}
+  .ex.done .count{color:var(--ink)}
+  .ex.full .count{background:var(--good);color:var(--on-light)}
   .exrow .tools{display:flex;flex-direction:column;gap:4px}
   .exrow .tools button{
     flex:1;min-width:44px;background:var(--surface-2);border:1px solid var(--line);
-    color:var(--steel);border-radius:7px;font-size:15px;cursor:pointer;padding:0 8px;
+    color:var(--ink-2);border-radius:var(--r-sm);font-size:14px;cursor:pointer;padding:0 8px;
   }
   .exrow .tools button:disabled{opacity:.3}
 
   /* logged rows */
   .setrow{
     display:flex;align-items:center;gap:8px;
-    border-bottom:1px solid var(--line);font-family:var(--display);
-    font-size:19px;letter-spacing:.04em;
+    border-bottom:1px solid var(--line);font-size:17px;letter-spacing:-.02em;
   }
+  .setrow:last-child{border-bottom:0}
   .setrow .tap{
-    flex:1;min-width:0;display:flex;align-items:center;gap:10px;
-    background:none;border:0;color:var(--chalk);font:inherit;letter-spacing:inherit;
-    text-align:left;padding:10px 2px;cursor:pointer;min-height:44px;
+    flex:1;min-width:0;display:flex;align-items:center;gap:12px;
+    background:none;border:0;color:var(--ink);font:inherit;font-variant-numeric:tabular-nums;
+    text-align:left;padding:11px 4px;cursor:pointer;min-height:44px;border-radius:var(--r-sm);
   }
-  .setrow.editing{background:var(--surface-2)}
-  .setrow .idx{color:var(--steel);width:20px;flex:none}
-  .setrow .load{flex:1;min-width:0}
-  .setrow .rir{font-size:14px;letter-spacing:.1em;flex:none}
+  .setrow.editing{background:var(--accent-soft);border-radius:var(--r-sm)}
+  .setrow .idx{color:var(--ink-3);width:18px;flex:none;font-size:14px;font-weight:600}
+  .setrow .load{flex:1;min-width:0;font-weight:560}
+  .setrow .rir{font-size:13px;font-weight:560;color:var(--ink-2);flex:none;letter-spacing:-.005em}
   .setrow .del{
-    background:none;border:0;color:var(--steel);font-size:22px;
-    min-width:44px;min-height:44px;padding:0;cursor:pointer;line-height:1;flex:none;
+    background:none;border:0;color:var(--ink-3);font-size:20px;
+    min-width:44px;min-height:44px;padding:0;cursor:pointer;line-height:1;flex:none;border-radius:var(--r-sm);
   }
+  .setrow .del:active{background:var(--surface-2);color:var(--danger)}
 
   /* sheets */
-  .scrim{position:fixed;inset:0;background:rgba(10,11,13,.72);z-index:40;opacity:0;pointer-events:none;transition:opacity .18s}
+  .scrim{position:fixed;inset:0;background:rgba(6,8,11,.7);backdrop-filter:blur(3px);z-index:40;opacity:0;pointer-events:none;transition:opacity .18s}
   .scrim.open{opacity:1;pointer-events:auto}
   .sheet{
     position:fixed;left:0;right:0;bottom:0;z-index:50;
-    background:var(--surface);border-top:1px solid var(--line);
-    border-radius:16px 16px 0 0;
-    max-width:520px;margin:0 auto;transform:translateY(101%);transition:transform .22s cubic-bezier(.2,.7,.3,1);
+    background:var(--surface);border-top:1px solid var(--line-2);
+    border-radius:var(--r-xl) var(--r-xl) 0 0;
+    max-width:560px;margin:0 auto;transform:translateY(101%);
+    transition:transform .26s cubic-bezier(.32,.72,0,1);
     /* 92dvh alone leaves only a few pixels above a tall sheet, which the status
        bar then eats into. Keep a real gap below the inset instead. */
     max-height:min(92dvh, calc(100dvh - 12px - var(--safe-top)));
@@ -183,218 +230,218 @@
   }
   .sheet.open{transform:translateY(0)}
   .sheethead{
-    flex:none;padding:14px 14px 8px;display:flex;align-items:flex-start;gap:10px;
+    flex:none;padding:18px 18px 14px;display:flex;align-items:flex-start;gap:12px;
     border-bottom:1px solid var(--line);
   }
   .sheethead .txt{flex:1;min-width:0}
-  .sheet h2{font-family:var(--display);font-size:24px;letter-spacing:.05em;text-transform:uppercase;margin:0 0 2px;font-weight:600}
+  .sheet h2{font-size:22px;font-weight:700;letter-spacing:-.03em;margin:0 0 3px}
   .sheet h2:focus{outline:none}
-  .sheet .sub{color:var(--steel);font-size:13.5px}
+  .sheet .sub{color:var(--ink-3);font-size:13.5px;line-height:1.4;letter-spacing:-.005em}
   /* Only the body scrolls, so the primary action never leaves the screen. */
-  .sheetbody{flex:1;min-height:0;overflow:auto;padding:12px 14px 4px;-webkit-overflow-scrolling:touch}
+  .sheetbody{flex:1;min-height:0;overflow:auto;padding:16px 18px 6px;-webkit-overflow-scrolling:touch}
   .sheetfoot{
-    flex:none;padding:10px 14px calc(12px + var(--safe-bottom));
+    flex:none;padding:12px 18px calc(14px + var(--safe-bottom));
     border-top:1px solid var(--line);background:var(--surface);
-    display:flex;gap:8px;
+    display:flex;gap:10px;
   }
   .sheetfoot .btn{margin-top:0}
 
-  .fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   label.f{display:block}
   label.f span.lab{
-    display:block;font-family:var(--display);font-size:12.5px;letter-spacing:.16em;
-    text-transform:uppercase;color:var(--steel);margin-bottom:5px;
+    display:block;font-size:12px;font-weight:620;letter-spacing:.05em;
+    text-transform:uppercase;color:var(--ink-3);margin-bottom:8px;
   }
   input[type=number],input[type=text],select,textarea{
-    width:100%;background:var(--iron);border:1px solid var(--line);border-radius:9px;
-    color:var(--chalk);font-family:var(--display);font-size:28px;font-weight:600;
-    padding:10px 12px;text-align:center;
+    width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-md);
+    color:var(--ink);font-family:inherit;font-size:30px;font-weight:640;letter-spacing:-.03em;
+    padding:12px;text-align:center;
   }
-  input[type=text],textarea,select{font-family:var(--body);font-size:15px;font-weight:400;text-align:left}
-  select{font-size:15px;padding:11px 10px;min-height:44px}
-  input:focus,textarea:focus,select:focus,button:focus-visible{outline:2px solid var(--chalk);outline-offset:2px}
+  input[type=text],textarea,select{font-size:15px;font-weight:450;text-align:left;letter-spacing:-.01em}
+  select{padding:13px 12px;min-height:48px}
+  textarea{line-height:1.45}
+  input:focus,textarea:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
   /* signature: plate-disc RIR selector */
-  .plates{display:flex;gap:7px;justify-content:space-between;margin-top:6px}
+  .plates{display:flex;gap:8px;justify-content:space-between;margin-top:8px}
   .plate{
-    flex:1;aspect-ratio:1/1;border-radius:50%;border:3px solid var(--line);
-    background:var(--surface-2);color:var(--steel);
-    font-family:var(--display);font-size:21px;font-weight:700;cursor:pointer;
+    flex:1;aspect-ratio:1/1;border-radius:50%;border:2px solid var(--line-2);
+    background:var(--surface-2);color:var(--ink-3);
+    font-family:inherit;font-size:19px;font-weight:680;letter-spacing:-.02em;cursor:pointer;
     display:flex;align-items:center;justify-content:center;
-    box-shadow:inset 0 0 0 5px var(--surface);
-    transition:transform .12s,color .12s;
+    box-shadow:inset 0 0 0 4px var(--surface);
+    transition:transform .14s,color .14s,border-color .14s;
   }
-  .plate[data-v="0"][aria-pressed="true"]{border-color:var(--p25);color:var(--p25)}
-  .plate[data-v="1"][aria-pressed="true"]{border-color:var(--p20);color:var(--p20)}
-  .plate[data-v="2"][aria-pressed="true"]{border-color:var(--p15);color:var(--p15)}
+  .plate[data-v="0"][aria-pressed="true"]{border-color:var(--p45);color:var(--p45)}
+  .plate[data-v="1"][aria-pressed="true"]{border-color:var(--p35);color:var(--p35)}
+  .plate[data-v="2"][aria-pressed="true"]{border-color:var(--p25);color:var(--p25)}
   .plate[data-v="3"][aria-pressed="true"]{border-color:var(--p10);color:var(--p10)}
-  .plate[data-v="4"][aria-pressed="true"]{border-color:var(--steel);color:var(--chalk)}
-  .plate[aria-pressed="true"]{transform:scale(1.06);background:var(--iron)}
-  .rirhint{color:var(--steel);font-size:12.5px;text-align:center;margin-top:8px;min-height:18px}
+  .plate[data-v="4"][aria-pressed="true"]{border-color:var(--ink-2);color:var(--ink)}
+  .plate[aria-pressed="true"]{transform:scale(1.07);background:var(--bg);border-width:3px}
+  .rirhint{color:var(--ink-3);font-size:13px;text-align:center;margin-top:10px;min-height:18px;letter-spacing:-.005em}
 
   /* plate math */
-  .platemath{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
-  .pmhead{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px;gap:8px}
+  .platemath{margin-top:18px;border-top:1px solid var(--line);padding-top:16px}
+  .pmhead{display:flex;flex-direction:column;align-items:flex-start;margin-bottom:12px;gap:10px}
   .pmhead .eyebrow{margin:0}
-  .bars{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+  .bars{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-start;width:100%}
   .bars button{
-    background:var(--surface-2);border:1px solid var(--line);color:var(--steel);
-    font-family:var(--display);font-size:14px;letter-spacing:.06em;
-    padding:7px 10px;border-radius:14px;cursor:pointer;
+    background:var(--surface-2);border:1px solid var(--line);color:var(--ink-2);
+    font-family:inherit;font-size:13px;font-weight:580;letter-spacing:-.01em;
+    padding:8px 12px;border-radius:999px;cursor:pointer;
   }
-  .bars button[aria-pressed="true"]{background:var(--chalk);color:var(--iron);border-color:var(--chalk)}
+  .bars button[aria-pressed="true"]{background:var(--ink);color:var(--on-light);border-color:var(--ink)}
   .barsvg{display:block;width:100%;height:86px}
-  .pmtext{
-    font-family:var(--display);font-size:19px;letter-spacing:.05em;
-    text-align:center;margin-top:6px;
-  }
-  .pmtext .per{color:var(--steel);font-size:13px;letter-spacing:.14em;text-transform:uppercase}
-  .pmwarn{color:var(--p15);font-size:13px;text-align:center;margin-top:5px;font-family:var(--body)}
+  .pmtext{font-size:17px;font-weight:600;letter-spacing:-.02em;text-align:center;margin-top:8px}
+  .pmtext .per{color:var(--ink-3);font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase}
+  .pmwarn{color:var(--warn);font-size:13px;text-align:center;margin-top:6px}
   .frac{
-    display:flex;align-items:center;justify-content:center;gap:8px;
-    margin-top:9px;color:var(--steel);font-size:13px;cursor:pointer;min-height:44px;
+    display:flex;align-items:center;justify-content:center;gap:10px;
+    margin-top:10px;color:var(--ink-3);font-size:13px;cursor:pointer;min-height:44px;
   }
-  .frac input{width:19px;height:19px;accent-color:var(--chalk)}
+  .frac input{width:19px;height:19px;accent-color:var(--accent)}
 
-  .stepper{display:flex;gap:6px;align-items:stretch}
+  .stepper{display:flex;gap:8px;align-items:stretch}
   .stepper input{flex:1;min-width:0}
   .stepper button{
-    width:66px;flex:none;background:var(--surface-2);border:1px solid var(--line);
-    border-radius:9px;color:var(--chalk);font-family:var(--display);font-weight:600;
-    font-size:17px;letter-spacing:.02em;cursor:pointer;
+    width:72px;flex:none;background:var(--surface-2);border:1px solid var(--line);
+    border-radius:var(--r-md);color:var(--ink);font-family:inherit;font-weight:640;
+    font-size:16px;letter-spacing:-.02em;cursor:pointer;
   }
-  .stepper button:active{background:var(--chalk);color:var(--iron)}
+  .stepper button:active{background:var(--ink);color:var(--on-light);border-color:var(--ink)}
 
   /* supersets */
   .disclose{
-    width:100%;background:none;border:1px dashed var(--line);border-radius:9px;
-    color:var(--steel);font-family:var(--display);font-size:13px;letter-spacing:.14em;
-    text-transform:uppercase;padding:9px;cursor:pointer;margin-bottom:10px;min-height:44px;
+    width:100%;background:none;border:1px dashed var(--line-2);border-radius:var(--r-md);
+    color:var(--ink-3);font-family:inherit;font-size:13px;font-weight:600;letter-spacing:-.01em;
+    padding:11px;cursor:pointer;margin-bottom:14px;min-height:44px;
   }
-  .disclose[aria-expanded="true"]{border-style:solid;color:var(--chalk)}
+  .disclose[aria-expanded="true"]{border-style:solid;color:var(--ink);border-color:var(--line-2)}
   .ex .pairline{
-    display:block;color:var(--steel);font-family:var(--display);font-size:12px;
-    letter-spacing:.12em;text-transform:uppercase;margin-top:1px;
+    display:block;color:var(--ink-3);font-size:12px;font-weight:520;
+    letter-spacing:-.005em;margin-top:2px;
   }
-  .ex.paired{border-left-color:var(--p20)}
-  .ex.paired.done{border-left-color:var(--p10)}
   .pairrow{
-    display:flex;align-items:center;gap:9px;margin:0 0 10px;
-    padding:9px 11px;background:var(--iron);border:1px solid var(--line);border-radius:9px;
+    display:flex;align-items:center;gap:10px;margin:0 0 14px;
+    padding:11px 13px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-md);
   }
   .pairrow span{
-    font-family:var(--display);font-size:12.5px;letter-spacing:.15em;
-    text-transform:uppercase;color:var(--steel);white-space:nowrap;
+    font-size:12px;font-weight:620;letter-spacing:.05em;
+    text-transform:uppercase;color:var(--ink-3);white-space:nowrap;
   }
-  .pairrow select{flex:1;min-width:0;background:var(--surface-2)}
+  .pairrow select{flex:1;min-width:0;background:var(--surface-3)}
   .rest .mid.jump{cursor:pointer}
-  .rest.transition{border-color:var(--p20)}
-  .rest.transition .fill{background:var(--p20)}
-  .rest.transition.ready .clock{color:var(--p20)}
-  .rest.transition.ready .fill{background:var(--p20)}
+  .rest.transition{border-color:var(--p35)}
+  .rest.transition .fill{background:var(--p35)}
+  .rest.transition.ready .clock{color:var(--p35)}
+  .rest.transition.ready .fill{background:var(--p35)}
 
   /* rest timer */
   .rest{
     position:fixed;left:50%;transform:translateX(-50%) translateY(8px);
-    bottom:calc(62px + var(--safe-bottom));z-index:60;
-    width:min(492px,calc(100% - 28px));
-    background:var(--surface-2);border:1px solid var(--line);border-radius:12px;
-    padding:9px 12px 10px;display:flex;align-items:center;gap:11px;
+    bottom:calc(70px + var(--safe-bottom));z-index:60;
+    width:min(528px,calc(100% - 32px));
+    background:var(--surface-2);border:1px solid var(--line-2);border-radius:var(--r-lg);
+    padding:11px 14px 12px;display:flex;align-items:center;gap:13px;
     opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;
   }
   .rest.show{opacity:1;pointer-events:auto;transform:translateX(-50%) translateY(0)}
   /* While a sheet is open the timer moves inside it, directly above the action
      button. Floating it anywhere on top of an open sheet covers something. */
-  .restdock{flex:none;padding:0 14px}
+  .restdock{flex:none;padding:0 18px}
   .rest.docked{
     position:static;transform:none;width:auto;left:auto;right:auto;bottom:auto;
-    opacity:1;pointer-events:auto;margin-bottom:10px;
+    opacity:1;pointer-events:auto;margin-bottom:12px;
   }
   .rest.docked:not(.show){display:none}
-  .rest.ready{border-color:var(--p10)}
+  .rest.ready{border-color:var(--good)}
   .rest .clock{
-    font-family:var(--display);font-size:30px;font-weight:700;line-height:1;
-    letter-spacing:.02em;font-variant-numeric:tabular-nums;min-width:74px;
+    font-size:29px;font-weight:700;line-height:1;letter-spacing:-.04em;min-width:72px;
   }
-  .rest.ready .clock{color:var(--p10)}
+  .rest.ready .clock{color:var(--good)}
   .rest .mid{flex:1;min-width:0}
   .rest .lbl{
-    font-family:var(--display);font-size:12px;letter-spacing:.15em;text-transform:uppercase;
-    color:var(--steel);display:flex;justify-content:space-between;gap:8px;margin-bottom:5px;
+    font-size:12px;font-weight:580;letter-spacing:-.005em;
+    color:var(--ink-3);display:flex;justify-content:space-between;gap:8px;margin-bottom:7px;
   }
   .rest .lbl #restex{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .rest .track{height:4px;background:var(--iron);border-radius:2px;overflow:hidden}
-  .rest .fill{height:100%;width:0;background:var(--steel);border-radius:2px;transition:width .3s linear}
-  .rest.ready .fill{background:var(--p10)}
-  .rest .target{background:none;border:0;color:var(--chalk);font-family:var(--display);
-    font-size:12px;letter-spacing:.15em;text-transform:uppercase;cursor:pointer;padding:2px 0;white-space:nowrap}
-  .rest .x{background:none;border:0;color:var(--steel);font-size:22px;line-height:1;
-    min-width:44px;min-height:44px;padding:0;cursor:pointer;flex:none}
+  .rest .track{height:4px;background:var(--bg);border-radius:999px;overflow:hidden}
+  .rest .fill{height:100%;width:0;background:var(--accent);border-radius:999px;transition:width .3s linear}
+  .rest.ready .fill{background:var(--good)}
+  .rest .target{background:none;border:0;color:var(--ink-2);font-family:inherit;
+    font-size:12px;font-weight:620;letter-spacing:-.005em;cursor:pointer;padding:2px 0;white-space:nowrap}
+  .rest .x{background:none;border:0;color:var(--ink-3);font-size:20px;line-height:1;
+    min-width:44px;min-height:44px;padding:0;cursor:pointer;flex:none;border-radius:var(--r-sm)}
 
   .btn{
-    flex:1;background:var(--chalk);color:var(--iron);border:0;border-radius:10px;
-    font-family:var(--display);font-size:20px;letter-spacing:.1em;text-transform:uppercase;
-    font-weight:700;padding:14px;margin-top:14px;cursor:pointer;
+    flex:1;background:var(--ink);color:var(--on-light);border:0;border-radius:var(--r-md);
+    font-family:inherit;font-size:17px;letter-spacing:-.02em;
+    font-weight:700;padding:16px;margin-top:16px;cursor:pointer;
   }
-  .btn.ghost{background:none;color:var(--steel);border:1px solid var(--line)}
-  .btn.danger{background:none;color:var(--p25);border:1px solid var(--p25)}
-  .btn.small{font-size:16px;padding:11px;letter-spacing:.08em}
+  .btn:active{opacity:.85}
+  .btn.ghost{background:var(--surface-2);color:var(--ink-2);border:1px solid var(--line)}
+  .btn.danger{background:none;color:var(--danger);border:1px solid var(--danger)}
+  .btn.small{font-size:15px;padding:13px}
   .btn.wide{width:100%}
 
   /* pain scale */
-  .pain{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin-top:6px}
+  .pain{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:10px}
   .pain button{
-    padding:13px 0;border-radius:6px;border:1px solid var(--line);min-height:46px;
-    background:var(--surface-2);color:var(--steel);font-family:var(--display);font-size:17px;cursor:pointer;
+    padding:13px 0;border-radius:var(--r-sm);border:1px solid var(--line);min-height:46px;
+    background:var(--surface-2);color:var(--ink-2);font-family:inherit;font-size:16px;
+    font-weight:600;letter-spacing:-.02em;cursor:pointer;font-variant-numeric:tabular-nums;
   }
-  .pain button[aria-pressed="true"]{background:var(--chalk);color:var(--iron);border-color:var(--chalk)}
+  .pain button[aria-pressed="true"]{background:var(--ink);color:var(--on-light);border-color:var(--ink)}
 
   /* history */
-  .card{background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:13px;margin-bottom:9px}
-  .card h3{font-family:var(--display);font-size:19px;letter-spacing:.05em;text-transform:uppercase;margin:0 0 3px;font-weight:600}
-  .metric{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
-  .metric b{font-family:var(--display);font-size:33px;font-weight:700;line-height:1}
-  .metric small{color:var(--steel);font-size:12.5px;letter-spacing:.12em;text-transform:uppercase;font-family:var(--display)}
-  .spark{display:block;width:100%;height:38px;margin-top:9px}
-  .delta.up{color:var(--p10)}
-  .delta.flat{color:var(--steel)}
-  .delta.down{color:var(--p25)}
-  .sesshead{display:flex;align-items:baseline;justify-content:space-between;gap:8px;width:100%;
-    background:none;border:0;color:var(--chalk);text-align:left;padding:0;cursor:pointer;font:inherit}
-  .sessmeta{color:var(--steel);font-size:13px;font-family:var(--display);letter-spacing:.1em;text-transform:uppercase}
-  .sessbody{margin-top:9px;border-top:1px solid var(--line);padding-top:9px}
-  .sessline{display:flex;gap:10px;font-size:14px;padding:3px 0}
-  .sessline b{font-weight:500;flex:1;min-width:0}
-  .sessline span{color:var(--steel);font-family:var(--display);font-size:15px;letter-spacing:.04em;text-align:right}
-  .sessnote{color:var(--steel);font-size:13.5px;margin-top:8px;font-style:italic}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:16px;margin-bottom:10px}
+  .card h3{font-size:16px;font-weight:660;letter-spacing:-.02em;margin:0 0 8px}
+  .metric{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
+  .metric b{font-size:34px;font-weight:720;line-height:1;letter-spacing:-.04em}
+  .metric small{color:var(--ink-3);font-size:12px;font-weight:580;letter-spacing:-.005em}
+  .spark{display:block;width:100%;height:42px;margin-top:12px;overflow:visible}
+  .delta.up{color:var(--good)}
+  .delta.flat{color:var(--ink-3)}
+  .delta.down{color:var(--danger)}
+  .sesshead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;width:100%;
+    background:none;border:0;color:var(--ink);text-align:left;padding:0;cursor:pointer;font:inherit}
+  .sessmeta{color:var(--ink-3);font-size:13px;font-weight:520;letter-spacing:-.005em}
+  .sessbody{margin-top:12px;border-top:1px solid var(--line);padding-top:12px}
+  .sessline{display:flex;gap:12px;font-size:14.5px;padding:5px 0}
+  .sessline b{font-weight:500;flex:1;min-width:0;letter-spacing:-.01em}
+  .sessline span{color:var(--ink-2);font-size:14px;letter-spacing:-.01em;text-align:right;font-variant-numeric:tabular-nums}
+  .sessnote{color:var(--ink-3);font-size:13.5px;margin-top:10px;line-height:1.45}
 
-  .painstrip{display:flex;gap:3px;align-items:flex-end;height:44px;margin-top:8px}
-  .painstrip div{flex:1;background:var(--p25);border-radius:2px;min-height:2px;opacity:.85}
+  .painstrip{display:flex;gap:3px;align-items:flex-end;height:48px;margin-top:12px}
+  /* Rounded data-ends anchored to the baseline, with a surface gap between
+     bars. One hue: the height already carries the magnitude. */
+  .painstrip div{flex:1;background:var(--danger);border-radius:4px 4px 0 0;min-height:2px}
 
-  .empty{color:var(--steel);font-size:14.5px;padding:20px 2px;line-height:1.55}
-  .hint{color:var(--steel);font-size:13px;margin-top:8px;line-height:1.5}
+  .empty{color:var(--ink-3);font-size:14.5px;padding:22px 2px;line-height:1.55;letter-spacing:-.005em}
+  .hint{color:var(--ink-3);font-size:13px;margin-top:10px;line-height:1.5;letter-spacing:-.005em}
 
   nav{
-    position:fixed;bottom:0;left:0;right:0;z-index:30;background:rgba(20,22,26,.94);
-    backdrop-filter:blur(10px);border-top:1px solid var(--line);
-    padding:9px 0 calc(9px + var(--safe-bottom));
+    position:fixed;bottom:0;left:0;right:0;z-index:30;background:rgba(10,12,16,.82);
+    backdrop-filter:saturate(180%) blur(20px);border-top:1px solid var(--line);
+    padding:8px 0 calc(8px + var(--safe-bottom));
     display:flex;justify-content:center;gap:8px;
   }
   nav button{
-    background:none;border:0;color:var(--steel);font-family:var(--display);
-    font-size:17px;letter-spacing:.14em;text-transform:uppercase;padding:10px 22px;cursor:pointer;border-radius:8px;
+    background:none;border:0;color:var(--ink-3);font-family:inherit;
+    font-size:15px;font-weight:600;letter-spacing:-.015em;padding:11px 26px;cursor:pointer;border-radius:999px;
   }
-  nav button[aria-selected="true"]{color:var(--chalk);background:var(--surface-2)}
+  nav button[aria-selected="true"]{color:var(--accent-ink);background:var(--accent-soft)}
 
   .hide{display:none!important}
   /* Sits clear of the rest bar rather than behind it. */
   .toast{
     position:fixed;left:50%;transform:translateX(-50%);
-    bottom:calc(132px + var(--safe-bottom));z-index:70;
-    background:var(--chalk);color:var(--iron);font-family:var(--display);
-    letter-spacing:.08em;text-transform:uppercase;font-size:15px;
-    padding:9px 16px;border-radius:20px;opacity:0;transition:opacity .2s;pointer-events:none;
-    display:flex;align-items:center;gap:12px;max-width:calc(100% - 28px);
+    bottom:calc(142px + var(--safe-bottom));z-index:70;
+    background:var(--ink);color:var(--on-light);font-family:inherit;
+    letter-spacing:-.015em;font-size:14.5px;font-weight:620;
+    padding:11px 18px;border-radius:999px;opacity:0;transition:opacity .2s;pointer-events:none;
+    display:flex;align-items:center;gap:14px;max-width:calc(100% - 32px);
+    box-shadow:0 8px 24px rgba(0,0,0,.45);
   }
   /* With a sheet open the bottom half is all controls, so the toast goes to
      the top where it covers nothing. */
@@ -402,8 +449,8 @@
   .toast.show{opacity:1}
   .toast.act{pointer-events:auto}
   .toast button{
-    background:none;border:0;border-left:1px solid rgba(20,22,26,.25);
-    color:var(--iron);font:inherit;font-weight:700;padding:4px 0 4px 12px;cursor:pointer;
+    background:none;border:0;border-left:1px solid rgba(10,12,16,.25);
+    color:var(--on-light);font:inherit;font-weight:720;padding:4px 0 4px 14px;cursor:pointer;
   }
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -438,7 +485,7 @@
   <div class="eyebrow">After training</div>
   <div class="card">
     <h3>Back pain</h3>
-    <div style="color:var(--steel);font-size:13px" id="painsub">0 = none, 10 = worst. Rate once, after the session.</div>
+    <div class="hint" style="margin-top:2px" id="painsub">0 = none, 10 = worst. Rate once, after the session.</div>
     <div class="pain" id="painscale"></div>
     <textarea id="notes" rows="2" placeholder="Notes — what aggravated it, what helped" style="margin-top:10px"></textarea>
     <div class="hint" id="notestate">Notes save as you type.</div>
@@ -638,22 +685,29 @@ const DEFAULT_KIND = {
   'Pull-up':'bodyweight', 'Weighted dip':'bodyweight', 'Suitcase carry':'distance'
 };
 
+// The plate hues below mirror physical plates — a 45 is red and a 10 is green
+// in every gym — so they are not a free categorical palette. Snapped into the
+// dark lightness band and validated against the card surface, they clear every
+// check except red/green under colour-vision simulation, which no re-hueing
+// could fix without breaking the match to the equipment in front of you. Both
+// places they appear carry the value independently: the diagram varies disc
+// height and prints the numbers underneath, and each RIR disc shows its digit.
 const UNITS = {
   lb:{
     label:'lb', defaultBar:45, bars:[45,35,55,0],
     barLabel:{45:'45 bar',35:'35 bar',55:'55 trap',0:'per side'},
-    plates:[{w:45,c:'#d8342b',h:60,t:11},{w:35,c:'#1b6fc4',h:52,t:10},{w:25,c:'#e8b324',h:44,t:9},
-            {w:10,c:'#2e9e5b',h:32,t:7},{w:5,c:'#c8ccd2',h:24,t:6},{w:2.5,c:'#8d949e',h:18,t:5},
-            {w:1.25,c:'#5d636d',h:14,t:4}],
+    plates:[{w:45,c:'#E5484D',h:60,t:11},{w:35,c:'#3E7BFA',h:52,t:10},{w:25,c:'#B08C0E',h:44,t:9},
+            {w:10,c:'#29AA63',h:32,t:7},{w:5,c:'#C6CEDA',h:24,t:6},{w:2.5,c:'#8A94A6',h:18,t:5},
+            {w:1.25,c:'#5A6373',h:14,t:4}],
     minPlate:2.5, fracPlates:[1.25], fracLabel:'I have 1.25 lb plates',
     step:5, fracStep:2.5, otherStep:5, dist:'m'
   },
   kg:{
     label:'kg', defaultBar:20, bars:[20,15,25,0],
     barLabel:{20:'20 bar',15:'15 bar',25:'25 trap',0:'per side'},
-    plates:[{w:25,c:'#d8342b',h:60,t:11},{w:20,c:'#1b6fc4',h:54,t:10},{w:15,c:'#e8b324',h:48,t:9},
-            {w:10,c:'#2e9e5b',h:38,t:8},{w:5,c:'#c8ccd2',h:28,t:6},{w:2.5,c:'#8d949e',h:20,t:5},
-            {w:1.25,c:'#5d636d',h:15,t:4},{w:0.5,c:'#4a5058',h:12,t:3}],
+    plates:[{w:25,c:'#E5484D',h:60,t:11},{w:20,c:'#3E7BFA',h:54,t:10},{w:15,c:'#B08C0E',h:48,t:9},
+            {w:10,c:'#29AA63',h:38,t:8},{w:5,c:'#C6CEDA',h:28,t:6},{w:2.5,c:'#8A94A6',h:20,t:5},
+            {w:1.25,c:'#5A6373',h:15,t:4},{w:0.5,c:'#454E5D',h:12,t:3}],
     minPlate:2.5, fracPlates:[1.25,0.5], fracLabel:'I have 1.25 and 0.5 kg plates',
     step:2.5, fracStep:1.25, otherStep:2.5, dist:'m'
   }
@@ -929,7 +983,7 @@ function renderSetList(){
          <span class="idx">${i+1}</span>
          <span class="load">${esc(load)}</span>
          <span class="rir">${s.rir}${s.rir===4?'+':''} RIR</span>
-         ${s.rest!=null?`<span class="rir" style="color:var(--steel)">${mmss(s.rest)}</span>`:''}
+         ${s.rest!=null?`<span class="rir" style="color:var(--ink-3)">${mmss(s.rest)}</span>`:''}
        </button>
        <button class="del" data-del="${esc(s.id)}" aria-label="Delete set ${i+1}">&#215;</button>
      </div>`;
@@ -977,20 +1031,20 @@ function renderPlateMath(){
   const mid = 38, shaftY = mid - 3;
   let x = 92;
   const parts = [
-    `<rect x="14" y="${shaftY}" width="${bar?96:0}" height="6" rx="3" fill="#6f757e"/>`,
-    bar ? `<rect x="86" y="${mid-13}" width="7" height="26" rx="2" fill="#4a5058"/>` : ''
+    `<rect x="14" y="${shaftY}" width="${bar?96:0}" height="6" rx="3" fill="var(--ink-3)"/>`,
+    bar ? `<rect x="86" y="${mid-13}" width="7" height="26" rx="2" fill="var(--line-2)"/>` : ''
   ];
   plates.forEach(p=>{
     parts.push(`<rect x="${x}" y="${mid - p.h/2}" width="${p.t}" height="${p.h}" rx="2"
-      fill="${p.c}" stroke="#14161a" stroke-width="1"/>`);
+      fill="${p.c}" stroke="var(--surface)" stroke-width="1.5"/>`);
     x += p.t + 1.5;
   });
   if(plates.length){
-    parts.push(`<rect x="${x+1}" y="${mid-9}" width="6" height="18" rx="2" fill="#4a5058"/>`);
-    parts.push(`<rect x="${x+8}" y="${shaftY}" width="10" height="6" rx="3" fill="#6f757e"/>`);
+    parts.push(`<rect x="${x+1}" y="${mid-9}" width="6" height="18" rx="2" fill="var(--line-2)"/>`);
+    parts.push(`<rect x="${x+8}" y="${shaftY}" width="10" height="6" rx="3" fill="var(--ink-3)"/>`);
   }
-  parts.push(`<text x="150" y="82" text-anchor="middle" fill="#9aa1ab"
-    font-family="${'Barlow Condensed,sans-serif'}" font-size="12" letter-spacing="1.6">
+  parts.push(`<text x="150" y="82" text-anchor="middle" fill="var(--ink-3)"
+    font-family="system-ui,sans-serif" font-size="11" font-weight="600" letter-spacing="1.2">
     ${bar ? 'ONE SIDE SHOWN' : 'ONE SIDE — NO BAR'}</text>`);
   svg.innerHTML = parts.join('');
   svg.setAttribute('aria-label', plates.length
@@ -1279,8 +1333,10 @@ function sparkline(vals){
   const pts = vals.map((v,i)=>[i/(vals.length-1)*w, h-2-((v-min)/rng)*(h-6)]);
   const d = pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
   return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
-    <path d="${d}" fill="none" stroke="#f2f0eb" stroke-width="2" stroke-linejoin="round"/>
-    <circle cx="${pts.at(-1)[0].toFixed(1)}" cy="${pts.at(-1)[1].toFixed(1)}" r="3" fill="#2e9e5b"/></svg>`;
+    <path d="${d}" fill="none" stroke="var(--ink)" stroke-width="2"
+      stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+    <circle cx="${pts.at(-1)[0].toFixed(1)}" cy="${pts.at(-1)[1].toFixed(1)}" r="4"
+      fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/></svg>`;
 }
 
 function renderHistory(){
@@ -1323,10 +1379,11 @@ function renderHistory(){
     const avg = rated.reduce((a,[,v])=>a+v.pain,0)/rated.length;
     // Each entry is [date, dayRecord], so the bar height comes from v.pain —
     // using v itself yields NaN and silently collapses every bar to min-height.
-    const H = 44;
+    const H = 48;
     $('#paincard').innerHTML = `<div class="metric"><b>${avg.toFixed(1)}</b><small>average of ${rated.length} rated days</small></div>
       <div class="painstrip" role="img" aria-label="Pain by day: ${esc(rated.map(([d,v])=>`${d}: ${v.pain}`).join(', '))}">${
-        rated.map(([,v])=>`<div style="height:${Math.max(v.pain/10*H, 2).toFixed(1)}px"></div>`).join('')}</div>`;
+        rated.map(([d,v])=>`<div title="${esc(d)}: ${v.pain}" style="height:${
+          Math.max(v.pain/10*H, 2).toFixed(1)}px"></div>`).join('')}</div>`;
   }
 
   renderSessions();
