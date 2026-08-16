@@ -250,6 +250,39 @@ test.describe('accessibility', () => {
     await ctx.close();
   });
 
+  test('double-tap does not zoom, but pinch-zoom is still allowed', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    // The controls that get tapped repeatedly are the ones that would zoom.
+    await page.click('.ex[data-ex="Deadlift"]');
+    const touch = await page.evaluate(() => {
+      const of = s => {
+        const el = document.querySelector(s);
+        return el ? getComputedStyle(el).touchAction : null;
+      };
+      return {
+        body: of('body'),
+        logset: of('#logset'),
+        stepper: of('#wup'),
+        rir: of('.plate'),
+        exercise: of('.ex')
+      };
+    });
+    for (const [where, value] of Object.entries(touch)) {
+      expect(value, where).toBe('manipulation');
+    }
+
+    // Removing zoom altogether would fail WCAG 1.4.4, so the viewport must not
+    // pin the scale.
+    const viewport = await page.getAttribute('meta[name="viewport"]', 'content');
+    expect(viewport).not.toMatch(/user-scalable\s*=\s*(no|0)/);
+    expect(viewport).not.toMatch(/maximum-scale/);
+    await ctx.close();
+  });
+
   test('escape closes the open sheet', async ({ browser }) => {
     const ctx = await phone(browser);
     const page = await ctx.newPage();
