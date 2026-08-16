@@ -72,7 +72,10 @@ test.describe('logging a session', () => {
     // 235 lb is ~106.6 kg
     await expect(page.locator('.setrow .load').first()).toContainText(/10[67]/);
     await expect(page.locator('#wtlab')).toContainText('kg');
-    await expect(page.locator('#wup')).toHaveText('+2.5');
+    // 5 kg, not 2.5: the step is two of the smallest plate in the rack, and a
+    // default kg rack stops at 2.5s. Stepping by 2.5 kg total asked for 1.25 a
+    // side, which is not loadable without plates most gyms do not stock.
+    await expect(page.locator('#wup')).toHaveText('+5');
     await expect(page.locator('#bars')).toContainText('20 bar');
   });
 
@@ -211,6 +214,72 @@ test.describe('editing the program', () => {
 
   test('no page errors while editing', () => {
     expect(errs).toEqual([]);
+  });
+});
+
+test.describe('one-sided exercises get an even target', () => {
+  test('the defaults are even, and say what half of them means', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    // you only have two arms
+    await expect(page.locator('.ex[data-ex="Suitcase carry"] .target')).toHaveText('4 × 40m');
+    await page.click('.ex[data-ex="Suitcase carry"]');
+    await expect(page.locator('#sheet-sub')).toContainText('4 × 40m (2 per side)');
+    await page.click('#close');
+
+    // and two legs
+    await page.click('[data-day="C"]');
+    await expect(page.locator('.ex[data-ex="Bulgarian split squat"] .target')).toHaveText('4 × 10');
+    await page.click('.ex[data-ex="Bulgarian split squat"]');
+    await expect(page.locator('#sheet-sub')).toContainText('(2 per side)');
+    await ctx.close();
+  });
+
+  test('an odd target typed into the editor is rounded up', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    await page.click('#editprog');
+    await page.click('[data-edit="Suitcase carry"]');
+    expect(await page.isChecked('#exuni')).toBe(true);
+    await page.fill('#extarget', '3 × 40m');
+    await page.click('#exsave');
+    await expect(page.locator('#toast')).toContainText(/rounded to 4 sets/i);
+    await expect(page.locator('.ex[data-ex="Suitcase carry"] .target')).toHaveText('4 × 40m');
+
+    // an even target is left exactly as typed
+    await page.click('[data-edit="Suitcase carry"]');
+    await page.fill('#extarget', '6 × 30m');
+    await page.click('#exsave');
+    await expect(page.locator('.ex[data-ex="Suitcase carry"] .target')).toHaveText('6 × 30m');
+    await ctx.close();
+  });
+
+  test('two-sided exercises are left alone', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    await page.click('#editprog');
+    await page.click('[data-edit="Leg curl"]');
+    expect(await page.isChecked('#exuni')).toBe(false);
+    await page.fill('#extarget', '3 × 12');
+    await page.click('#exsave');
+    // nothing unilateral about a leg curl, so 3 stays 3
+    await expect(page.locator('.ex[data-ex="Leg curl"] .target')).toHaveText('3 × 12');
+
+    // marking one as one-sided applies the rule from then on
+    await page.click('[data-edit="Leg curl"]');
+    await page.check('#exuni');
+    await page.click('#exsave');
+    await expect(page.locator('.ex[data-ex="Leg curl"] .target')).toHaveText('4 × 12');
+    await ctx.close();
   });
 });
 

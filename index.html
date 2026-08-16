@@ -215,7 +215,9 @@
   .setrow .del:active{background:var(--surface-2);color:var(--danger)}
 
   /* sheets */
-  .scrim{position:fixed;inset:0;background:rgba(6,8,11,.7);backdrop-filter:blur(3px);z-index:40;opacity:0;pointer-events:none;transition:opacity .18s}
+  .scrim{position:fixed;inset:0;background:rgba(6,8,11,.7);backdrop-filter:blur(3px);
+    overscroll-behavior:contain;touch-action:none;
+    z-index:40;opacity:0;pointer-events:none;transition:opacity .18s}
   .scrim.open{opacity:1;pointer-events:auto}
   .sheet{
     position:fixed;left:0;right:0;bottom:0;z-index:50;
@@ -238,7 +240,8 @@
   .sheet h2:focus{outline:none}
   .sheet .sub{color:var(--ink-3);font-size:13.5px;line-height:1.4;letter-spacing:-.005em}
   /* Only the body scrolls, so the primary action never leaves the screen. */
-  .sheetbody{flex:1;min-height:0;overflow:auto;padding:16px 18px 6px;-webkit-overflow-scrolling:touch}
+  .sheetbody{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;
+    padding:16px 18px 6px;-webkit-overflow-scrolling:touch}
   .sheetfoot{
     flex:none;padding:12px 18px calc(14px + var(--safe-bottom));
     border-top:1px solid var(--line);background:var(--surface);
@@ -436,6 +439,9 @@
   }
   nav button[aria-selected="true"]{color:var(--accent-ink);background:var(--accent-soft)}
 
+  /* Pinned rather than overflow:hidden, which iOS Safari ignores on the
+     document. The offset preserves the reading position, restored on close. */
+  body.locked{position:fixed;left:0;right:0;width:100%;overflow:hidden}
   .hide{display:none!important}
   /* Sits clear of the rest bar rather than behind it. */
   .toast{
@@ -589,7 +595,13 @@
         <option value="bodyweight">Bodyweight — pull-up, dip, push-up</option>
         <option value="distance">Distance — carries, sled</option>
       </select></label>
-    <label class="f" style="margin-top:10px"><span class="lab">Plate math</span>
+    <label class="toggle" style="margin-top:14px">
+      <input type="checkbox" id="exuni">
+      <span>One side at a time
+        <span class="sub">Keeps the target even, so both sides get the same work.</span></span>
+    </label>
+
+    <label class="f" style="margin-top:14px"><span class="lab">Plate math</span>
       <select id="exbar"></select></label>
     <label class="f" style="margin-top:10px"><span class="lab">Rest target</span>
       <select id="exrest"></select></label>
@@ -610,19 +622,26 @@
     <div class="eyebrow" style="margin-top:0">Units</div>
     <div class="bars" id="unitsel" style="justify-content:flex-start"></div>
 
-    <label class="toggle" style="margin-top:12px">
-      <input type="checkbox" id="fracbox">
-      <span><span id="fraclab">I have small plates</span>
-        <span class="sub">Lets the loader use the smallest plates, and halves the weight step.</span></span>
-    </label>
+    <div class="eyebrow">Plates you have</div>
+    <div class="bars" id="platesel" style="justify-content:flex-start"></div>
+    <div class="hint">Tap to match your rack — plenty of gyms have no 35s, and
+      plenty have no 1.25s. Plates you turn off are never suggested, and the
+      weight step follows the smallest one you keep.</div>
 
     <label class="f" style="margin-top:16px"><span class="lab" id="bwlab">Bodyweight</span>
       <input type="number" id="bwinput" inputmode="decimal" step="any" aria-labelledby="bwlab"></label>
     <div class="hint">Used to score pull-ups and dips. Without it, a bodyweight set
       estimates out at zero and its trend line stays flat.</div>
 
-    <label class="f" style="margin-top:16px"><span class="lab">Superset transition</span>
+    <div class="eyebrow">Timers</div>
+    <label class="f"><span class="lab">Superset transition</span>
       <select id="transel"></select></label>
+
+    <label class="f" style="margin-top:16px"><span class="lab">When a rest timer ends</span>
+      <select id="alertsel"></select></label>
+    <button class="btn ghost small wide" id="testalert" style="margin-top:10px">Test alert</button>
+    <div class="hint">Plays exactly what a finished timer plays, so you can find out
+      whether it carries over the room before you are mid-set.</div>
 
     <div class="eyebrow">Data</div>
     <button class="btn ghost small wide" id="backup">Download backup (JSON)</button>
@@ -671,12 +690,12 @@ const APP_VERSION = '1.3.0'; // x-release-please-version
 const DEFAULT_PROGRAM = [
   {id:'A', name:'Lower A', tag:'Deadlift focus', ex:[
     ['Deadlift','4 × 4'],['Leg press','3 × 10'],['Romanian deadlift','3 × 8'],
-    ['Leg curl','3 × 12'],['Suitcase carry','3 × 40m']]},
+    ['Leg curl','3 × 12'],['Suitcase carry','4 × 40m']]},
   {id:'B', name:'Upper A', tag:'Press focus', ex:[
     ['Overhead press','4 × 6'],['Chest-supported row','4 × 10'],['Incline DB press','3 × 10'],
     ['Lat pulldown','3 × 12'],['Lateral raise','3 × 15'],['Triceps pushdown','3 × 12']]},
   {id:'C', name:'Lower B', tag:'Squat focus', ex:[
-    ['Front squat','4 × 8'],['Trap bar deadlift','3 × 6'],['Bulgarian split squat','3 × 10'],
+    ['Front squat','4 × 8'],['Trap bar deadlift','3 × 6'],['Bulgarian split squat','4 × 10'],
     ['Calf raise','3 × 15'],['Dead bug','3 × 10']]},
   {id:'D', name:'Upper B', tag:'Vertical pull', ex:[
     ['Weighted dip','4 × 8'],['Pull-up','4 × max'],['Seated DB press','3 × 10'],
@@ -696,6 +715,12 @@ const DEFAULT_KIND = {
   'Pull-up':'bodyweight', 'Weighted dip':'bodyweight', 'Suitcase carry':'distance'
 };
 
+// Worked one side at a time, so the set count has to be even — an odd target
+// sends you home having done more on one arm or leg than the other.
+const DEFAULT_UNILATERAL = {
+  'Suitcase carry':true, 'Bulgarian split squat':true
+};
+
 // The plate hues below mirror physical plates — a 45 is red and a 10 is green
 // in every gym — so they are not a free categorical palette. Snapped into the
 // dark lightness band and validated against the card surface, they clear every
@@ -710,8 +735,7 @@ const UNITS = {
     plates:[{w:45,c:'#E5484D',h:60,t:11},{w:35,c:'#3E7BFA',h:52,t:10},{w:25,c:'#B08C0E',h:44,t:9},
             {w:10,c:'#29AA63',h:32,t:7},{w:5,c:'#C6CEDA',h:24,t:6},{w:2.5,c:'#8A94A6',h:18,t:5},
             {w:1.25,c:'#5A6373',h:14,t:4}],
-    minPlate:2.5, fracPlates:[1.25], fracLabel:'I have 1.25 lb plates',
-    step:5, fracStep:2.5, otherStep:5, dist:'m'
+    minPlate:2.5, fracPlates:[1.25], otherStep:5, dist:'m'
   },
   kg:{
     label:'kg', defaultBar:20, bars:[20,15,25,0],
@@ -719,8 +743,7 @@ const UNITS = {
     plates:[{w:25,c:'#E5484D',h:60,t:11},{w:20,c:'#3E7BFA',h:54,t:10},{w:15,c:'#B08C0E',h:48,t:9},
             {w:10,c:'#29AA63',h:38,t:8},{w:5,c:'#C6CEDA',h:28,t:6},{w:2.5,c:'#8A94A6',h:20,t:5},
             {w:1.25,c:'#5A6373',h:15,t:4},{w:0.5,c:'#454E5D',h:12,t:3}],
-    minPlate:2.5, fracPlates:[1.25,0.5], fracLabel:'I have 1.25 and 0.5 kg plates',
-    step:2.5, fracStep:1.25, otherStep:2.5, dist:'m'
+    minPlate:2.5, fracPlates:[1.25,0.5], otherStep:2.5, dist:'m'
   }
 };
 const LB_PER_KG = 2.2046226218;
@@ -738,6 +761,15 @@ const REST_DEFAULT = {
 const REST_OPTIONS = [60,90,120,150,180,210,240,300];
 const TRANSITION_OPTIONS = [15,20,30,45,60,90];
 
+// What a finished rest timer does. A gym is either too loud to hear a chime or
+// quiet enough that one is rude, so this needs to be a real choice.
+const ALERT_OPTIONS = [
+  ['both',    'Sound and vibration'],
+  ['sound',   'Sound only'],
+  ['vibrate', 'Vibration only'],
+  ['silent',  'Silent']
+];
+
 const RIR_HINT = {
   0:'Failure. Could not have done another rep.',
   1:'One more rep was in there.',
@@ -754,7 +786,8 @@ let pendingWorker = null, installPrompt = null;
 
 function blank(){
   return {v:2, sets:[], days:{}, pairs:{}, ex:{}, program:null,
-          settings:{units:'lb', fractional:false, transition:30, bw:{lb:0,kg:0}, lastDay:'A'},
+          settings:{units:'lb', plates:null, transition:30, bw:{lb:0,kg:0},
+                    lastDay:'A', alert:'both'},
           rest:null};
 }
 
@@ -829,6 +862,19 @@ function migrate(d){
   if(!UNITS[out.settings.units]) out.settings.units = 'lb';
   if(!out.settings.bw || typeof out.settings.bw !== 'object') out.settings.bw = {lb:0,kg:0};
   out.ex = d.ex && typeof d.ex === 'object' ? d.ex : {};
+  if(Array.isArray(out.program)){
+    out.program.forEach(day => day.ex?.forEach(row => {
+      if(DEFAULT_UNILATERAL[row[0]] || out.ex?.[row[0]]?.uni) row[1] = evenTarget(row[1]);
+    }));
+  }
+  if(!out.settings.plates || typeof out.settings.plates !== 'object'){
+    out.settings.plates = {};
+    for(const [k, u] of Object.entries(UNITS)){
+      out.settings.plates[k] = u.plates
+        .filter(p => p.w >= u.minPlate || (out.settings.fractional && u.fracPlates.includes(p.w)))
+        .map(p => p.w);
+    }
+  }
   // v1 kept bar and rest overrides in flat maps, and weights were always lb.
   if(d.bars) for(const [name, v] of Object.entries(d.bars))
     (out.ex[name] ||= {}).bar = typeof v === 'number' ? {lb:v, kg:+(v/LB_PER_KG).toFixed(1)} : v;
@@ -881,6 +927,15 @@ function ownProgram(){
 }
 const meta = ex => db.ex?.[ex] || {};
 const kindOf = ex => meta(ex).kind || DEFAULT_KIND[ex] || 'weight';
+const isUnilateral = ex => meta(ex).uni ?? !!DEFAULT_UNILATERAL[ex];
+
+// Round a target up to an even number of sets, leaving the rest of the string
+// ("× 40m") alone.
+function evenTarget(target){
+  const n = targetSets(target);
+  if(!n || n % 2 === 0) return target;
+  return String(target).replace(/^(\s*)(\d+)/, (_, sp) => sp + (n + 1));
+}
 function barFor(ex){
   const m = meta(ex);
   if(m.bar && typeof m.bar === 'object') return m.bar[units()] ?? null;
@@ -1079,9 +1134,23 @@ function renderSetList(){
 }
 
 /* ---------- plate math ---------- */
-function solvePlates(perSide, useFractional){
+// The plates actually in the rack. Everything downstream — what the loader may
+// use, and how far the stepper jumps — follows from this one list.
+function availablePlates(){
   const u = U();
-  const stock = u.plates.filter(p => p.w >= u.minPlate || (useFractional && u.fracPlates.includes(p.w)));
+  const list = db.settings.plates?.[units()];
+  const owned = Array.isArray(list) && list.length
+    ? new Set(list)
+    : new Set(u.plates.filter(p => p.w >= u.minPlate).map(p => p.w));
+  return u.plates.filter(p => owned.has(p.w));
+}
+const smallestPlate = () => {
+  const a = availablePlates();
+  return a.length ? a[a.length - 1].w : U().minPlate;
+};
+
+function solvePlates(perSide){
+  const stock = availablePlates();
   const out = []; let left = perSide;
   for(const p of stock){
     while(left >= p.w - 1e-9){ out.push(p); left = +(left - p.w).toFixed(4); }
@@ -1111,7 +1180,7 @@ function renderPlateMath(){
   }
 
   const perSide = (total - bar) / 2;
-  const {plates, remainder} = solvePlates(perSide, db.settings.fractional);
+  const {plates, remainder} = solvePlates(perSide);
 
   // draw: bar shaft left to right, plates stacked outward from the collar
   const mid = 38, shaftY = mid - 3;
@@ -1142,9 +1211,10 @@ function renderPlateMath(){
 
   if(remainder > 0.01){
     const actual = +(bar + (perSide - remainder) * 2).toFixed(2);
-    warn.textContent = db.settings.fractional
-      ? `Closest is ${actual} ${u.label} — ${total} isn't loadable.`
-      : `Closest is ${actual} ${u.label}. Turn on small plates in settings to hit ${total}.`;
+    const couldHelp = u.plates.some(p => p.w < smallestPlate());
+    warn.textContent = couldHelp
+      ? `Closest is ${actual} ${u.label}. Add smaller plates in settings to hit ${total}.`
+      : `Closest is ${actual} ${u.label} — ${total} isn't loadable.`;
     warn.classList.remove('hide');
   } else warn.classList.add('hide');
 }
@@ -1195,6 +1265,19 @@ async function requestWake(){
 }
 function releaseWake(){ try{ wakeLock?.release(); }catch(e){} wakeLock = null; }
 
+const alertMode = () => {
+  const m = db.settings.alert;
+  return ALERT_OPTIONS.some(([v]) => v === m) ? m : 'both';
+};
+const wantsSound = () => alertMode() === 'both' || alertMode() === 'sound';
+const wantsBuzz  = () => alertMode() === 'both' || alertMode() === 'vibrate';
+
+// `short` is the superset transition, which gets one beep rather than two.
+function fireAlert(short){
+  if(wantsSound()) chime(short ? [0] : [0, .18]);
+  if(wantsBuzz() && navigator.vibrate) navigator.vibrate(short ? [90] : [130,70,130]);
+}
+
 function chime(times){
   try{
     const AC = window.AudioContext || window.webkitAudioContext; if(!AC) return;
@@ -1229,8 +1312,10 @@ function startRest(ex){
   rest.start = Date.now();
   rest.alerted = false;
   // warm up audio inside the tap that logged the set, so the chime can fire later
-  try{ const AC = window.AudioContext||window.webkitAudioContext;
-       if(AC){ rest.ac ||= new AC(); rest.ac.resume(); } }catch(e){}
+  if(wantsSound()){
+    try{ const AC = window.AudioContext||window.webkitAudioContext;
+         if(AC){ rest.ac ||= new AC(); rest.ac.resume(); } }catch(e){}
+  }
   requestWake();
   showRest();
   persistRest();
@@ -1270,8 +1355,7 @@ function tickRest(){
   $('#rest').classList.toggle('ready', ready);
   if(ready && !rest.alerted){
     rest.alerted = true;
-    chime(rest.mode === 'transition' ? [0] : [0, .18]);
-    if(navigator.vibrate) navigator.vibrate(rest.mode === 'transition' ? [90] : [130,70,130]);
+    fireAlert(rest.mode === 'transition');
     // The clock itself is aria-live="off"; this is the one moment worth saying.
     announce(rest.mode === 'transition' ? 'Go now' : 'Rest complete');
   }
@@ -1280,6 +1364,22 @@ function tickRest(){
 
 /* ---------- sheets ---------- */
 const FOCUSABLE = 'button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[href],[tabindex]:not([tabindex="-1"])';
+
+// Scroll lock. The page keeps its position across open/close: pinning the body
+// sets scrollY to 0, so it has to be remembered and put back.
+let lockedScrollY = 0;
+function lockScroll(){
+  if(document.body.classList.contains('locked')) return;
+  lockedScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+  document.body.style.top = `-${lockedScrollY}px`;
+  document.body.classList.add('locked');
+}
+function unlockScroll(){
+  if(!document.body.classList.contains('locked')) return;
+  document.body.classList.remove('locked');
+  document.body.style.top = '';
+  window.scrollTo(0, lockedScrollY);
+}
 
 const sheetStack = [];
 const topSheet = () => sheetStack[sheetStack.length - 1] || null;
@@ -1308,6 +1408,7 @@ function openPanel(el, focusEl){
   $('#scrim').classList.add('open');
   el.classList.add('open');
   document.body.classList.add('sheetopen');
+  lockScroll();
   dockRest();
   (focusEl || el.querySelector('h2')).focus();
   requestWake();
@@ -1324,6 +1425,7 @@ function closePanel(el, pickFocus){
   if(!sheetStack.length){
     $('#scrim').classList.remove('open');
     document.body.classList.remove('sheetopen');
+    unlockScroll();
     if(!rest.start) releaseWake();
   }
   dockRest();
@@ -1360,7 +1462,9 @@ function renderSheetSub(){
   // "last" means the previous session's set, not the one just logged.
   const prev = db.sets.filter(s => s.e === ex && s.d !== state.date).slice(-1)[0];
   const done = setsFor(state.date, ex).length, goal = targetSets(target);
-  const bits = [`Target ${target}`];
+  const goalSets = targetSets(target);
+  const bits = [`Target ${target}` +
+    (isUnilateral(ex) && goalSets ? ` (${goalSets/2} per side)` : '')];
   if(goal) bits.push(`${done}/${goal} done`);
   else if(done) bits.push(`${done} logged`);
   bits.push(prev
@@ -1523,7 +1627,8 @@ function renderSessions(){
 function weightStep(){
   const u = U();
   if(!isLoadable(state.ex)) return u.otherStep;
-  return db.settings.fractional ? u.fracStep : u.step;
+  // The smallest real-world jump is one plate on each side.
+  return smallestPlate() * 2;
 }
 
 function nudgeWeight(dir){
@@ -1766,6 +1871,7 @@ function openExEditor(name){
   $('#exname').value = name || '';
   $('#extarget').value = row ? row[1] : '3 × 10';
   $('#exkind').value = name ? kindOf(name) : 'weight';
+  $('#exuni').checked = name ? isUnilateral(name) : false;
   $('#exbar').innerHTML = [`<option value="">No plate math</option>`]
     .concat(u.bars.map(b => `<option value="${b}">${esc(u.barLabel[b])}</option>`)).join('');
   $('#exbar').value = name && isLoadable(name) ? String(barFor(name)) : '';
@@ -1779,7 +1885,12 @@ function openExEditor(name){
 $('#exsave').addEventListener('click', ()=>{
   const name = $('#exname').value.trim();
   if(!name){ toast('Name it first'); return; }
-  const target = $('#extarget').value.trim() || '3 × 10';
+  const typed = $('#extarget').value.trim() || '3 × 10';
+  const uni = $('#exuni').checked;
+  // Two arms, two legs: an odd target on a one-sided exercise cannot be shared
+  // evenly, so it goes up rather than being accepted as written.
+  const target = uni ? evenTarget(typed) : typed;
+  const rounded = target !== typed;
   const day = ownProgram().find(d => d.id === state.day);
   const old = state.editingEx;
 
@@ -1801,6 +1912,7 @@ $('#exsave').addEventListener('click', ()=>{
 
   const m = (db.ex[name] ||= {});
   m.kind = $('#exkind').value;
+  m.uni = uni;
   m.rest = +$('#exrest').value;
   const barVal = $('#exbar').value;
   if(barVal === '') delete m.bar;
@@ -1808,7 +1920,7 @@ $('#exsave').addEventListener('click', ()=>{
 
   save(); renderDays(); renderExercises();
   closePanel($('#exsheet'), ()=>exButton(name) || $('#editprog'));
-  toast(old ? 'Saved' : 'Added');
+  toast(rounded ? `Rounded to ${targetSets(target)} sets — one side each` : (old ? 'Saved' : 'Added'));
 });
 
 $('#exdelete').addEventListener('click', ()=>{
@@ -1832,13 +1944,17 @@ function openSettings(){
   const u = U();
   $('#unitsel').innerHTML = Object.keys(UNITS).map(k =>
     `<button data-unit="${k}" aria-pressed="${k===units()}">${UNITS[k].label}</button>`).join('');
-  $('#fracbox').checked = !!db.settings.fractional;
-  $('#fraclab').textContent = u.fracLabel;
+  const owned = new Set(availablePlates().map(p => p.w));
+  $('#platesel').innerHTML = u.plates.map(p =>
+    `<button data-plate="${p.w}" aria-pressed="${owned.has(p.w)}">${p.w}</button>`).join('');
   $('#bwlab').textContent = `Bodyweight (${u.label})`;
   $('#bwinput').value = bw() || '';
   $('#transel').innerHTML = TRANSITION_OPTIONS.map(v =>
     `<option value="${v}">${v}s</option>`).join('');
   $('#transel').value = String(db.settings.transition ?? TRANSITION);
+  $('#alertsel').innerHTML = ALERT_OPTIONS.map(([v,label]) =>
+    `<option value="${v}">${esc(label)}</option>`).join('');
+  $('#alertsel').value = alertMode();
   $('#storagesub').textContent = storageBroken
     ? 'Saving is blocked on this device.'
     : (window.storage ? 'Saved to this app.' : 'Saved in this browser.');
@@ -1859,11 +1975,21 @@ $('#unitsel').addEventListener('click', e=>{
   toast('Now in ' + U().label);
 });
 
-$('#fracbox').addEventListener('change', e=>{
-  db.settings.fractional = e.target.checked;
+$('#platesel').addEventListener('click', e=>{
+  const b = e.target.closest('[data-plate]'); if(!b) return;
+  const w = +b.dataset.plate;
+  const owned = new Set(availablePlates().map(p => p.w));
+  if(owned.has(w)){
+    // A rack with nothing in it cannot load anything, so the last one stays.
+    if(owned.size === 1){ toast('Keep at least one plate'); return; }
+    owned.delete(w);
+  } else owned.add(w);
+  (db.settings.plates ||= {})[units()] = U().plates
+    .filter(p => owned.has(p.w)).map(p => p.w);
   save();
-  // Owning smaller plates changes both what the loader may use and how far the
-  // stepper moves, so a sheet left open behind settings has to catch up.
+  openSettings();
+  // Both the loader's stock and the stepper's jump follow from this, so a
+  // sheet left open behind settings has to catch up.
   if(state.ex){ renderPlateMath(); refreshStepperLabels(); }
 });
 
@@ -1871,6 +1997,20 @@ $('#bwinput').addEventListener('change', e=>{
   const v = parseFloat(e.target.value);
   (db.settings.bw ||= {})[units()] = isNaN(v) ? 0 : v;
   save();
+});
+
+$('#alertsel').addEventListener('change', e=>{
+  db.settings.alert = e.target.value;
+  save();
+  // Preview on change: picking "sound only" should tell you what that sounds
+  // like now, not in three minutes.
+  fireAlert(false);
+});
+
+$('#testalert').addEventListener('click', ()=>{
+  fireAlert(false);
+  const label = (ALERT_OPTIONS.find(([v]) => v === alertMode()) || [])[1] || '';
+  toast(alertMode() === 'silent' ? 'Alerts are silent' : label);
 });
 
 $('#transel').addEventListener('change', e=>{
