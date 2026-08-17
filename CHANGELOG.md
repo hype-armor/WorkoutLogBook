@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.5.0...logbook-v1.5.1) (2026-08-17)
+
+
+### Bug Fixes
+
+* count warm-up volume, and compute a session summary once ([#14](https://github.com/hype-armor/WorkoutLogBook/issues/14)) ([f8603fe](https://github.com/hype-armor/WorkoutLogBook/commit/f8603fee0cd9bf3b897f13f51b43993c46f599e2))
+
 ## [1.5.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.4.0...logbook-v1.5.0) (2026-08-16)
 
 
