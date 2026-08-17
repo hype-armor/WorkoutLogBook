@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.4.0...logbook-v1.5.0) (2026-08-16)
+
+
+### Features
+
+* log warm-up sets without them counting as work ([70413d0](https://github.com/hype-armor/WorkoutLogBook/commit/70413d0790fdc1844235130c6e98192be1e745be))
+
 ## [1.4.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.3.0...logbook-v1.4.0) (2026-08-16)
 
 
