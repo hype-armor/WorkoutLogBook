@@ -1047,12 +1047,15 @@ function setTime(s){
 function sessionStats(date){
   const all = db.sets.filter(s => s.d === date);
   const sets = workingSets(all);
-  const times = all.map(setTime).filter(Boolean); // warming up is still time spent
+  const times = all.map(setTime).filter(Boolean);
   return {
+    // Sets stay split, because a target of four means four working sets.
     count: sets.length,
     warmups: all.length - sets.length,
-    exercises: new Set(sets.map(s => s.e)).size,
-    tonnage: sets.reduce((a,s)=> a + (kindOf(s.e) === 'distance' ? 0 : loadOf(s) * s.r), 0),
+    // Volume, exercises and elapsed time cover everything: you moved the
+    // warm-up weight, you were in the gym for it, and it was still that lift.
+    exercises: new Set(all.map(s => s.e)).size,
+    tonnage: all.reduce((a,s)=> a + (kindOf(s.e) === 'distance' ? 0 : loadOf(s) * s.r), 0),
     start: times.length ? Math.min(...times) : null
   };
 }
@@ -1629,7 +1632,9 @@ function renderSessions(){
   if(!dates.length){ $('#sessions').innerHTML = `<div class="empty">No sessions logged yet.</div>`; return; }
   $('#sessions').innerHTML = dates.map(date=>{
     const sets = byDate[date];
-    const tonnage = sets.reduce((a,s)=> a + (kindOf(s.e)==='distance' ? 0 : loadOf(s) * s.r), 0);
+    // One source for both summaries. Computing it twice is what let the finish
+    // card and this card disagree about the same session.
+    const {count, warmups, tonnage} = sessionStats(date);
     const pain = db.days[date]?.pain;
     const note = db.days[date]?.notes;
     const open = state.openSession === date;
@@ -1644,7 +1649,8 @@ function renderSessions(){
     return `<div class="card">
       <button class="sesshead" data-sess="${esc(date)}" aria-expanded="${!!open}">
         <h3 style="margin:0">${esc(prettyDate(date))}${dayNameFor(sets)?' · '+esc(dayNameFor(sets)):''}</h3>
-        <span class="sessmeta">${sets.length} sets${open?' ▴':' ▾'}</span>
+        <span class="sessmeta">${count} set${count===1?'':'s'}${
+          warmups ? ` + ${warmups} warm-up${warmups===1?'':'s'}` : ''}${open?' ▴':' ▾'}</span>
       </button>
       <div class="sessmeta" style="margin-top:4px">${Math.round(tonnage).toLocaleString()} ${esc(u.label)} volume${
         typeof pain === 'number' ? ` · pain ${pain}` : ''}${

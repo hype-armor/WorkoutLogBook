@@ -302,11 +302,12 @@ test.describe('warm-up sets', () => {
     await page.click('#tab-train');
   });
 
-  test('the session summary separates them', async () => {
+  test('the session summary separates the counts but not the volume', async () => {
     // one working set on Deadlift; two warm-ups there plus one on Leg press
     await expect(page.locator('#finishwrap')).toContainText('1 set');
-    await expect(page.locator('#finishwrap')).toContainText('1 exercise');
     await expect(page.locator('#finishwrap')).toContainText('3 warm-ups');
+    // both exercises were touched, and every set's weight was moved
+    await expect(page.locator('#finishwrap')).toContainText('2 exercises');
   });
 
   test('a set can be reclassified after the fact', async () => {
@@ -331,6 +332,40 @@ test.describe('warm-up sets', () => {
   test('no page errors', () => {
     expect(errs).toEqual([]);
   });
+});
+
+test('the two session summaries agree, warm-ups included (#14)', async ({ browser }) => {
+  const ctx = await phone(browser);
+  const page = await ctx.newPage();
+  await page.goto(FILE_URL);
+  await page.waitForSelector('.ex');
+
+  const log = async (kind, w, r) => {
+    await page.click(`#setkind [data-kind="${kind}"]`);
+    await page.fill('#wt', String(w));
+    await page.fill('#reps', String(r));
+    await page.click('#logset');
+  };
+
+  await page.click('.ex[data-ex="Deadlift"]');
+  await log('warm', 135, 5);   //   675
+  await log('warm', 225, 5);   // 1,125
+  await log('work', 315, 5);   // 1,575
+  await page.click('#close');
+
+  // Warm-up weight was moved, so it is in the volume — 675 + 1125 + 1575.
+  const finish = (await page.textContent('#finishwrap')).replace(/\s+/g, ' ');
+  expect(finish).toContain('3,375 lb');
+  expect(finish).toContain('1 set');
+  expect(finish).toContain('2 warm-ups');
+
+  await page.click('#tab-history');
+  const history = (await page.textContent('#sessions .card')).replace(/\s+/g, ' ');
+  // These were computed independently and disagreed: 1,575 against 3,375, and
+  // "1 set" against "3 sets". Both now come from sessionStats().
+  expect(history).toContain('3,375 lb');
+  expect(history).toContain('1 set + 2 warm-ups');
+  await ctx.close();
 });
 
 test.describe('one-sided exercises get an even target', () => {
