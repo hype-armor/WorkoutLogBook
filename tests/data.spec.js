@@ -377,3 +377,84 @@ test('a v1 database migrates', async ({ browser }) => {
     b => b.map(x => x.textContent.trim()))).toContain('1.25');
   await ctx.close();
 });
+
+test.describe('data durability', () => {
+  // addInitScript runs on every navigation, so without this guard a reload
+  // re-seeds storage and silently undoes whatever the test just did.
+  const seedSessions = (page, n, lastBackup) => page.addInitScript(([count, backup]) => {
+    if (localStorage.getItem('logbook-v1')) return;
+    const sets = [];
+    for (let i = 0; i < count; i++) {
+      const t = Date.parse('2026-06-01') + i * 86400000;
+      sets.push({ id: t + 'x' + i, t, d: new Date(t).toISOString().slice(0, 10),
+                  e: 'Deadlift', dy: 'A', w: 225, r: 5, rir: 2, rest: 180, u: 'lb' });
+    }
+    localStorage.setItem('logbook-v1', JSON.stringify({
+      v: 2, sets, days: {}, pairs: {}, ex: {}, program: null,
+      settings: { units: 'lb', transition: 30, bw: { lb: 0, kg: 0 }, lastDay: 'A',
+                  alert: 'both', ...(backup ? { lastBackup: backup } : {}) },
+      rest: null
+    }));
+  }, [n, lastBackup]);
+
+  test('storage asks to be treated as permanent', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    const asked = [];
+    await page.exposeFunction('__persistCalled', () => asked.push(1));
+    await page.addInitScript(() => {
+      const real = navigator.storage.persist.bind(navigator.storage);
+      navigator.storage.persist = () => { window.__persistCalled(); return real(); };
+    });
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    // the app is the only copy of the data, so it has to ask
+    expect(asked.length).toBeGreaterThan(0);
+    await ctx.close();
+  });
+
+  test('a long stretch without a backup is surfaced, and can be deferred', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seedSessions(page, 9, null);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    await expect(page.locator('#banners')).toContainText('9 sessions since your last backup');
+    await page.click('#banners [data-act="snooze"]');
+    await expect(page.locator('#banners')).not.toContainText('since your last backup');
+
+    // and it stays quiet after a reload rather than nagging every launch
+    await page.reload();
+    await page.waitForSelector('.ex');
+    await expect(page.locator('#banners')).not.toContainText('since your last backup');
+    await ctx.close();
+  });
+
+  test('a few sessions is not worth nagging about', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seedSessions(page, 3, null);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await expect(page.locator('#banners')).not.toContainText('backup');
+    await ctx.close();
+  });
+
+  test('taking a backup clears the notice and is reported in settings', async ({ browser }) => {
+    const ctx = await phone(browser, { acceptDownloads: true });
+    const page = await ctx.newPage();
+    await seedSessions(page, 12, null);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await expect(page.locator('#banners')).toContainText('12 sessions');
+
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#banners [data-act="backup"]')]);
+    expect(dl.suggestedFilename()).toMatch(/^logbook-\d{8}\.json$/);
+    await expect(page.locator('#banners')).not.toContainText('since your last backup');
+
+    await page.click('#gear');
+    await expect(page.locator('#datastat')).toContainText('Backed up.');
+    await ctx.close();
+  });
+});

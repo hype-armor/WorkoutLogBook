@@ -681,3 +681,186 @@ test.describe('accessibility', () => {
     await ctx.close();
   });
 });
+
+test.describe('seeing further back', () => {
+  // 40 sessions, enough to overflow the 30 the list starts with
+  const seedLong = page => page.addInitScript(() => {
+    if (localStorage.getItem('logbook-v1')) return;
+    const sets = [];
+    for (let i = 0; i < 40; i++) {
+      const t = Date.parse('2026-01-05') + i * 86400000 * 2;
+      const d = new Date(t).toISOString().slice(0, 10);
+      sets.push({ id: t + 'a' + i, t, d, e: 'Deadlift', dy: 'A', w: 200 + i * 2, r: 5, rir: 2, rest: 180, u: 'lb' });
+      sets.push({ id: t + 'b' + i, t: t + 60000, d, e: 'Leg press', dy: 'A', w: 300, r: 10, rir: 2, rest: 120, u: 'lb' });
+    }
+    localStorage.setItem('logbook-v1', JSON.stringify({
+      v: 2, sets, days: {}, pairs: {}, ex: {}, program: null,
+      settings: { units: 'lb', transition: 30, bw: { lb: 0, kg: 0 }, lastDay: 'A', alert: 'both' }, rest: null
+    }));
+  });
+
+  test('older sessions can be walked back to instead of vanishing', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seedLong(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('#tab-history');
+
+    // the window starts at 30 and says how much it is holding back
+    await expect(page.locator('#sessions .card')).toHaveCount(30);
+    await expect(page.locator('#moresessions')).toContainText('10 older');
+    await page.click('#moresessions');
+    await expect(page.locator('#sessions .card')).toHaveCount(40);
+    await expect(page.locator('#moresessions')).toHaveCount(0);
+    await ctx.close();
+  });
+
+  test('the trend arc can be widened past eight sessions', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seedLong(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('#tab-history');
+
+    await expect(page.locator('#trendlabel')).toContainText('last 8 sessions');
+    await expect(page.locator('#trends .card').first()).toContainText('over 8 sessions');
+
+    await page.click('#trendspan [data-span="all"]');
+    await expect(page.locator('#trendlabel')).toContainText('every session');
+    await expect(page.locator('#trends .card').first()).toContainText('over 40 sessions');
+    await ctx.close();
+  });
+
+  test('a trend card opens the sets behind it', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seedLong(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('#tab-history');
+
+    await page.click('#trends .trendcard[data-ex="Deadlift"]');
+    await expect(page.locator('#exhist')).toHaveClass(/open/);
+    await expect(page.locator('#exhist-title')).toHaveText('Deadlift');
+    await expect(page.locator('#exhist-sub')).toContainText('40 sessions');
+    // every session it was trained, newest first, with the working weight
+    await expect(page.locator('.exhistday')).toHaveCount(40);
+    await expect(page.locator('.exhistday').first()).toContainText('278×5');
+    await ctx.close();
+  });
+});
+
+test.describe('program shape', () => {
+  test('days can be renamed, added and removed', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    await page.click('#editprog');
+    await expect(page.locator('#dayedit')).toBeVisible();
+    await page.fill('#dayname', 'Pull day');
+    await expect(page.locator('.day[aria-pressed="true"] b')).toHaveText('Pull day');
+
+    await expect(page.locator('.day')).toHaveCount(4);
+    await page.click('#addday');
+    await expect(page.locator('.day')).toHaveCount(5);
+    await expect(page.locator('.day[aria-pressed="true"] b')).toHaveText('Day 5');
+    // a fresh day starts empty rather than inheriting anything
+    await expect(page.locator('#exlist')).toContainText('No exercises in this day yet');
+
+    await page.click('#delday');
+    await expect(page.locator('.day')).toHaveCount(4);
+    await expect(page.locator('#toast')).toContainText(/day deleted/i);
+    await page.click('#toast button');           // undo
+    await expect(page.locator('.day')).toHaveCount(5);
+    await ctx.close();
+  });
+
+  test('an exercise can be logged for today without joining the program', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    // Front squat lives in Lower B; the rack for today's work is taken
+    await expect(page.locator('.ex[data-ex="Front squat"]')).toHaveCount(0);
+    await page.click('#logother');
+    await page.fill('#pickfilter', 'front');
+    await page.click('#picklist [data-pick="Front squat"]');
+
+    await expect(page.locator('#sheet-title')).toHaveText('Front squat');
+    await expect(page.locator('#sheet-sub')).toContainText('logged for today only');
+    await page.fill('#wt', '185');
+    await page.fill('#reps', '5');
+    await page.click('#logset');
+    await page.click('#close');
+
+    // it shows up for today, marked as not belonging to this day
+    const extra = page.locator('.ex.extra[data-ex="Front squat"]');
+    await expect(extra).toBeVisible();
+    await expect(extra).toContainText('Not in Lower A');
+    await expect(extra.locator('.count')).toHaveText('1');
+
+    // and Lower B is unchanged — this was a one-off, not a program edit
+    await page.click('[data-day="C"]');
+    await expect(page.locator('#exlist')).toContainText('Front squat');
+    await page.click('[data-day="A"]');
+    await page.reload();
+    await page.waitForSelector('.ex');
+    await expect(page.locator('.ex.extra[data-ex="Front squat"]')).toBeVisible();
+    await ctx.close();
+  });
+});
+
+test.describe('PWA affordances', () => {
+  test('a manifest shortcut lands on the view it names', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL + '?view=history');
+    await page.waitForSelector('#view-history:not(.hide)');
+    await expect(page.locator('#tab-history')).toHaveAttribute('aria-selected', 'true');
+
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await expect(page.locator('#tab-train')).toHaveAttribute('aria-selected', 'true');
+    await ctx.close();
+  });
+
+  test('a background notification fires only when it would tell you something', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    const counts = await page.evaluate(() => {
+      const Real = window.Notification;
+      let made = 0;
+      window.Notification = function () { made++; this.close = () => {}; };
+      window.Notification.permission = 'granted';
+      const at = (vis, notify) => {
+        db.settings.notify = notify;
+        Object.defineProperty(document, 'visibilityState', { get: () => vis, configurable: true });
+        const before = made;
+        fireAlert(false);
+        return made - before;
+      };
+      const out = {
+        backgroundedAndOn: at('hidden', true),
+        // on screen the timer already turned green, so a banner is noise
+        onScreen: at('visible', true),
+        settingOff: at('hidden', false)
+      };
+      Object.defineProperty(document, 'visibilityState', { get: () => 'visible', configurable: true });
+      window.Notification = Real;
+      return out;
+    });
+
+    expect(counts.backgroundedAndOn).toBe(1);
+    expect(counts.onScreen).toBe(0);
+    expect(counts.settingOff).toBe(0);
+    await ctx.close();
+  });
+});

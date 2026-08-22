@@ -143,6 +143,7 @@
     letter-spacing:-.01em;padding:9px 13px;cursor:pointer;
   }
   .banner.bad{border-color:var(--danger)}
+  .banner button.later{margin-left:0;background:none;color:var(--ink-3);border:1px solid var(--line)}
 
   /* session picker */
   .days{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
@@ -174,6 +175,7 @@
     content:'';position:absolute;left:0;top:14px;bottom:14px;width:3px;
     border-radius:0 3px 3px 0;background:transparent;
   }
+  .ex.extra{border-style:dashed}
   .ex.done::before{background:var(--good)}
   .ex.paired::before{background:var(--p35)}
   .ex.paired.done::before{background:var(--good)}
@@ -192,6 +194,9 @@
     color:var(--ink-2);border-radius:var(--r-sm);font-size:14px;cursor:pointer;padding:0 8px;
   }
   .exrow .tools button:disabled{opacity:.3}
+  .dayedit{margin-top:10px}
+  .dayrow{display:flex;gap:8px;margin-top:10px}
+  .dayrow .btn{margin-top:0}
 
   /* logged rows */
   .setrow{
@@ -403,6 +408,14 @@
 
   /* history */
   .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:16px;margin-bottom:10px}
+  .trendcard{display:block;width:100%;text-align:left;color:var(--ink);font:inherit;cursor:pointer}
+  .trendcard:active{background:var(--surface-2)}
+  .exhistday{display:flex;align-items:baseline;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .exhistday:last-child{border-bottom:0}
+  .exhistday b{font-size:14px;font-weight:600;min-width:96px;letter-spacing:-.01em}
+  .exhistday span{flex:1;min-width:0;color:var(--ink-2);font-size:14.5px;
+    letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+  .exhistday em{font-style:normal;color:var(--ink-3);font-size:13px;white-space:nowrap}
   .card.done{border-color:var(--good);background:linear-gradient(180deg,rgba(41,170,99,.10),transparent 60%)}
   .card.done h3{color:var(--good)}
   .card h3{font-size:16px;font-weight:660;letter-spacing:-.02em;margin:0 0 8px}
@@ -493,7 +506,19 @@
 
   <div class="eyebrow" id="exlabel">Exercises</div>
   <div id="exlist"></div>
+  <div class="dayedit hide" id="dayedit">
+    <label class="f"><span class="lab">Day name</span>
+      <input type="text" id="dayname" autocomplete="off"></label>
+    <label class="f" style="margin-top:10px"><span class="lab">Focus</span>
+      <input type="text" id="daytag" autocomplete="off" placeholder="Deadlift focus"></label>
+    <div class="dayrow">
+      <button class="btn ghost small" id="addday">+ Add day</button>
+      <button class="btn danger small" id="delday">Delete day</button>
+    </div>
+  </div>
+
   <button class="btn ghost small wide hide" id="addex" style="margin-top:8px">+ Add exercise</button>
+  <button class="btn ghost small wide" id="logother" style="margin-top:8px">Log a different exercise</button>
 
   <div class="eyebrow">After training</div>
   <div class="card">
@@ -509,7 +534,10 @@
 
 <!-- ============ HISTORY ============ -->
 <main class="wrap hide" id="view-history" role="tabpanel" aria-labelledby="tab-history">
-  <div class="eyebrow">Estimated max — last 8 sessions</div>
+  <div class="rowhead">
+    <div class="eyebrow" id="trendlabel">Estimated max</div>
+    <div class="bars" id="trendspan"></div>
+  </div>
   <div id="trends"></div>
   <div class="eyebrow">Back pain — last 21 rated days</div>
   <div class="card" id="paincard"></div>
@@ -618,6 +646,33 @@
   <div class="sheetfoot"><button class="btn" id="exsave">Save</button></div>
 </section>
 
+<!-- ============ PICK ANY EXERCISE ============ -->
+<section class="sheet" id="picker" role="dialog" aria-modal="true" aria-labelledby="picker-title" inert aria-hidden="true">
+  <div class="sheethead">
+    <div class="txt"><h2 id="picker-title" tabindex="-1">Log a different exercise</h2>
+      <div class="sub">Just for today — the day's program is left alone.</div></div>
+    <button class="icon" id="pickerclose" aria-label="Close">&#215;</button>
+  </div>
+  <div class="sheetbody">
+    <input type="text" id="pickfilter" placeholder="Search" autocomplete="off" aria-label="Search exercises">
+    <div id="picklist" style="margin-top:12px"></div>
+  </div>
+  <div class="restdock"></div>
+  <div class="sheetfoot"><button class="btn ghost" id="pickercancel">Cancel</button></div>
+</section>
+
+<!-- ============ ONE EXERCISE, OVER TIME ============ -->
+<section class="sheet" id="exhist" role="dialog" aria-modal="true" aria-labelledby="exhist-title" inert aria-hidden="true">
+  <div class="sheethead">
+    <div class="txt"><h2 id="exhist-title" tabindex="-1">Exercise</h2>
+      <div class="sub" id="exhist-sub"></div></div>
+    <button class="icon" id="exhistclose" aria-label="Close">&#215;</button>
+  </div>
+  <div class="sheetbody" id="exhist-body"></div>
+  <div class="restdock"></div>
+  <div class="sheetfoot"><button class="btn" id="exhistdone">Done</button></div>
+</section>
+
 <!-- ============ SETTINGS ============ -->
 <section class="sheet" id="settings" role="dialog" aria-modal="true" aria-labelledby="set-title" inert aria-hidden="true">
   <div class="sheethead">
@@ -646,7 +701,14 @@
 
     <label class="f" style="margin-top:16px"><span class="lab">When a rest timer ends</span>
       <select id="alertsel"></select></label>
-    <button class="btn ghost small wide" id="testalert" style="margin-top:10px">Test alert</button>
+    <label class="toggle" style="margin-top:14px">
+      <input type="checkbox" id="notifybox">
+      <span>Also notify when the app is in the background
+        <span class="sub">Reaches you if you switch apps mid-rest. It cannot wake a
+          phone that has suspended the app entirely.</span></span>
+    </label>
+
+    <button class="btn ghost small wide" id="testalert" style="margin-top:12px">Test alert</button>
     <div class="hint">Plays exactly what a finished timer plays, so you can find out
       whether it carries over the room before you are mid-set.</div>
 
@@ -770,6 +832,9 @@ const TRANSITION_OPTIONS = [15,20,30,45,60,90];
 
 // What a finished rest timer does. A gym is either too loud to hear a chime or
 // quiet enough that one is rude, so this needs to be a real choice.
+// A notification is the only alert that survives the app being backgrounded,
+// and even then only while the page is still alive — iOS suspends a home-screen
+// app outright, and nothing can run then. Off unless asked for.
 const ALERT_OPTIONS = [
   ['both',    'Sound and vibration'],
   ['sound',   'Sound only'],
@@ -848,6 +913,18 @@ const store = {
   }
 };
 
+// Without this the browser may evict localStorage under storage pressure, and
+// this app is the only copy of the data. Chrome grants it on engagement or
+// installation; Safari decides for itself. Failure is not worth reporting —
+// it only means storage stays best-effort, which is where it was already.
+async function claimPersistentStorage(){
+  try{
+    if(!navigator.storage?.persist) return null;
+    if(await navigator.storage.persisted()) return true;
+    return await navigator.storage.persist();
+  }catch(e){ return null; }
+}
+
 async function load(){
   let raw = null;
   try{ raw = await store.get(KEY); }
@@ -925,6 +1002,19 @@ async function doSave(){
   }
 }
 
+// Sessions logged since the last backup, which is the unit that matters: days
+// elapsed mean nothing if you did not train.
+const BACKUP_EVERY = 8;
+function sessionsSinceBackup(){
+  const since = db.settings.lastBackup || 0;
+  const dates = new Set(db.sets.filter(s => (setTime(s) || 0) > since).map(s => s.d));
+  return dates.size;
+}
+function backupOverdue(){
+  const n = sessionsSinceBackup();
+  return n >= BACKUP_EVERY && n >= (db.settings.backupSnooze || 0) + BACKUP_EVERY;
+}
+
 /* ---------- program access ---------- */
 const program = () => db.program || DEFAULT_PROGRAM;
 const dayById = id => program().find(d => d.id === id) || program()[0];
@@ -973,6 +1063,8 @@ function renderBanners(){
     <button data-act="backup">Back up</button></div>`);
   if(state.date !== todayISO()) out.push(`<div class="banner">Logging for ${esc(prettyDate(state.date))}, not today.
     <button data-act="today">Today</button></div>`);
+  if(backupOverdue()) out.push(`<div class="banner">${sessionsSinceBackup()} sessions since your last backup.
+    <button data-act="backup">Back up</button><button data-act="snooze" class="later">Later</button></div>`);
   if(pendingWorker) out.push(`<div class="banner">A new version is ready.
     <button data-act="update">Reload</button></div>`);
   if(installPrompt) out.push(`<div class="banner">Add Logbook to your home screen to use it offline.
@@ -1012,6 +1104,12 @@ function renderExercises(){
   $('#exlabel').textContent = day.name +
     (db.days[state.date]?.done ? ' — finished' : ' — exercises');
   $('#addex').classList.toggle('hide', !state.progEdit);
+  $('#dayedit').classList.toggle('hide', !state.progEdit);
+  if(state.progEdit){
+    $('#dayname').value = day.name || '';
+    $('#daytag').value = day.tag || '';
+    $('#delday').disabled = program().length <= 1;
+  }
   const rows = day.ex.map(([name,target], i)=>{
     const n = workingSets(setsFor(state.date, name)).length;
     const goal = targetSets(target);
@@ -1029,7 +1127,18 @@ function renderExercises(){
       </div>` : '';
     return `<div class="exrow">${ex}${tools}</div>`;
   });
-  $('#exlist').innerHTML = rows.join('') ||
+  // Anything logged today that this day does not list — a substitution when the
+  // rack was taken. Shown so it is not invisible, without joining the program.
+  const listed = new Set(day.ex.map(([n]) => n));
+  const extras = [...new Set(db.sets.filter(s => s.d === state.date && !listed.has(s.e)).map(s => s.e))];
+  const extraRows = extras.map(name => {
+    const n = workingSets(setsFor(state.date, name)).length;
+    return `<div class="exrow"><button class="ex extra" data-ex="${esc(name)}">
+      <span class="name">${esc(name)}<span class="pairline">Not in ${esc(day.name)}</span></span>
+      <span class="count">${n}</span></button></div>`;
+  });
+
+  $('#exlist').innerHTML = rows.concat(extraRows).join('') ||
     `<div class="empty">No exercises in this day yet. Tap Edit, then Add exercise.</div>`;
   renderFinish();
 }
@@ -1311,6 +1420,34 @@ const wantsBuzz  = () => alertMode() === 'both' || alertMode() === 'vibrate';
 function fireAlert(short){
   if(wantsSound()) chime(short ? [0] : [0, .18]);
   if(wantsBuzz() && navigator.vibrate) navigator.vibrate(short ? [90] : [130,70,130]);
+  notifyRestDone(short);
+}
+
+// Only worth raising when you are looking at something else; on screen the
+// timer already turned green.
+function notifyRestDone(short){
+  if(!db.settings.notify) return;
+  if(typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  if(document.visibilityState === 'visible') return;
+  try{
+    const n = new Notification(short ? 'Go now' : 'Rest complete', {
+      body: rest.ex || 'Next set',
+      tag: 'logbook-rest',      // replaces rather than stacks
+      icon: 'icon-192.png',
+      silent: alertMode() === 'silent'
+    });
+    n.onclick = () => { window.focus(); n.close(); };
+  }catch(e){ /* denied or unsupported */ }
+}
+
+async function askNotify(on){
+  if(!on){ db.settings.notify = false; save(); return true; }
+  if(typeof Notification === 'undefined'){ toast('Not supported here'); return false; }
+  let perm = Notification.permission;
+  if(perm === 'default') perm = await Notification.requestPermission();
+  if(perm !== 'granted'){ toast('Notifications are blocked'); return false; }
+  db.settings.notify = true; save();
+  return true;
 }
 
 function chime(times){
@@ -1498,8 +1635,9 @@ function renderSheetSub(){
   const prev = db.sets.filter(s => s.e === ex && s.d !== state.date).slice(-1)[0];
   const done = workingSets(setsFor(state.date, ex)).length, goal = targetSets(target);
   const goalSets = targetSets(target);
-  const bits = [`Target ${target}` +
-    (isUnilateral(ex) && goalSets ? ` (${goalSets/2} per side)` : '')];
+  const bits = [target
+    ? `Target ${target}` + (isUnilateral(ex) && goalSets ? ` (${goalSets/2} per side)` : '')
+    : 'No target — logged for today only'];
   if(goal) bits.push(`${done}/${goal} done`);
   else if(done) bits.push(`${done} logged`);
   bits.push(prev
@@ -1565,8 +1703,15 @@ function sparkline(vals){
       fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/></svg>`;
 }
 
+const TREND_SPANS = [[8,'8'],[20,'20'],[50,'50'],['all','All']];
+
 function renderHistory(){
   const u = U();
+  const span = state.trendSpan || 8;
+  $('#trendlabel').textContent = span === 'all'
+    ? 'Estimated max — every session' : `Estimated max — last ${span} sessions`;
+  $('#trendspan').innerHTML = TREND_SPANS.map(([v,label]) =>
+    `<button data-span="${v}" aria-pressed="${String(v)===String(span)}">${label}</button>`).join('');
   const byEx = {};
   db.sets.forEach(s=>{
     if(isWarmup(s)) return; // a ramp-up rep is not evidence of a max
@@ -1581,7 +1726,8 @@ function renderHistory(){
     })
     .sort((a,b)=> b.dates.at(-1).localeCompare(a.dates.at(-1)))
     .map(c=>{
-      const vals = c.vals.slice(-8);
+      const span = state.trendSpan || 8;
+      const vals = span === 'all' ? c.vals : c.vals.slice(-span);
       const now = vals.at(-1), first = vals[0];
       const pct = first ? ((now-first)/first*100) : 0;
       const cls = vals.length<2 ? 'flat' : pct > 1.5 ? 'up' : pct < -1.5 ? 'down' : 'flat';
@@ -1589,11 +1735,12 @@ function renderHistory(){
         : cls==='flat' ? 'no clear change' : (pct>0?'+':'') + pct.toFixed(1) + '% over ' + vals.length + ' sessions';
       const unit = kindOf(c.ex) === 'distance' ? u.dist : u.label;
       const what = kindOf(c.ex) === 'distance' ? 'best distance' : 'est. max ' + unit;
-      return `<div class="card">
+      return `<button class="card trendcard" data-ex="${esc(c.ex)}"
+          aria-label="History for ${esc(c.ex)}">
         <h3>${esc(c.ex)}</h3>
         <div class="metric"><b>${Math.round(now)}</b><small>${esc(what)}</small>
           <small class="delta ${cls}" style="margin-left:auto">${esc(label)}</small></div>
-        ${sparkline(vals)}</div>`;
+        ${sparkline(vals)}</button>`;
     });
   $('#trends').innerHTML = cards.length ? cards.join('')
     : `<div class="empty">Nothing logged yet. Estimated max comes from weight, reps and RIR together, so a set of 8 at 3 RIR still tells you something — you never have to test a true max to see the trend.</div>`;
@@ -1628,7 +1775,9 @@ function renderSessions(){
   const u = U();
   const byDate = {};
   db.sets.forEach(s => (byDate[s.d] ||= []).push(s));
-  const dates = Object.keys(byDate).sort().reverse().slice(0, 30);
+  const all = Object.keys(byDate).sort().reverse();
+  const shown = state.sessionsShown || 30;
+  const dates = all.slice(0, shown);
   if(!dates.length){ $('#sessions').innerHTML = `<div class="empty">No sessions logged yet.</div>`; return; }
   $('#sessions').innerHTML = dates.map(date=>{
     const sets = byDate[date];
@@ -1658,7 +1807,10 @@ function renderSessions(){
           return st && dn > st ? ' in ' + Math.max(1, Math.round((dn-st)/60000)) + ' min' : ''; })()}` : ''}</div>
       ${open ? `<div class="sessbody">${lines}${note?`<div class="sessnote">${esc(note)}</div>`:''}</div>` : ''}
     </div>`;
-  }).join('');
+  }).join('') + (all.length > dates.length
+    ? `<button class="btn ghost small wide" id="moresessions">Show 30 more · ${
+        all.length - dates.length} older</button>`
+    : '');
 }
 
 /* ---------- steppers ---------- */
@@ -1715,6 +1867,10 @@ $('#banners').addEventListener('click', e=>{
   const b = e.target.closest('[data-act]'); if(!b) return;
   if(b.dataset.act === 'today'){ state.date = todayISO(); refreshDate(); }
   if(b.dataset.act === 'backup') downloadBackup();
+  if(b.dataset.act === 'snooze'){
+    db.settings.backupSnooze = sessionsSinceBackup();
+    save(); renderBanners();
+  }
   if(b.dataset.act === 'update') applyUpdate();
   if(b.dataset.act === 'install') promptInstall();
 });
@@ -1761,6 +1917,44 @@ $('#editprog').addEventListener('click', ()=>{
 });
 
 $('#addex').addEventListener('click', ()=>openExEditor(null));
+
+function editDay(field, value){
+  const day = ownProgram().find(d => d.id === state.day);
+  if(!day) return;
+  day[field] = value;
+  save(); renderDays(); renderExercises();
+}
+$('#dayname').addEventListener('input', e=>editDay('name', e.target.value));
+$('#daytag').addEventListener('input', e=>editDay('tag', e.target.value));
+
+$('#addday').addEventListener('click', ()=>{
+  const p = ownProgram();
+  // ids only have to be unique; the visible identity is the name.
+  const id = 'd' + Date.now().toString(36);
+  p.push({id, name:`Day ${p.length + 1}`, tag:'', ex:[]});
+  state.day = id;
+  db.settings.lastDay = id;
+  save(); renderDays(); renderExercises();
+  $('#dayname').focus();
+  toast('Day added');
+});
+
+$('#delday').addEventListener('click', ()=>{
+  const p = ownProgram();
+  if(p.length <= 1){ toast('Keep at least one day'); return; }
+  const i = p.findIndex(d => d.id === state.day);
+  if(i < 0) return;
+  const [removed] = p.splice(i, 1);
+  state.day = p[Math.min(i, p.length - 1)].id;
+  db.settings.lastDay = state.day;
+  save(); renderDays(); renderExercises();
+  // Logged sets keep their own day id, so nothing in history is lost with it.
+  toast('Day deleted', {label:'Undo', fn:()=>{
+    p.splice(i, 0, removed);
+    state.day = removed.id;
+    save(); renderDays(); renderExercises();
+  }});
+});
 
 /* ---------- events: log sheet ---------- */
 $('#wt').addEventListener('input', renderPlateMath);
@@ -2007,11 +2201,19 @@ function openSettings(){
   $('#alertsel').innerHTML = ALERT_OPTIONS.map(([v,label]) =>
     `<option value="${v}">${esc(label)}</option>`).join('');
   $('#alertsel').value = alertMode();
+  $('#notifybox').checked = !!db.settings.notify &&
+    typeof Notification !== 'undefined' && Notification.permission === 'granted';
   $('#storagesub').textContent = storageBroken
     ? 'Saving is blocked on this device.'
-    : (window.storage ? 'Saved to this app.' : 'Saved in this browser.');
+    : persistentStorage === true
+      ? 'Saved in this browser, marked permanent.'
+      : 'Saved in this browser — the browser may clear it, so keep a backup.';
+  const since = sessionsSinceBackup();
   $('#datastat').textContent =
-    `${db.sets.length} sets across ${new Set(db.sets.map(s=>s.d)).size} days.`;
+    `${db.sets.length} sets across ${new Set(db.sets.map(s=>s.d)).size} days. ` +
+    (db.settings.lastBackup
+      ? (since ? `${since} session${since===1?'':'s'} since your last backup.` : 'Backed up.')
+      : 'Never backed up.');
   $('#appversion').textContent = `Logbook ${APP_VERSION}`;
   openPanel($('#settings'), $('#set-title'));
 }
@@ -2059,6 +2261,11 @@ $('#alertsel').addEventListener('change', e=>{
   fireAlert(false);
 });
 
+$('#notifybox').addEventListener('change', async e=>{
+  const ok = await askNotify(e.target.checked);
+  e.target.checked = ok && e.target.checked;
+});
+
 $('#testalert').addEventListener('click', ()=>{
   fireAlert(false);
   const label = (ALERT_OPTIONS.find(([v]) => v === alertMode()) || [])[1] || '';
@@ -2092,6 +2299,11 @@ const stamp = () => todayISO().replace(/-/g,'');
 
 function downloadBackup(){
   const ok = download(`logbook-${stamp()}.json`, JSON.stringify(db, null, 2), 'application/json');
+  if(ok){
+    db.settings.lastBackup = Date.now();
+    db.settings.backupSnooze = 0;
+    save(); renderBanners();
+  }
   toast(ok ? 'Backup downloaded' : 'Download blocked');
 }
 
@@ -2141,7 +2353,101 @@ function switchTab(t){
 $('#tab-train').addEventListener('click', ()=>switchTab('train'));
 $('#tab-history').addEventListener('click', ()=>switchTab('history'));
 
+// The trend line is a summary; this is the working underneath it, which is the
+// question a chart actually raises — what did I do, and when.
+// Every exercise the app knows: the whole program, plus anything ever logged.
+function allKnownExercises(){
+  const names = new Set();
+  program().forEach(d => d.ex.forEach(([n]) => names.add(n)));
+  db.sets.forEach(s => names.add(s.e));
+  return [...names].sort((a,b) => a.localeCompare(b));
+}
+
+function renderPickList(){
+  const q = $('#pickfilter').value.trim().toLowerCase();
+  const day = dayById(state.day);
+  const listed = new Set(day.ex.map(([n]) => n));
+  const hits = allKnownExercises().filter(n => !q || n.toLowerCase().includes(q));
+  $('#picklist').innerHTML = hits.length ? hits.map(n =>
+    `<div class="exrow"><button class="ex" data-pick="${esc(n)}">
+      <span class="name">${esc(n)}${listed.has(n) ? `<span class="pairline">In ${esc(day.name)}</span>` : ''}</span>
+    </button></div>`).join('')
+    : `<div class="empty">Nothing matches. Add it to a day from Edit if it is new.</div>`;
+}
+
+function openPicker(){
+  $('#pickfilter').value = '';
+  renderPickList();
+  openPanel($('#picker'), $('#pickfilter'));
+}
+
+$('#logother').addEventListener('click', openPicker);
+$('#pickfilter').addEventListener('input', renderPickList);
+$('#pickerclose').addEventListener('click', ()=>closePanel($('#picker')));
+$('#pickercancel').addEventListener('click', ()=>closePanel($('#picker')));
+$('#picklist').addEventListener('click', e=>{
+  const b = e.target.closest('[data-pick]'); if(!b) return;
+  const name = b.dataset.pick;
+  closePanel($('#picker'));
+  openSheet(name);
+});
+
+function openExHistory(ex){
+  const u = U(), k = kindOf(ex);
+  const mine = db.sets.filter(s => s.e === ex);
+  const byDate = {};
+  mine.forEach(s => (byDate[s.d] ||= []).push(s));
+  const dates = Object.keys(byDate).sort().reverse();
+
+  $('#exhist-title').textContent = ex;
+  const sessions = dates.length;
+  const best = Math.max(0, ...mine.filter(s => !isWarmup(s)).map(s => k === 'distance' ? s.r : e1rm(s)));
+  $('#exhist-sub').textContent = sessions
+    ? `${sessions} session${sessions===1?'':'s'} · best ${Math.round(best)} ${k==='distance'?u.dist:u.label}`
+    : 'Nothing logged yet';
+
+  $('#exhist-body').innerHTML = dates.length ? dates.map(d=>{
+    const list = byDate[d];
+    const detail = list.map(s => {
+      const load = k === 'distance' ? `${fmtW(s.r)}${u.dist}`
+        : k === 'bodyweight' ? `${toDisplay(s) > 0 ? `BW+${fmtW(toDisplay(s))}` : 'BW'}×${s.r}`
+        : `${fmtW(toDisplay(s))}×${s.r}`;
+      return isWarmup(s) ? `<em>${esc(load)}</em>` : esc(load);
+    }).join('  ');
+    const work = workingSets(list);
+    const top = work.length
+      ? Math.round(Math.max(...work.map(s => k === 'distance' ? s.r : e1rm(s)))) : null;
+    return `<div class="exhistday">
+      <b>${esc(prettyDate(d))}</b>
+      <span>${detail}</span>
+      ${top ? `<em>${top}</em>` : ''}
+    </div>`;
+  }).join('') : `<div class="empty">Nothing logged for this exercise yet.</div>`;
+
+  openPanel($('#exhist'), $('#exhist-title'));
+}
+
+$('#trends').addEventListener('click', e=>{
+  const b = e.target.closest('[data-ex]'); if(!b) return;
+  openExHistory(b.dataset.ex);
+});
+$('#exhistclose').addEventListener('click', ()=>closePanel($('#exhist')));
+$('#exhistdone').addEventListener('click', ()=>closePanel($('#exhist')));
+
+$('#trendspan').addEventListener('click', e=>{
+  const b = e.target.closest('[data-span]'); if(!b) return;
+  state.trendSpan = b.dataset.span === 'all' ? 'all' : +b.dataset.span;
+  renderHistory();
+});
+
 $('#sessions').addEventListener('click', e=>{
+  if(e.target.closest('#moresessions')){
+    // A fixed window of 30 quietly hid everything older; this walks back
+    // through it rather than pretending the rest is not there.
+    state.sessionsShown = (state.sessionsShown || 30) + 30;
+    renderSessions();
+    return;
+  }
   const b = e.target.closest('[data-sess]'); if(!b) return;
   state.openSession = state.openSession === b.dataset.sess ? null : b.dataset.sess;
   renderSessions();
@@ -2167,8 +2473,11 @@ function suggestDay(){
   return db.settings.lastDay || p[0].id;
 }
 
+let persistentStorage = null;
+
 (async ()=>{
   await load();
+  persistentStorage = await claimPersistentStorage();
   state.day = suggestDay();
   if(!program().some(d => d.id === state.day)) state.day = program()[0].id;
 
@@ -2180,7 +2489,10 @@ function suggestDay(){
     showRest();
   } else if(r){ db.rest = null; }
 
+  // Manifest shortcuts land here with ?view=history
+  const wanted = new URLSearchParams(location.search).get('view');
   rerenderAll();
+  if(wanted === 'history') switchTab('history');
 })();
 
 /* ---------- offline install ---------- */
