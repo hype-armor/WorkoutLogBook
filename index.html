@@ -2560,8 +2560,10 @@ let persistentStorage = null;
 /* ---------- offline install ---------- */
 // A new version never reloads the page on its own — that would throw away a
 // half-entered set. It offers, and the user decides when.
+let updateRequested = false;
 function applyUpdate(){
   if(!pendingWorker) return;
+  updateRequested = true;
   pendingWorker.postMessage('SKIP_WAITING');
   pendingWorker = null;
   renderBanners();
@@ -2585,9 +2587,16 @@ window.addEventListener('appinstalled', ()=>{ installPrompt = null; renderBanner
 // Only meaningful over http(s). Opened straight from disk the app still runs,
 // it just has no offline cache to install.
 if('serviceWorker' in navigator && location.protocol.startsWith('http')){
+  // A page that loaded without a controller is a first install. clients.claim()
+  // fires controllerchange for it too, and reloading then restarts a page that
+  // is already showing current content — a visible flash on first launch, and a
+  // race against anything mid-flight. Reload only when a worker actually
+  // replaced another, or when the update was asked for.
+  const hadController = !!navigator.serviceWorker.controller;
   let reloading = false;
   navigator.serviceWorker.addEventListener('controllerchange', ()=>{
     if(reloading) return;
+    if(!hadController && !updateRequested) return;
     reloading = true;
     location.reload();
   });
