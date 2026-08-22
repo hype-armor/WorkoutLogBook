@@ -518,7 +518,7 @@ test('the plate diagram labels every plate and stays centred', async ({ browser 
   const read = () => page.evaluate(() => {
     const svg = document.querySelector('#barsvg');
     const texts = [...svg.querySelectorAll('text')].map(t => t.textContent.trim());
-    const els = [...svg.querySelectorAll('rect, text')];
+    const els = [...svg.querySelectorAll('rect')];
     const xs = els.flatMap(e => { const b = e.getBBox(); return [b.x, b.x + b.width]; });
     return { texts, left: Math.min(...xs), right: Math.max(...xs), width: svg.viewBox.baseVal.width };
   });
@@ -533,28 +533,36 @@ test('the plate diagram labels every plate and stays centred', async ({ browser 
     expect(Math.abs((d.left + d.right) / 2 - d.width / 2), `${weight} lb off centre`).toBeLessThan(1);
   }
 
-  // the label on each plate has to be legible against that plate
+  // the label on each plate has to be legible against that plate. Matching by
+  // position broke once thin plates started running their labels sideways, so
+  // each label records the plate it sits on.
   const inks = await page.evaluate(() => {
     const rel = hex => {
       const c = [1,3,5].map(i => parseInt(hex.slice(i,i+2),16)/255)
         .map(v => v <= 0.04045 ? v/12.92 : ((v+0.055)/1.055)**2.4);
       return 0.2126*c[0] + 0.7152*c[1] + 0.0722*c[2];
     };
-    const toHex = rgb => '#' + rgb.match(/\d+/g).slice(0,3)
+    const toHex = rgb => rgb.startsWith('#') ? rgb : '#' + rgb.match(/\d+/g).slice(0,3)
       .map(n => (+n).toString(16).padStart(2,'0')).join('');
-    const svg = document.querySelector('#barsvg');
-    const rects = [...svg.querySelectorAll('rect')];
-    return [...svg.querySelectorAll('text')].slice(0, -1).map((t, i) => {
-      const plate = rects.find(r => Math.abs(r.getBBox().x + r.getBBox().width/2
-        - (t.getBBox().x + t.getBBox().width/2)) < 3 && r.getBBox().height > 20);
-      if (!plate) return null;
-      const a = rel(toHex(getComputedStyle(t).fill)), b = rel(toHex(getComputedStyle(plate).fill));
+    return [...document.querySelectorAll('#barsvg text[data-on]')].map(t => {
+      const a = rel(toHex(getComputedStyle(t).fill));
+      const b = rel(toHex(t.dataset.on));
       const [hi, lo] = [a, b].sort((x, y) => y - x);
-      return (hi + 0.05) / (lo + 0.05);
-    }).filter(Boolean);
+      return { label: t.textContent, ratio: (hi + 0.05) / (lo + 0.05) };
+    });
   });
   expect(inks.length).toBeGreaterThan(0);
-  for (const c of inks) expect(c, 'plate label contrast').toBeGreaterThanOrEqual(4.5);
+  for (const { label, ratio } of inks) expect(ratio, `label ${label}`).toBeGreaterThanOrEqual(4.5);
+
+  // a heavier plate is both wider and taller, as it is in a rack
+  const shapes = await page.evaluate(() =>
+    [...document.querySelectorAll('#barsvg rect')]
+      .map(r => ({ w: +r.getAttribute('width'), h: +r.getAttribute('height'), fill: r.getAttribute('fill') }))
+      .filter(r => r.fill && r.fill.startsWith('#')));
+  const big = shapes.find(r => r.h === Math.max(...shapes.map(s => s.h)));
+  const small = shapes.find(r => r.h === Math.min(...shapes.map(s => s.h)));
+  expect(big.w, 'a 45 should be thicker than a 1.25').toBeGreaterThan(small.w);
+  expect(big.h).toBeGreaterThan(small.h);
 
   // the message the diagram used to carry is gone; "per side" still says it
   expect((await page.textContent('#platemath')).toLowerCase()).not.toContain('one side shown');
