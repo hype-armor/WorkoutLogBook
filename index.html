@@ -240,7 +240,7 @@
   }
   .sheet.open{transform:translateY(0)}
   .sheethead{
-    flex:none;padding:18px 18px 14px;display:flex;align-items:flex-start;gap:12px;
+    flex:none;padding:14px 16px 10px;display:flex;align-items:flex-start;gap:12px;
     border-bottom:1px solid var(--line);
   }
   .sheethead .txt{flex:1;min-width:0}
@@ -249,9 +249,9 @@
   .sheet .sub{color:var(--ink-3);font-size:13.5px;line-height:1.4;letter-spacing:-.005em}
   /* Only the body scrolls, so the primary action never leaves the screen. */
   .sheetbody{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;
-    padding:16px 18px 6px;-webkit-overflow-scrolling:touch}
+    padding:12px 16px 4px;-webkit-overflow-scrolling:touch}
   .sheetfoot{
-    flex:none;padding:12px 18px calc(14px + var(--safe-bottom));
+    flex:none;padding:10px 16px calc(12px + var(--safe-bottom));
     border-top:1px solid var(--line);background:var(--surface);
     display:flex;gap:10px;
   }
@@ -260,13 +260,13 @@
   .fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   label.f{display:block}
   label.f span.lab{
-    display:block;font-size:12px;font-weight:620;letter-spacing:.05em;
-    text-transform:uppercase;color:var(--ink-3);margin-bottom:8px;
+    display:block;font-size:11.5px;font-weight:620;letter-spacing:.05em;
+    text-transform:uppercase;color:var(--ink-3);margin-bottom:5px;
   }
   input[type=number],input[type=text],select,textarea{
     width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-md);
-    color:var(--ink);font-family:inherit;font-size:30px;font-weight:640;letter-spacing:-.03em;
-    padding:12px;text-align:center;
+    color:var(--ink);font-family:inherit;font-size:26px;font-weight:640;letter-spacing:-.03em;
+    padding:9px;text-align:center;
   }
   input[type=text],textarea,select{font-size:15px;font-weight:450;text-align:left;letter-spacing:-.01em}
   select{padding:13px 12px;min-height:48px}
@@ -274,9 +274,9 @@
   input:focus,textarea:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
   /* signature: plate-disc RIR selector */
-  .plates{display:flex;gap:8px;justify-content:space-between;margin-top:8px}
+  .plates{display:flex;gap:7px;justify-content:space-between;margin-top:6px}
   .plate{
-    flex:1;aspect-ratio:1/1;border-radius:50%;border:2px solid var(--line-2);
+    flex:1;aspect-ratio:1/1;max-height:58px;border-radius:50%;border:2px solid var(--line-2);
     background:var(--surface-2);color:var(--ink-3);
     font-family:inherit;font-size:19px;font-weight:680;letter-spacing:-.02em;cursor:pointer;
     display:flex;align-items:center;justify-content:center;
@@ -289,10 +289,10 @@
   .plate[data-v="3"][aria-pressed="true"]{border-color:var(--p10);color:var(--p10)}
   .plate[data-v="4"][aria-pressed="true"]{border-color:var(--ink-2);color:var(--ink)}
   .plate[aria-pressed="true"]{transform:scale(1.07);background:var(--bg);border-width:3px}
-  .rirhint{color:var(--ink-3);font-size:13px;text-align:center;margin-top:10px;min-height:18px;letter-spacing:-.005em}
+  .rirhint{color:var(--ink-3);font-size:12.5px;text-align:center;margin-top:6px;min-height:16px;letter-spacing:-.005em}
 
   /* plate math */
-  .platemath{margin-top:18px;border-top:1px solid var(--line);padding-top:16px}
+  .platemath{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
   .pmhead{display:flex;flex-direction:column;align-items:flex-start;margin-bottom:12px;gap:10px}
   .pmhead .eyebrow{margin:0}
   .bars{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-start;width:100%}
@@ -302,8 +302,8 @@
     padding:8px 12px;border-radius:999px;cursor:pointer;
   }
   .bars button[aria-pressed="true"]{background:var(--ink);color:var(--on-light);border-color:var(--ink)}
-  .barsvg{display:block;width:100%;height:86px}
-  .pmtext{font-size:17px;font-weight:600;letter-spacing:-.02em;text-align:center;margin-top:8px}
+  .barsvg{display:block;width:100%;height:64px}
+  .pmtext{font-size:16px;font-weight:600;letter-spacing:-.02em;text-align:center;margin-top:4px}
   .pmtext .per{color:var(--ink-3);font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase}
   .pmwarn{color:var(--warn);font-size:13px;text-align:center;margin-top:6px}
   .toggle{
@@ -317,7 +317,7 @@
   .stepper{display:flex;gap:8px;align-items:stretch}
   .stepper input{flex:1;min-width:0}
   .stepper button{
-    width:72px;flex:none;background:var(--surface-2);border:1px solid var(--line);
+    width:66px;flex:none;background:var(--surface-2);border:1px solid var(--line);
     border-radius:var(--r-md);color:var(--ink);font-family:inherit;font-weight:640;
     font-size:16px;letter-spacing:-.02em;cursor:pointer;
   }
@@ -327,7 +327,7 @@
   .disclose{
     width:100%;background:none;border:1px dashed var(--line-2);border-radius:var(--r-md);
     color:var(--ink-3);font-family:inherit;font-size:13px;font-weight:600;letter-spacing:-.01em;
-    padding:11px;cursor:pointer;margin-bottom:14px;min-height:44px;
+    padding:9px;cursor:pointer;margin-bottom:10px;min-height:44px;
   }
   .disclose[aria-expanded="true"]{border-style:solid;color:var(--ink);border-color:var(--line-2)}
   .ex .pairline{
@@ -554,6 +554,7 @@
       <h2 id="sheet-title" tabindex="-1">Exercise</h2>
       <div class="sub" id="sheet-sub"></div>
     </div>
+    <button class="icon" id="exsettings" aria-label="Exercise settings">&#9881;</button>
     <button class="icon" id="close" aria-label="Close">&#215;</button>
   </div>
 
@@ -566,9 +567,9 @@
 
     <div id="setlist"></div>
 
-    <div class="bars" id="setkind" style="margin:14px 0 4px;justify-content:flex-start"></div>
+    <div class="bars" id="setkind" style="margin:0 0 2px;justify-content:flex-start"></div>
 
-    <label class="f" style="margin-top:12px">
+    <label class="f" style="margin-top:8px">
       <span class="lab" id="wtlab">Weight</span>
       <div class="stepper">
         <button type="button" id="wdown" aria-label="Decrease weight">&minus;</button>
@@ -577,7 +578,7 @@
       </div>
     </label>
 
-    <label class="f" style="margin-top:10px">
+    <label class="f" style="margin-top:8px">
       <span class="lab" id="repslab">Reps</span>
       <div class="stepper">
         <button type="button" id="rdown" aria-label="Decrease reps">&minus;</button>
@@ -589,17 +590,13 @@
     <div class="hint hide" id="bwhint"></div>
 
     <div class="platemath hide" id="platemath">
-      <div class="pmhead">
-        <div class="eyebrow">Loading</div>
-        <div class="bars" id="bars"></div>
-      </div>
       <svg class="barsvg" id="barsvg" viewBox="0 0 300 86" preserveAspectRatio="xMidYMid meet" role="img"></svg>
       <div class="pmtext" id="pmtext"></div>
       <div class="pmwarn hide" id="pmwarn"></div>
     </div>
 
     <div id="rirblock">
-      <div class="eyebrow" id="rirlab" style="margin:16px 0 0">Reps in reserve</div>
+      <div class="eyebrow" id="rirlab" style="margin:12px 0 0">Reps in reserve</div>
       <div class="plates" id="plates"></div>
       <div class="rirhint" id="rirhint">How many more reps could you have done?</div>
     </div>
@@ -636,9 +633,13 @@
         <span class="sub">Keeps the target even, so both sides get the same work.</span></span>
     </label>
 
-    <label class="f" style="margin-top:14px"><span class="lab">Plate math</span>
+    <label class="f" style="margin-top:14px"><span class="lab">Bar / plate math</span>
       <select id="exbar"></select></label>
-    <label class="f" style="margin-top:10px"><span class="lab">Rest target</span>
+    <label class="f" style="margin-top:10px">
+      <span class="lab" id="exproglab">Progression</span>
+      <input type="number" id="exprog" inputmode="decimal" step="any" aria-labelledby="exproglab"></label>
+    <div class="hint" id="exproghint"></div>
+    <label class="f" style="margin-top:14px"><span class="lab">Rest target</span>
       <select id="exrest"></select></label>
     <button class="btn danger small wide" id="exdelete" style="margin-top:16px">Remove from this day</button>
   </div>
@@ -1026,6 +1027,31 @@ const meta = ex => db.ex?.[ex] || {};
 const kindOf = ex => meta(ex).kind || DEFAULT_KIND[ex] || 'weight';
 const isUnilateral = ex => meta(ex).uni ?? !!DEFAULT_UNILATERAL[ex];
 
+// How much to add next time. Defaults to the smallest jump the rack allows,
+// which for a barbell is one plate a side.
+function progressionFor(ex){
+  const m = meta(ex).prog;
+  const set = m && typeof m === 'object' ? m[units()] : null;
+  if(set > 0) return set;
+  return isLoadable(ex) ? smallestPlate() * 2 : U().otherStep;
+}
+
+// What to put in the fields when the sheet opens.
+//   nothing logged     -> 0, and the target's reps
+//   already going today-> repeat today's last set, because straight sets are
+//                         straight sets; progression is a between-sessions idea
+//   done before        -> last working set plus the progression amount
+function seedFor(ex){
+  const mine = db.sets.filter(s => s.e === ex && !isWarmup(s));
+  const today = mine.filter(s => s.d === state.date).slice(-1)[0];
+  const prior = mine.filter(s => s.d !== state.date).slice(-1)[0];
+  const base = today || prior;
+  const weight = !base ? 0
+    : today ? toDisplay(today)
+    : +(toDisplay(prior) + progressionFor(ex)).toFixed(2);
+  return {weight, rir: base ? base.rir : 2, prior, base};
+}
+
 // Round a target up to an even number of sets, leaving the rest of the string
 // ("× 40m") alone.
 function evenTarget(target){
@@ -1041,6 +1067,13 @@ function barFor(ex){
 }
 const isLoadable = ex => barFor(ex) !== null && barFor(ex) !== undefined;
 const restTargetFor = ex => meta(ex).rest ?? REST_DEFAULT[ex] ?? 120;
+// "4 × 8" -> 8, "3 × 40m" -> 40, "4 × max" -> null. The target already states
+// the prescription, so it is what a fresh set should offer.
+function targetReps(target){
+  const m = /[×x]\s*(\d+(?:\.\d+)?)/.exec(target || '');
+  return m ? +m[1] : null;
+}
+
 function targetSets(target){
   const m = /^\s*(\d+)\s*[×x]/.exec(target || '');
   return m ? +m[1] : 0;
@@ -1308,8 +1341,6 @@ function renderPlateMath(){
   box.classList.remove('hide');
 
   const u = U(), bar = barFor(state.ex);
-  $('#bars').innerHTML = u.bars.map(b =>
-    `<button data-bar="${b}" aria-pressed="${b===bar}">${esc(u.barLabel[b])}</button>`).join('');
 
   const total = parseFloat($('#wt').value);
   const svg = $('#barsvg'), txt = $('#pmtext'), warn = $('#pmwarn');
@@ -1657,14 +1688,18 @@ function openSheet(ex){
   state.target = target;
   renderSheetSub();
 
-  // Prefill from the most recent set of this exercise, today's included —
-  // the next set is nearly always a repeat of the last one.
-  const seed = db.sets.filter(s => s.e === ex).slice(-1)[0];
+  const seed = seedFor(ex);
+  const wantReps = targetReps(target);
   $('#wtlab').textContent = k === 'bodyweight' ? `Added weight (${u.label})` : `Weight (${u.label})`;
   $('#repslab').textContent = k === 'distance' ? `Distance (${u.dist})` : 'Reps';
-  $('#wt').value = seed ? fmtW(toDisplay(seed)) : (k === 'bodyweight' ? 0 : '');
-  $('#reps').value = seed ? seed.r : '';
-  state.rir = seed ? seed.rir : 2;
+  $('#wt').value = fmtW(seed.weight);
+  // Remembered so a settings change can refresh an untouched suggestion
+  // without overwriting a number you typed.
+  state.seededWeight = $('#wt').value;
+  // The target states the reps; only fall back to history when it does not
+  // name a number, as with "4 × max".
+  $('#reps').value = wantReps ?? (seed.base ? seed.base.r : '');
+  state.rir = seed.rir;
 
   const needsBw = k === 'bodyweight' && !bw();
   $('#bwhint').classList.toggle('hide', !needsBw);
@@ -1959,13 +1994,6 @@ $('#delday').addEventListener('click', ()=>{
 /* ---------- events: log sheet ---------- */
 $('#wt').addEventListener('input', renderPlateMath);
 
-$('#bars').addEventListener('click', e=>{
-  const b = e.target.closest('[data-bar]'); if(!b) return;
-  const m = (db.ex[state.ex] ||= {});
-  m.bar = Object.assign({}, m.bar || DEFAULT_BAR[state.ex] || {}, {[units()]: +b.dataset.bar});
-  save(); renderPlateMath(); refreshStepperLabels();
-});
-
 $('#plates').addEventListener('click', e=>{
   const b = e.target.closest('[data-v]'); if(!b) return;
   state.rir = +b.dataset.v; renderPlates();
@@ -2065,6 +2093,8 @@ $('#setlist').addEventListener('click', e=>{
   renderPlates(); renderSetList(); renderPlateMath();
 });
 
+$('#exsettings').addEventListener('click', ()=>openExEditor(state.ex));
+
 $('#close').addEventListener('click', closeSheet);
 $('#scrim').addEventListener('click', closeTop);
 
@@ -2124,7 +2154,15 @@ function openExEditor(name){
   $('#exrest').innerHTML = REST_OPTIONS.map(v =>
     `<option value="${v}">${mmss(v)}</option>`).join('');
   $('#exrest').value = String(name ? restTargetFor(name) : 120);
-  $('#exdelete').classList.toggle('hide', !name);
+  const progSet = name ? (meta(name).prog || {})[units()] : null;
+  $('#exproglab').textContent = `Progression (${u.label})`;
+  $('#exprog').value = progSet > 0 ? progSet : '';
+  $('#exprog').placeholder = name ? String(progressionFor(name)) : '';
+  $('#exproghint').textContent = name
+    ? `Added to the last session's weight when this opens. Blank follows the rack — currently ${progressionFor(name)} ${u.label}.`
+    : 'Blank follows the smallest jump your plates allow.';
+  const inDay = !!name && dayById(state.day).ex.some(([n]) => n === name);
+  $('#exdelete').classList.toggle('hide', !inDay);
   openPanel($('#exsheet'), $('#exname'));
 }
 
@@ -2164,8 +2202,23 @@ $('#exsave').addEventListener('click', ()=>{
   if(barVal === '') delete m.bar;
   else m.bar = Object.assign({}, m.bar || {}, {[units()]: +barVal});
 
+  const progVal = parseFloat($('#exprog').value);
+  if(progVal > 0) m.prog = Object.assign({}, m.prog || {}, {[units()]: progVal});
+  else if(m.prog) delete m.prog[units()];
+
   save(); renderDays(); renderExercises();
   closePanel($('#exsheet'), ()=>exButton(name) || $('#editprog'));
+  if(sheetStack.includes($('#sheet'))){
+    state.ex = name;
+    state.target = target;
+    if($('#wt').value === state.seededWeight){
+      $('#wt').value = fmtW(seedFor(name).weight);
+      state.seededWeight = $('#wt').value;
+    }
+    const reps = targetReps(target);
+    if(reps != null && !state.editing) $('#reps').value = reps;
+    renderSheetSub(); renderPlateMath(); refreshStepperLabels(); renderSetList();
+  }
   toast(rounded ? `Rounded to ${targetSets(target)} sets — one side each` : (old ? 'Saved' : 'Added'));
 });
 

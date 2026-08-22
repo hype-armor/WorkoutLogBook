@@ -76,7 +76,11 @@ test.describe('logging a session', () => {
     // default kg rack stops at 2.5s. Stepping by 2.5 kg total asked for 1.25 a
     // side, which is not loadable without plates most gyms do not stock.
     await expect(page.locator('#wup')).toHaveText('+5');
-    await expect(page.locator('#bars')).toContainText('20 bar');
+    // bar choice lives in the exercise's own settings now, not the log sheet
+    await expect(page.locator('#sheet #bars')).toHaveCount(0);
+    await page.click('#exsettings');
+    await expect(page.locator('#exbar')).toHaveValue('20');
+    await page.click('#exclose');
   });
 
   test('the timer docks inside the sheet and returns when it closes', async () => {
@@ -861,6 +865,112 @@ test.describe('PWA affordances', () => {
     expect(counts.backgroundedAndOn).toBe(1);
     expect(counts.onScreen).toBe(0);
     expect(counts.settingOff).toBe(0);
+    await ctx.close();
+  });
+});
+
+test.describe('what the fields start at', () => {
+  test('reps come from the target, weight from zero when nothing is logged', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    await page.click('.ex[data-ex="Deadlift"]');          // target 4 × 4
+    await expect(page.locator('#reps')).toHaveValue('4');
+    await expect(page.locator('#wt')).toHaveValue('0');
+    await page.click('#close');
+
+    await page.click('.ex[data-ex="Leg curl"]');          // target 3 × 12
+    await expect(page.locator('#reps')).toHaveValue('12');
+    await page.click('#close');
+
+    await page.click('.ex[data-ex="Suitcase carry"]');    // target 4 × 40m
+    await expect(page.locator('#reps')).toHaveValue('40');
+    await ctx.close();
+  });
+
+  test('a target with no number falls back to what was done before', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('[data-day="D"]');
+
+    await page.click('.ex[data-ex="Pull-up"]');           // target 4 × max
+    await expect(page.locator('#reps')).toHaveValue('');
+    await page.fill('#wt', '0');
+    await page.fill('#reps', '9');
+    await page.click('#logset');
+    await page.click('#close');
+
+    await page.reload();
+    await page.waitForSelector('.ex');
+    await page.click('.ex[data-ex="Pull-up"]');
+    await expect(page.locator('#reps')).toHaveValue('9');
+    await ctx.close();
+  });
+
+  test('a later session opens at last weight plus the progression', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    // one working set of 225 on an earlier day
+    await page.addInitScript(() => {
+      if (localStorage.getItem('logbook-v1')) return;
+      const t = Date.parse('2026-06-01');
+      localStorage.setItem('logbook-v1', JSON.stringify({
+        v: 2, sets: [{ id: t + 'a', t, d: '2026-06-01', e: 'Deadlift', dy: 'A', w: 225, r: 4, rir: 2, rest: 180, u: 'lb' }],
+        days: {}, pairs: {}, ex: {}, program: null,
+        settings: { units: 'lb', transition: 30, bw: { lb: 0, kg: 0 }, lastDay: 'A', alert: 'both' }, rest: null
+      }));
+    });
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('[data-day="A"]');   // last session was not today, so it opened on the next day
+
+    // default progression is the smallest jump the rack allows: two 2.5s
+    await page.click('.ex[data-ex="Deadlift"]');
+    await expect(page.locator('#wt')).toHaveValue('230');
+
+    // and once a set is in today, the next one repeats it rather than climbing
+    await page.click('#logset');
+    await page.click('#close');
+    await page.click('.ex[data-ex="Deadlift"]');
+    await expect(page.locator('#wt')).toHaveValue('230');
+    await ctx.close();
+  });
+
+  test('progression is adjustable per exercise', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.addInitScript(() => {
+      if (localStorage.getItem('logbook-v1')) return;
+      const t = Date.parse('2026-06-01');
+      localStorage.setItem('logbook-v1', JSON.stringify({
+        v: 2, sets: [{ id: t + 'a', t, d: '2026-06-01', e: 'Deadlift', dy: 'A', w: 225, r: 4, rir: 2, rest: 180, u: 'lb' }],
+        days: {}, pairs: {}, ex: {}, program: null,
+        settings: { units: 'lb', transition: 30, bw: { lb: 0, kg: 0 }, lastDay: 'A', alert: 'both' }, rest: null
+      }));
+    });
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('[data-day="A"]');
+
+    await page.click('.ex[data-ex="Deadlift"]');
+    // the gear reaches this exercise's own settings from the logging sheet
+    await page.click('#exsettings');
+    await expect(page.locator('#exprog')).toHaveAttribute('placeholder', '5');
+    await page.fill('#exprog', '10');
+    await page.click('#exsave');
+
+    // the sheet behind it picks the change up without being reopened
+    await expect(page.locator('#wt')).toHaveValue('235');
+    await page.click('#close');
+
+    // and it is per exercise, not global
+    await page.click('.ex[data-ex="Leg press"]');
+    await page.click('#exsettings');
+    await expect(page.locator('#exprog')).toHaveValue('');
     await ctx.close();
   });
 });

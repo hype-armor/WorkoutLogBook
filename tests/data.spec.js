@@ -367,7 +367,9 @@ test('a v1 database migrates', async ({ browser }) => {
   await page.click('#tab-train');
   await page.click('.ex[data-ex="Deadlift"]');
   // v1 kept bar and rest overrides in flat maps and assumed pounds
-  await expect(page.locator('#bars button[aria-pressed="true"]')).toHaveText('45 bar');
+  await page.click('#exsettings');
+  await expect(page.locator('#exbar')).toHaveValue('45');
+  await page.click('#exclose');
   await page.click('#close');
 
   // v1 stored a "fractional" boolean, which was one answer to the broader
