@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.6.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.5.1...logbook-v1.6.0) (2026-08-22)
+
+
+### Features
+
+* bring colour into the dark theme, where it means something ([d0bf613](https://github.com/hype-armor/WorkoutLogBook/commit/d0bf6139e790133e957fea8dc99202433c4162b4))
+* close the gaps that long-term use runs into ([8108f85](https://github.com/hype-armor/WorkoutLogBook/commit/8108f85891ecb5a821683c7d6f04d4082b154219))
+* put the weight on each plate in the loading diagram ([5ea8c6e](https://github.com/hype-armor/WorkoutLogBook/commit/5ea8c6ee9a7c461cd19221520baf96b4405fe68e))
+* seed the log sheet from the prescription, and give each exercise settings ([5c80c99](https://github.com/hype-armor/WorkoutLogBook/commit/5c80c993f59fc56240cbf0b928a7e5f746391b65))
+* shape the plates like the real thing ([cc2507e](https://github.com/hype-armor/WorkoutLogBook/commit/cc2507e143ee92932fab076a35edf7d677c9ec1f))
+
+
+### Bug Fixes
+
+* start a first set at the bar rather than at zero ([b744861](https://github.com/hype-armor/WorkoutLogBook/commit/b7448614c99db82e0f48a9bc85b41367961c9c06))
+* stop the app reloading itself on a first service worker install ([768855c](https://github.com/hype-armor/WorkoutLogBook/commit/768855c7d1f6f9270362dd84a91b603b4286bf42))
+
 ## [1.5.1](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.5.0...logbook-v1.5.1) (2026-08-17)
 
 
