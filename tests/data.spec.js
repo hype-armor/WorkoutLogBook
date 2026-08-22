@@ -460,3 +460,47 @@ test.describe('data durability', () => {
     await ctx.close();
   });
 });
+
+test('the pain chart colours by severity as well as height', async ({ browser }) => {
+  const ctx = await phone(browser);
+  const page = await ctx.newPage();
+  await page.addInitScript(() => {
+    if (localStorage.getItem('logbook-v1')) return;
+    const days = {};
+    [0, 3, 5, 7, 10].forEach((v, i) => { days[`2026-08-0${i + 1}`] = { pain: v }; });
+    localStorage.setItem('logbook-v1', JSON.stringify({
+      v: 2, sets: [], days, pairs: {}, ex: {}, program: null,
+      settings: { units: 'lb', transition: 30, bw: { lb: 0, kg: 0 }, lastDay: 'A', alert: 'both' }, rest: null
+    }));
+  });
+  await page.goto(FILE_URL);
+  await page.click('#tab-history');
+
+  const bars = await page.$$eval('.painstrip div', els => els.map(e => ({
+    h: +e.getBoundingClientRect().height.toFixed(1),
+    bg: getComputedStyle(e).backgroundColor
+  })));
+  expect(bars).toHaveLength(5);
+
+  // one hue, getting brighter with severity — on a dark ground that reads as
+  // intensity, and it survives red-green colourblindness, which a green-to-red
+  // scale would not
+  const lum = rgb => {
+    const [r, g, b] = rgb.match(/\d+/g).map(n => +n / 255)
+      .map(v => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const lums = bars.map(b => lum(b.bg));
+  for (let i = 1; i < lums.length; i++) {
+    expect(lums[i], `step ${i} is not brighter than ${i - 1}`).toBeGreaterThan(lums[i - 1]);
+  }
+  // height still carries the number independently of colour
+  for (let i = 1; i < bars.length; i++) expect(bars[i].h).toBeGreaterThan(bars[i - 1].h);
+
+  // and rating a day previews the colour that day will take
+  await page.click('#tab-train');
+  await page.click('#painscale [data-pain="9"]');
+  const chosen = await page.$eval('#painscale [data-pain="9"]', e => getComputedStyle(e).backgroundColor);
+  expect(lum(chosen)).toBeGreaterThan(lums[0]);
+  await ctx.close();
+});
