@@ -26,8 +26,7 @@ for (const size of SIZES) {
 
     test('Log set is reachable as soon as the sheet opens', async () => {
       await page.click('.ex[data-ex="Deadlift"]');
-      await expect(page.locator('#sheet')).toHaveClass(/open/);
-      await settle(page);
+      await expect(page.locator('#view-exercise')).toBeVisible();
       const { logset, vh } = await rects(page);
       expect(logset.top).toBeGreaterThanOrEqual(0);
       expect(logset.bottom).toBeLessThanOrEqual(vh + 0.5);
@@ -41,14 +40,12 @@ for (const size of SIZES) {
         await page.waitForTimeout(120);
       }
       await expect(page.locator('.setrow')).toHaveCount(5);
-      await settle(page);
       const { logset, vh } = await rects(page);
       expect(logset.top).toBeGreaterThanOrEqual(0);
       expect(logset.bottom).toBeLessThanOrEqual(vh + 0.5);
     });
 
     test('the rest timer covers none of the controls', async () => {
-      await settle(page);
       const r = await rects(page);
       expect(overlaps(r.rest, r.logset), 'rest timer over Log set').toBe(false);
       expect(overlaps(r.rest, r.plates), 'rest timer over RIR selector').toBe(false);
@@ -71,7 +68,7 @@ for (const size of SIZES) {
   });
 }
 
-test.describe('an open sheet locks the page behind it', () => {
+test.describe('the exercise screen locks the page behind it', () => {
   const openAt = async (browser, y) => {
     const ctx = await browser.newContext({ ...PHONE });
     const page = await ctx.newPage();
@@ -81,7 +78,7 @@ test.describe('an open sheet locks the page behind it', () => {
     return { ctx, page };
   };
 
-  test('the page cannot be scrolled behind the sheet, and does not jump', async ({ browser }) => {
+  test('the page cannot be scrolled behind the screen, and does not jump', async ({ browser }) => {
     const { ctx, page } = await openAt(browser, 120);
     const headingBefore = await page.locator('h1').boundingBox();
 
@@ -109,14 +106,14 @@ test.describe('an open sheet locks the page behind it', () => {
     await page.click('.ex[data-ex="Deadlift"]');
     await settle(page);
     await page.click('#close');
-    await expect(page.locator('#sheet')).not.toHaveClass(/open/);
+    await expect(page.locator('#view-exercise')).toBeHidden();
 
     expect(await page.evaluate(() => getComputedStyle(document.body).position)).toBe('static');
     expect(await page.evaluate(() => window.scrollY)).toBe(140);
     await ctx.close();
   });
 
-  test('the lock lifts for every way a sheet closes', async ({ browser }) => {
+  test('the lock lifts every way out, including the phone back gesture', async ({ browser }) => {
     const { ctx, page } = await openAt(browser, 90);
     const isLocked = () => page.evaluate(() => document.body.classList.contains('locked'));
 
@@ -127,7 +124,14 @@ test.describe('an open sheet locks the page behind it', () => {
 
     await page.click('.ex[data-ex="Deadlift"]');
     expect(await isLocked()).toBe(true);
-    await page.click('#scrim', { position: { x: 10, y: 10 } });
+    await page.click('#close');
+    expect(await isLocked()).toBe(false);
+
+    // the screen is a history entry, so going back leaves it too
+    await page.click('.ex[data-ex="Deadlift"]');
+    expect(await isLocked()).toBe(true);
+    await page.goBack();
+    await expect(page.locator('#view-exercise')).toBeHidden();
     expect(await isLocked()).toBe(false);
 
     // reaching the gear scrolls the header into view, so whatever the position
@@ -190,7 +194,7 @@ test.describe('safe-area insets', () => {
     await ctx.close();
   });
 
-  test('an open sheet stays below the status bar', async ({ browser }) => {
+  test('the exercise screen keeps its heading below the status bar', async ({ browser }) => {
     const ctx = await browser.newContext({ ...PHONE, viewport: { width: 375, height: 667 } });
     const page = await ctx.newPage();
     await page.goto(FILE_URL);
@@ -200,15 +204,17 @@ test.describe('safe-area insets', () => {
       document.documentElement.style.setProperty('--safe-bottom', b + 'px');
     }, [TOP, BOTTOM]);
 
-    // a long set list makes the sheet as tall as it will ever get
     await page.click('.ex[data-ex="Deadlift"]');
     await page.fill('#wt', '225');
     await page.fill('#reps', '5');
     for (let i = 0; i < 6; i++) await page.click('#logset');
-    await settle(page);
 
-    const sheet = await page.locator('#sheet').boundingBox();
-    expect(sheet.y, 'sheet under the status bar').toBeGreaterThanOrEqual(TOP);
+    // the screen itself is full-bleed by design; what must clear the inset is
+    // everything you can read or press in its header
+    const title = await page.locator('#sheet-title').boundingBox();
+    const back = await page.locator('#close').boundingBox();
+    expect(title.y, 'title under the status bar').toBeGreaterThanOrEqual(TOP);
+    expect(back.y, 'back button under the status bar').toBeGreaterThanOrEqual(TOP);
     await ctx.close();
   });
 });
