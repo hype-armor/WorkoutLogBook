@@ -870,23 +870,63 @@ test.describe('PWA affordances', () => {
 });
 
 test.describe('what the fields start at', () => {
-  test('reps come from the target, weight from zero when nothing is logged', async ({ browser }) => {
+  test('reps come from the target, weight from the bar when nothing is logged', async ({ browser }) => {
     const ctx = await phone(browser);
     const page = await ctx.newPage();
     await page.goto(FILE_URL);
     await page.waitForSelector('.ex');
 
-    await page.click('.ex[data-ex="Deadlift"]');          // target 4 × 4
+    // an empty bar already weighs 45, so that is the floor, not zero
+    await page.click('.ex[data-ex="Deadlift"]');          // target 4 × 4, 45 bar
     await expect(page.locator('#reps')).toHaveValue('4');
+    await expect(page.locator('#wt')).toHaveValue('45');
+    await expect(page.locator('#pmtext')).toContainText(/empty bar/i);
+    await page.click('#close');
+
+    // a leg press is counted per side — there is no bar to start from
+    await page.click('.ex[data-ex="Leg press"]');
     await expect(page.locator('#wt')).toHaveValue('0');
     await page.click('#close');
 
+    // and neither is a machine with no plate math at all
     await page.click('.ex[data-ex="Leg curl"]');          // target 3 × 12
     await expect(page.locator('#reps')).toHaveValue('12');
+    await expect(page.locator('#wt')).toHaveValue('0');
     await page.click('#close');
 
     await page.click('.ex[data-ex="Suitcase carry"]');    // target 4 × 40m
     await expect(page.locator('#reps')).toHaveValue('40');
+    await ctx.close();
+  });
+
+  test('the starting bar follows the exercise and the unit', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    await page.click('[data-day="C"]');
+    await page.click('.ex[data-ex="Trap bar deadlift"]'); // 55 trap, not 45
+    await expect(page.locator('#wt')).toHaveValue('55');
+    await page.click('#close');
+
+    await page.click('#gear');
+    await page.click('[data-unit="kg"]');
+    await page.click('#setdone');
+    await page.click('.ex[data-ex="Trap bar deadlift"]');
+    await expect(page.locator('#wt')).toHaveValue('25');
+    await ctx.close();
+  });
+
+  test('bodyweight work still starts at zero added weight', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('[data-day="D"]');
+    await page.click('.ex[data-ex="Pull-up"]');
+    await expect(page.locator('#wtlab')).toContainText(/added/i);
+    await expect(page.locator('#wt')).toHaveValue('0');
     await ctx.close();
   });
 

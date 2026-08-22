@@ -1036,8 +1036,17 @@ function progressionFor(ex){
   return isLoadable(ex) ? smallestPlate() * 2 : U().otherStep;
 }
 
+// Where the weight starts with no history: an empty bar already weighs
+// something, so counting up from zero means dialling past a number the lift
+// cannot go below. Zero is only right when there is no bar — machines counted
+// per side, dumbbells, bodyweight, carries.
+function startingWeight(ex){
+  if(kindOf(ex) === 'bodyweight') return 0;   // the field is added weight
+  return isLoadable(ex) ? (barFor(ex) || 0) : 0;
+}
+
 // What to put in the fields when the sheet opens.
-//   nothing logged     -> 0, and the target's reps
+//   nothing logged     -> the bar, and the target's reps
 //   already going today-> repeat today's last set, because straight sets are
 //                         straight sets; progression is a between-sessions idea
 //   done before        -> last working set plus the progression amount
@@ -1046,7 +1055,7 @@ function seedFor(ex){
   const today = mine.filter(s => s.d === state.date).slice(-1)[0];
   const prior = mine.filter(s => s.d !== state.date).slice(-1)[0];
   const base = today || prior;
-  const weight = !base ? 0
+  const weight = !base ? startingWeight(ex)
     : today ? toDisplay(today)
     : +(toDisplay(prior) + progressionFor(ex)).toFixed(2);
   return {weight, rir: base ? base.rir : 2, prior, base};
