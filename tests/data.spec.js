@@ -504,3 +504,60 @@ test('the pain chart colours by severity as well as height', async ({ browser })
   expect(lum(chosen)).toBeGreaterThan(lums[0]);
   await ctx.close();
 });
+
+test('the plate diagram labels every plate and stays centred', async ({ browser }) => {
+  const ctx = await phone(browser);
+  const page = await ctx.newPage();
+  await page.goto(FILE_URL);
+  await page.waitForSelector('.ex');
+  await page.click('#gear');
+  await page.click('#platesel [data-plate="1.25"]');   // exercise a 4-char label
+  await page.click('#setdone');
+  await page.click('.ex[data-ex="Deadlift"]');
+
+  const read = () => page.evaluate(() => {
+    const svg = document.querySelector('#barsvg');
+    const texts = [...svg.querySelectorAll('text')].map(t => t.textContent.trim());
+    const els = [...svg.querySelectorAll('rect, text')];
+    const xs = els.flatMap(e => { const b = e.getBBox(); return [b.x, b.x + b.width]; });
+    return { texts, left: Math.min(...xs), right: Math.max(...xs), width: svg.viewBox.baseVal.width };
+  });
+
+  for (const [weight, plates] of [['95', ['25']], ['225', ['45', '45']], ['322.5', ['45', '45', '45', '2.5', '1.25']]]) {
+    await page.fill('#wt', weight);
+    const d = await read();
+    // every plate carries its own number, and the bar carries its weight
+    for (const p of plates) expect(d.texts, `${weight} lb`).toContain(p);
+    expect(d.texts, 'bar weight is written on the bar').toContain('45');
+    // and the whole group is centred rather than anchored to one edge
+    expect(Math.abs((d.left + d.right) / 2 - d.width / 2), `${weight} lb off centre`).toBeLessThan(1);
+  }
+
+  // the label on each plate has to be legible against that plate
+  const inks = await page.evaluate(() => {
+    const rel = hex => {
+      const c = [1,3,5].map(i => parseInt(hex.slice(i,i+2),16)/255)
+        .map(v => v <= 0.04045 ? v/12.92 : ((v+0.055)/1.055)**2.4);
+      return 0.2126*c[0] + 0.7152*c[1] + 0.0722*c[2];
+    };
+    const toHex = rgb => '#' + rgb.match(/\d+/g).slice(0,3)
+      .map(n => (+n).toString(16).padStart(2,'0')).join('');
+    const svg = document.querySelector('#barsvg');
+    const rects = [...svg.querySelectorAll('rect')];
+    return [...svg.querySelectorAll('text')].slice(0, -1).map((t, i) => {
+      const plate = rects.find(r => Math.abs(r.getBBox().x + r.getBBox().width/2
+        - (t.getBBox().x + t.getBBox().width/2)) < 3 && r.getBBox().height > 20);
+      if (!plate) return null;
+      const a = rel(toHex(getComputedStyle(t).fill)), b = rel(toHex(getComputedStyle(plate).fill));
+      const [hi, lo] = [a, b].sort((x, y) => y - x);
+      return (hi + 0.05) / (lo + 0.05);
+    }).filter(Boolean);
+  });
+  expect(inks.length).toBeGreaterThan(0);
+  for (const c of inks) expect(c, 'plate label contrast').toBeGreaterThanOrEqual(4.5);
+
+  // the message the diagram used to carry is gone; "per side" still says it
+  expect((await page.textContent('#platemath')).toLowerCase()).not.toContain('one side shown');
+  await expect(page.locator('#pmtext')).toContainText(/per side/i);
+  await ctx.close();
+});
