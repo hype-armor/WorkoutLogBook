@@ -76,7 +76,11 @@ test.describe('logging a session', () => {
     // default kg rack stops at 2.5s. Stepping by 2.5 kg total asked for 1.25 a
     // side, which is not loadable without plates most gyms do not stock.
     await expect(page.locator('#wup')).toHaveText('+5');
-    await expect(page.locator('#bars')).toContainText('20 bar');
+    // bar choice lives in the exercise's own settings now, not the log sheet
+    await expect(page.locator('#sheet #bars')).toHaveCount(0);
+    await page.click('#exsettings');
+    await expect(page.locator('#exbar')).toHaveValue('20');
+    await page.click('#exclose');
   });
 
   test('the timer docks inside the sheet and returns when it closes', async () => {
@@ -678,6 +682,335 @@ test.describe('accessibility', () => {
     await expect(page.locator('#sheet')).toHaveClass(/open/);
     await page.keyboard.press('Escape');
     await expect(page.locator('#sheet')).not.toHaveClass(/open/);
+    await ctx.close();
+  });
+});
+
+test.describe('seeing further back', () => {
+  // 40 sessions, enough to overflow the 30 the list starts with
+  const seedLong = page => page.addInitScript(() => {
+    if (localStorage.getItem('logbook-v1')) return;
+    const sets = [];
+    for (let i = 0; i < 40; i++) {
+      const t = Date.parse('2026-01-05') + i * 86400000 * 2;
+      const d = new Date(t).toISOString().slice(0, 10);
+      sets.push({ id: t + 'a' + i, t, d, e: 'Deadlift', dy: 'A', w: 200 + i * 2, r: 5, rir: 2, rest: 180, u: 'lb' });
+      sets.push({ id: t + 'b' + i, t: t + 60000, d, e: 'Leg press', dy: 'A', w: 300, r: 10, rir: 2, rest: 120, u: 'lb' });
+    }
+    localStorage.setItem('logbook-v1', JSON.stringify({
+      v: 2, sets, days: {}, pairs: {}, ex: {}, program: null,
+      settings: { units: 'lb', transition: 30, bw: { lb: 0, kg: 0 }, lastDay: 'A', alert: 'both' }, rest: null
+    }));
+  });
+
+  test('older sessions can be walked back to instead of vanishing', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seedLong(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('#tab-history');
+
+    // the window starts at 30 and says how much it is holding back
+    await expect(page.locator('#sessions .card')).toHaveCount(30);
+    await expect(page.locator('#moresessions')).toContainText('10 older');
+    await page.click('#moresessions');
+    await expect(page.locator('#sessions .card')).toHaveCount(40);
+    await expect(page.locator('#moresessions')).toHaveCount(0);
+    await ctx.close();
+  });
+
+  test('the trend arc can be widened past eight sessions', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seedLong(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('#tab-history');
+
+    await expect(page.locator('#trendlabel')).toContainText('last 8 sessions');
+    await expect(page.locator('#trends .card').first()).toContainText('over 8 sessions');
+
+    await page.click('#trendspan [data-span="all"]');
+    await expect(page.locator('#trendlabel')).toContainText('every session');
+    await expect(page.locator('#trends .card').first()).toContainText('over 40 sessions');
+    await ctx.close();
+  });
+
+  test('a trend card opens the sets behind it', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seedLong(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('#tab-history');
+
+    await page.click('#trends .trendcard[data-ex="Deadlift"]');
+    await expect(page.locator('#exhist')).toHaveClass(/open/);
+    await expect(page.locator('#exhist-title')).toHaveText('Deadlift');
+    await expect(page.locator('#exhist-sub')).toContainText('40 sessions');
+    // every session it was trained, newest first, with the working weight
+    await expect(page.locator('.exhistday')).toHaveCount(40);
+    await expect(page.locator('.exhistday').first()).toContainText('278×5');
+    await ctx.close();
+  });
+});
+
+test.describe('program shape', () => {
+  test('days can be renamed, added and removed', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    await page.click('#editprog');
+    await expect(page.locator('#dayedit')).toBeVisible();
+    await page.fill('#dayname', 'Pull day');
+    await expect(page.locator('.day[aria-pressed="true"] b')).toHaveText('Pull day');
+
+    await expect(page.locator('.day')).toHaveCount(4);
+    await page.click('#addday');
+    await expect(page.locator('.day')).toHaveCount(5);
+    await expect(page.locator('.day[aria-pressed="true"] b')).toHaveText('Day 5');
+    // a fresh day starts empty rather than inheriting anything
+    await expect(page.locator('#exlist')).toContainText('No exercises in this day yet');
+
+    await page.click('#delday');
+    await expect(page.locator('.day')).toHaveCount(4);
+    await expect(page.locator('#toast')).toContainText(/day deleted/i);
+    await page.click('#toast button');           // undo
+    await expect(page.locator('.day')).toHaveCount(5);
+    await ctx.close();
+  });
+
+  test('an exercise can be logged for today without joining the program', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    // Front squat lives in Lower B; the rack for today's work is taken
+    await expect(page.locator('.ex[data-ex="Front squat"]')).toHaveCount(0);
+    await page.click('#logother');
+    await page.fill('#pickfilter', 'front');
+    await page.click('#picklist [data-pick="Front squat"]');
+
+    await expect(page.locator('#sheet-title')).toHaveText('Front squat');
+    await expect(page.locator('#sheet-sub')).toContainText('logged for today only');
+    await page.fill('#wt', '185');
+    await page.fill('#reps', '5');
+    await page.click('#logset');
+    await page.click('#close');
+
+    // it shows up for today, marked as not belonging to this day
+    const extra = page.locator('.ex.extra[data-ex="Front squat"]');
+    await expect(extra).toBeVisible();
+    await expect(extra).toContainText('Not in Lower A');
+    await expect(extra.locator('.count')).toHaveText('1');
+
+    // and Lower B is unchanged — this was a one-off, not a program edit
+    await page.click('[data-day="C"]');
+    await expect(page.locator('#exlist')).toContainText('Front squat');
+    await page.click('[data-day="A"]');
+    await page.reload();
+    await page.waitForSelector('.ex');
+    await expect(page.locator('.ex.extra[data-ex="Front squat"]')).toBeVisible();
+    await ctx.close();
+  });
+});
+
+test.describe('PWA affordances', () => {
+  test('a manifest shortcut lands on the view it names', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL + '?view=history');
+    await page.waitForSelector('#view-history:not(.hide)');
+    await expect(page.locator('#tab-history')).toHaveAttribute('aria-selected', 'true');
+
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await expect(page.locator('#tab-train')).toHaveAttribute('aria-selected', 'true');
+    await ctx.close();
+  });
+
+  test('a background notification fires only when it would tell you something', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    const counts = await page.evaluate(() => {
+      const Real = window.Notification;
+      let made = 0;
+      window.Notification = function () { made++; this.close = () => {}; };
+      window.Notification.permission = 'granted';
+      const at = (vis, notify) => {
+        db.settings.notify = notify;
+        Object.defineProperty(document, 'visibilityState', { get: () => vis, configurable: true });
+        const before = made;
+        fireAlert(false);
+        return made - before;
+      };
+      const out = {
+        backgroundedAndOn: at('hidden', true),
+        // on screen the timer already turned green, so a banner is noise
+        onScreen: at('visible', true),
+        settingOff: at('hidden', false)
+      };
+      Object.defineProperty(document, 'visibilityState', { get: () => 'visible', configurable: true });
+      window.Notification = Real;
+      return out;
+    });
+
+    expect(counts.backgroundedAndOn).toBe(1);
+    expect(counts.onScreen).toBe(0);
+    expect(counts.settingOff).toBe(0);
+    await ctx.close();
+  });
+});
+
+test.describe('what the fields start at', () => {
+  test('reps come from the target, weight from the bar when nothing is logged', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    // an empty bar already weighs 45, so that is the floor, not zero
+    await page.click('.ex[data-ex="Deadlift"]');          // target 4 × 4, 45 bar
+    await expect(page.locator('#reps')).toHaveValue('4');
+    await expect(page.locator('#wt')).toHaveValue('45');
+    await expect(page.locator('#pmtext')).toContainText(/empty bar/i);
+    await page.click('#close');
+
+    // a leg press is counted per side — there is no bar to start from
+    await page.click('.ex[data-ex="Leg press"]');
+    await expect(page.locator('#wt')).toHaveValue('0');
+    await page.click('#close');
+
+    // and neither is a machine with no plate math at all
+    await page.click('.ex[data-ex="Leg curl"]');          // target 3 × 12
+    await expect(page.locator('#reps')).toHaveValue('12');
+    await expect(page.locator('#wt')).toHaveValue('0');
+    await page.click('#close');
+
+    await page.click('.ex[data-ex="Suitcase carry"]');    // target 4 × 40m
+    await expect(page.locator('#reps')).toHaveValue('40');
+    await ctx.close();
+  });
+
+  test('the starting bar follows the exercise and the unit', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    await page.click('[data-day="C"]');
+    await page.click('.ex[data-ex="Trap bar deadlift"]'); // 55 trap, not 45
+    await expect(page.locator('#wt')).toHaveValue('55');
+    await page.click('#close');
+
+    await page.click('#gear');
+    await page.click('[data-unit="kg"]');
+    await page.click('#setdone');
+    await page.click('.ex[data-ex="Trap bar deadlift"]');
+    await expect(page.locator('#wt')).toHaveValue('25');
+    await ctx.close();
+  });
+
+  test('bodyweight work still starts at zero added weight', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('[data-day="D"]');
+    await page.click('.ex[data-ex="Pull-up"]');
+    await expect(page.locator('#wtlab')).toContainText(/added/i);
+    await expect(page.locator('#wt')).toHaveValue('0');
+    await ctx.close();
+  });
+
+  test('a target with no number falls back to what was done before', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('[data-day="D"]');
+
+    await page.click('.ex[data-ex="Pull-up"]');           // target 4 × max
+    await expect(page.locator('#reps')).toHaveValue('');
+    await page.fill('#wt', '0');
+    await page.fill('#reps', '9');
+    await page.click('#logset');
+    await page.click('#close');
+
+    await page.reload();
+    await page.waitForSelector('.ex');
+    await page.click('.ex[data-ex="Pull-up"]');
+    await expect(page.locator('#reps')).toHaveValue('9');
+    await ctx.close();
+  });
+
+  test('a later session opens at last weight plus the progression', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    // one working set of 225 on an earlier day
+    await page.addInitScript(() => {
+      if (localStorage.getItem('logbook-v1')) return;
+      const t = Date.parse('2026-06-01');
+      localStorage.setItem('logbook-v1', JSON.stringify({
+        v: 2, sets: [{ id: t + 'a', t, d: '2026-06-01', e: 'Deadlift', dy: 'A', w: 225, r: 4, rir: 2, rest: 180, u: 'lb' }],
+        days: {}, pairs: {}, ex: {}, program: null,
+        settings: { units: 'lb', transition: 30, bw: { lb: 0, kg: 0 }, lastDay: 'A', alert: 'both' }, rest: null
+      }));
+    });
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('[data-day="A"]');   // last session was not today, so it opened on the next day
+
+    // default progression is the smallest jump the rack allows: two 2.5s
+    await page.click('.ex[data-ex="Deadlift"]');
+    await expect(page.locator('#wt')).toHaveValue('230');
+
+    // and once a set is in today, the next one repeats it rather than climbing
+    await page.click('#logset');
+    await page.click('#close');
+    await page.click('.ex[data-ex="Deadlift"]');
+    await expect(page.locator('#wt')).toHaveValue('230');
+    await ctx.close();
+  });
+
+  test('progression is adjustable per exercise', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.addInitScript(() => {
+      if (localStorage.getItem('logbook-v1')) return;
+      const t = Date.parse('2026-06-01');
+      localStorage.setItem('logbook-v1', JSON.stringify({
+        v: 2, sets: [{ id: t + 'a', t, d: '2026-06-01', e: 'Deadlift', dy: 'A', w: 225, r: 4, rir: 2, rest: 180, u: 'lb' }],
+        days: {}, pairs: {}, ex: {}, program: null,
+        settings: { units: 'lb', transition: 30, bw: { lb: 0, kg: 0 }, lastDay: 'A', alert: 'both' }, rest: null
+      }));
+    });
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('[data-day="A"]');
+
+    await page.click('.ex[data-ex="Deadlift"]');
+    // the gear reaches this exercise's own settings from the logging sheet
+    await page.click('#exsettings');
+    await expect(page.locator('#exprog')).toHaveAttribute('placeholder', '5');
+    await page.fill('#exprog', '10');
+    await page.click('#exsave');
+
+    // the sheet behind it picks the change up without being reopened
+    await expect(page.locator('#wt')).toHaveValue('235');
+    await page.click('#close');
+
+    // and it is per exercise, not global
+    await page.click('.ex[data-ex="Leg press"]');
+    await page.click('#exsettings');
+    await expect(page.locator('#exprog')).toHaveValue('');
     await ctx.close();
   });
 });

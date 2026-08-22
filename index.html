@@ -19,12 +19,12 @@
 
     /* Surfaces: a cool near-black ramp. Elevation comes from stepping the
        surface, not from shadows, which stay invisible on a dark UI anyway. */
-    --bg:#0A0C10;
-    --surface:#13161C;
-    --surface-2:#1B1F27;
-    --surface-3:#242A34;
-    --line:#232833;
-    --line-2:#333B49;
+    --bg:#0A0B13;
+    --surface:#141620;
+    --surface-2:#1C1F2D;
+    --surface-3:#262B3B;
+    --line:#252A3A;
+    --line-2:#363D54;
 
     /* Ink. Every step clears 4.5:1 against the darkest surface it is used on,
        including --ink-3: it carries real content (target reps, the "last time"
@@ -37,6 +37,11 @@
     --accent:#7C6BFF;
     --accent-ink:#B9AEFF;
     --accent-soft:rgba(124,107,255,.16);
+    /* Filled surfaces need a deeper step: white on --accent is 3.9:1, which
+       is short of AA for the button's 17px text. These clear it. */
+    --accent-fill:#5B4BD6;
+    --accent-fill-2:#6E5CF0;
+    --on-accent:#FFFFFF;
 
     /* Plate hues, snapped into the dark lightness band (OKLCH L 0.48–0.67) and
        validated against --surface. See the note above PLATES in the script:
@@ -143,6 +148,7 @@
     letter-spacing:-.01em;padding:9px 13px;cursor:pointer;
   }
   .banner.bad{border-color:var(--danger)}
+  .banner button.later{margin-left:0;background:none;color:var(--ink-3);border:1px solid var(--line)}
 
   /* session picker */
   .days{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
@@ -154,7 +160,8 @@
   .day b{display:block;font-size:17px;font-weight:680;letter-spacing:-.02em;margin-bottom:2px}
   .day span{color:var(--ink-3);font-size:13px;letter-spacing:-.005em}
   .day[aria-pressed="true"]{
-    border-color:var(--accent);background:var(--accent-soft);
+    border-color:var(--accent);
+    background:linear-gradient(155deg,rgba(124,107,255,.26),rgba(124,107,255,.07));
   }
   .day[aria-pressed="true"] b{color:var(--ink)}
 
@@ -174,6 +181,7 @@
     content:'';position:absolute;left:0;top:14px;bottom:14px;width:3px;
     border-radius:0 3px 3px 0;background:transparent;
   }
+  .ex.extra{border-style:dashed}
   .ex.done::before{background:var(--good)}
   .ex.paired::before{background:var(--p35)}
   .ex.paired.done::before{background:var(--good)}
@@ -184,7 +192,7 @@
     background:var(--surface-3);border-radius:999px;padding:4px 10px;color:var(--ink-2);
     min-width:44px;text-align:center;
   }
-  .ex.done .count{color:var(--ink)}
+  .ex.done .count{background:var(--accent-soft);color:var(--accent-ink)}
   .ex.full .count{background:var(--good);color:var(--on-light)}
   .exrow .tools{display:flex;flex-direction:column;gap:4px}
   .exrow .tools button{
@@ -192,6 +200,9 @@
     color:var(--ink-2);border-radius:var(--r-sm);font-size:14px;cursor:pointer;padding:0 8px;
   }
   .exrow .tools button:disabled{opacity:.3}
+  .dayedit{margin-top:10px}
+  .dayrow{display:flex;gap:8px;margin-top:10px}
+  .dayrow .btn{margin-top:0}
 
   /* logged rows */
   .setrow{
@@ -235,7 +246,7 @@
   }
   .sheet.open{transform:translateY(0)}
   .sheethead{
-    flex:none;padding:18px 18px 14px;display:flex;align-items:flex-start;gap:12px;
+    flex:none;padding:14px 16px 10px;display:flex;align-items:flex-start;gap:12px;
     border-bottom:1px solid var(--line);
   }
   .sheethead .txt{flex:1;min-width:0}
@@ -244,9 +255,9 @@
   .sheet .sub{color:var(--ink-3);font-size:13.5px;line-height:1.4;letter-spacing:-.005em}
   /* Only the body scrolls, so the primary action never leaves the screen. */
   .sheetbody{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;
-    padding:16px 18px 6px;-webkit-overflow-scrolling:touch}
+    padding:12px 16px 4px;-webkit-overflow-scrolling:touch}
   .sheetfoot{
-    flex:none;padding:12px 18px calc(14px + var(--safe-bottom));
+    flex:none;padding:10px 16px calc(12px + var(--safe-bottom));
     border-top:1px solid var(--line);background:var(--surface);
     display:flex;gap:10px;
   }
@@ -255,13 +266,13 @@
   .fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   label.f{display:block}
   label.f span.lab{
-    display:block;font-size:12px;font-weight:620;letter-spacing:.05em;
-    text-transform:uppercase;color:var(--ink-3);margin-bottom:8px;
+    display:block;font-size:11.5px;font-weight:620;letter-spacing:.05em;
+    text-transform:uppercase;color:var(--ink-3);margin-bottom:5px;
   }
   input[type=number],input[type=text],select,textarea{
     width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-md);
-    color:var(--ink);font-family:inherit;font-size:30px;font-weight:640;letter-spacing:-.03em;
-    padding:12px;text-align:center;
+    color:var(--ink);font-family:inherit;font-size:26px;font-weight:640;letter-spacing:-.03em;
+    padding:9px;text-align:center;
   }
   input[type=text],textarea,select{font-size:15px;font-weight:450;text-align:left;letter-spacing:-.01em}
   select{padding:13px 12px;min-height:48px}
@@ -269,9 +280,9 @@
   input:focus,textarea:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
   /* signature: plate-disc RIR selector */
-  .plates{display:flex;gap:8px;justify-content:space-between;margin-top:8px}
+  .plates{display:flex;gap:7px;justify-content:space-between;margin-top:6px}
   .plate{
-    flex:1;aspect-ratio:1/1;border-radius:50%;border:2px solid var(--line-2);
+    flex:1;aspect-ratio:1/1;max-height:58px;border-radius:50%;border:2px solid var(--line-2);
     background:var(--surface-2);color:var(--ink-3);
     font-family:inherit;font-size:19px;font-weight:680;letter-spacing:-.02em;cursor:pointer;
     display:flex;align-items:center;justify-content:center;
@@ -284,10 +295,10 @@
   .plate[data-v="3"][aria-pressed="true"]{border-color:var(--p10);color:var(--p10)}
   .plate[data-v="4"][aria-pressed="true"]{border-color:var(--ink-2);color:var(--ink)}
   .plate[aria-pressed="true"]{transform:scale(1.07);background:var(--bg);border-width:3px}
-  .rirhint{color:var(--ink-3);font-size:13px;text-align:center;margin-top:10px;min-height:18px;letter-spacing:-.005em}
+  .rirhint{color:var(--ink-3);font-size:12.5px;text-align:center;margin-top:6px;min-height:16px;letter-spacing:-.005em}
 
   /* plate math */
-  .platemath{margin-top:18px;border-top:1px solid var(--line);padding-top:16px}
+  .platemath{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
   .pmhead{display:flex;flex-direction:column;align-items:flex-start;margin-bottom:12px;gap:10px}
   .pmhead .eyebrow{margin:0}
   .bars{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-start;width:100%}
@@ -296,9 +307,11 @@
     font-family:inherit;font-size:13px;font-weight:580;letter-spacing:-.01em;
     padding:8px 12px;border-radius:999px;cursor:pointer;
   }
-  .bars button[aria-pressed="true"]{background:var(--ink);color:var(--on-light);border-color:var(--ink)}
+  .bars button[aria-pressed="true"]{
+    background:linear-gradient(180deg,var(--accent-fill-2),var(--accent-fill));
+    color:var(--on-accent);border-color:var(--accent-fill)}
   .barsvg{display:block;width:100%;height:86px}
-  .pmtext{font-size:17px;font-weight:600;letter-spacing:-.02em;text-align:center;margin-top:8px}
+  .pmtext{font-size:16px;font-weight:600;letter-spacing:-.02em;text-align:center;margin-top:4px}
   .pmtext .per{color:var(--ink-3);font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase}
   .pmwarn{color:var(--warn);font-size:13px;text-align:center;margin-top:6px}
   .toggle{
@@ -312,7 +325,7 @@
   .stepper{display:flex;gap:8px;align-items:stretch}
   .stepper input{flex:1;min-width:0}
   .stepper button{
-    width:72px;flex:none;background:var(--surface-2);border:1px solid var(--line);
+    width:66px;flex:none;background:var(--surface-2);border:1px solid var(--line);
     border-radius:var(--r-md);color:var(--ink);font-family:inherit;font-weight:640;
     font-size:16px;letter-spacing:-.02em;cursor:pointer;
   }
@@ -322,7 +335,7 @@
   .disclose{
     width:100%;background:none;border:1px dashed var(--line-2);border-radius:var(--r-md);
     color:var(--ink-3);font-family:inherit;font-size:13px;font-weight:600;letter-spacing:-.01em;
-    padding:11px;cursor:pointer;margin-bottom:14px;min-height:44px;
+    padding:9px;cursor:pointer;margin-bottom:10px;min-height:44px;
   }
   .disclose[aria-expanded="true"]{border-style:solid;color:var(--ink);border-color:var(--line-2)}
   .ex .pairline{
@@ -382,7 +395,8 @@
     min-width:44px;min-height:44px;padding:0;cursor:pointer;flex:none;border-radius:var(--r-sm)}
 
   .btn{
-    flex:1;background:var(--ink);color:var(--on-light);border:0;border-radius:var(--r-md);
+    flex:1;background:linear-gradient(180deg,var(--accent-fill-2),var(--accent-fill));
+    color:var(--on-accent);border:0;border-radius:var(--r-md);
     font-family:inherit;font-size:17px;letter-spacing:-.02em;
     font-weight:700;padding:16px;margin-top:16px;cursor:pointer;
   }
@@ -403,6 +417,14 @@
 
   /* history */
   .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:16px;margin-bottom:10px}
+  .trendcard{display:block;width:100%;text-align:left;color:var(--ink);font:inherit;cursor:pointer}
+  .trendcard:active{background:var(--surface-2)}
+  .exhistday{display:flex;align-items:baseline;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .exhistday:last-child{border-bottom:0}
+  .exhistday b{font-size:14px;font-weight:600;min-width:96px;letter-spacing:-.01em}
+  .exhistday span{flex:1;min-width:0;color:var(--ink-2);font-size:14.5px;
+    letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+  .exhistday em{font-style:normal;color:var(--ink-3);font-size:13px;white-space:nowrap}
   .card.done{border-color:var(--good);background:linear-gradient(180deg,rgba(41,170,99,.10),transparent 60%)}
   .card.done h3{color:var(--good)}
   .card h3{font-size:16px;font-weight:660;letter-spacing:-.02em;margin:0 0 8px}
@@ -425,7 +447,7 @@
   .painstrip{display:flex;gap:3px;align-items:flex-end;height:48px;margin-top:12px}
   /* Rounded data-ends anchored to the baseline, with a surface gap between
      bars. One hue: the height already carries the magnitude. */
-  .painstrip div{flex:1;background:var(--danger);border-radius:4px 4px 0 0;min-height:2px}
+  .painstrip div{flex:1;border-radius:4px 4px 0 0;min-height:2px}
 
   .empty{color:var(--ink-3);font-size:14.5px;padding:22px 2px;line-height:1.55;letter-spacing:-.005em}
   .hint{color:var(--ink-3);font-size:13px;margin-top:10px;line-height:1.5;letter-spacing:-.005em}
@@ -493,7 +515,19 @@
 
   <div class="eyebrow" id="exlabel">Exercises</div>
   <div id="exlist"></div>
+  <div class="dayedit hide" id="dayedit">
+    <label class="f"><span class="lab">Day name</span>
+      <input type="text" id="dayname" autocomplete="off"></label>
+    <label class="f" style="margin-top:10px"><span class="lab">Focus</span>
+      <input type="text" id="daytag" autocomplete="off" placeholder="Deadlift focus"></label>
+    <div class="dayrow">
+      <button class="btn ghost small" id="addday">+ Add day</button>
+      <button class="btn danger small" id="delday">Delete day</button>
+    </div>
+  </div>
+
   <button class="btn ghost small wide hide" id="addex" style="margin-top:8px">+ Add exercise</button>
+  <button class="btn ghost small wide" id="logother" style="margin-top:8px">Log a different exercise</button>
 
   <div class="eyebrow">After training</div>
   <div class="card">
@@ -509,7 +543,10 @@
 
 <!-- ============ HISTORY ============ -->
 <main class="wrap hide" id="view-history" role="tabpanel" aria-labelledby="tab-history">
-  <div class="eyebrow">Estimated max — last 8 sessions</div>
+  <div class="rowhead">
+    <div class="eyebrow" id="trendlabel">Estimated max</div>
+    <div class="bars" id="trendspan"></div>
+  </div>
   <div id="trends"></div>
   <div class="eyebrow">Back pain — last 21 rated days</div>
   <div class="card" id="paincard"></div>
@@ -526,6 +563,7 @@
       <h2 id="sheet-title" tabindex="-1">Exercise</h2>
       <div class="sub" id="sheet-sub"></div>
     </div>
+    <button class="icon" id="exsettings" aria-label="Exercise settings">&#9881;</button>
     <button class="icon" id="close" aria-label="Close">&#215;</button>
   </div>
 
@@ -538,9 +576,9 @@
 
     <div id="setlist"></div>
 
-    <div class="bars" id="setkind" style="margin:14px 0 4px;justify-content:flex-start"></div>
+    <div class="bars" id="setkind" style="margin:0 0 2px;justify-content:flex-start"></div>
 
-    <label class="f" style="margin-top:12px">
+    <label class="f" style="margin-top:8px">
       <span class="lab" id="wtlab">Weight</span>
       <div class="stepper">
         <button type="button" id="wdown" aria-label="Decrease weight">&minus;</button>
@@ -549,7 +587,7 @@
       </div>
     </label>
 
-    <label class="f" style="margin-top:10px">
+    <label class="f" style="margin-top:8px">
       <span class="lab" id="repslab">Reps</span>
       <div class="stepper">
         <button type="button" id="rdown" aria-label="Decrease reps">&minus;</button>
@@ -561,17 +599,13 @@
     <div class="hint hide" id="bwhint"></div>
 
     <div class="platemath hide" id="platemath">
-      <div class="pmhead">
-        <div class="eyebrow">Loading</div>
-        <div class="bars" id="bars"></div>
-      </div>
-      <svg class="barsvg" id="barsvg" viewBox="0 0 300 86" preserveAspectRatio="xMidYMid meet" role="img"></svg>
+      <svg class="barsvg" id="barsvg" viewBox="0 0 300 96" preserveAspectRatio="xMidYMid meet" role="img"></svg>
       <div class="pmtext" id="pmtext"></div>
       <div class="pmwarn hide" id="pmwarn"></div>
     </div>
 
     <div id="rirblock">
-      <div class="eyebrow" id="rirlab" style="margin:16px 0 0">Reps in reserve</div>
+      <div class="eyebrow" id="rirlab" style="margin:12px 0 0">Reps in reserve</div>
       <div class="plates" id="plates"></div>
       <div class="rirhint" id="rirhint">How many more reps could you have done?</div>
     </div>
@@ -608,14 +642,45 @@
         <span class="sub">Keeps the target even, so both sides get the same work.</span></span>
     </label>
 
-    <label class="f" style="margin-top:14px"><span class="lab">Plate math</span>
+    <label class="f" style="margin-top:14px"><span class="lab">Bar / plate math</span>
       <select id="exbar"></select></label>
-    <label class="f" style="margin-top:10px"><span class="lab">Rest target</span>
+    <label class="f" style="margin-top:10px">
+      <span class="lab" id="exproglab">Progression</span>
+      <input type="number" id="exprog" inputmode="decimal" step="any" aria-labelledby="exproglab"></label>
+    <div class="hint" id="exproghint"></div>
+    <label class="f" style="margin-top:14px"><span class="lab">Rest target</span>
       <select id="exrest"></select></label>
     <button class="btn danger small wide" id="exdelete" style="margin-top:16px">Remove from this day</button>
   </div>
   <div class="restdock"></div>
   <div class="sheetfoot"><button class="btn" id="exsave">Save</button></div>
+</section>
+
+<!-- ============ PICK ANY EXERCISE ============ -->
+<section class="sheet" id="picker" role="dialog" aria-modal="true" aria-labelledby="picker-title" inert aria-hidden="true">
+  <div class="sheethead">
+    <div class="txt"><h2 id="picker-title" tabindex="-1">Log a different exercise</h2>
+      <div class="sub">Just for today — the day's program is left alone.</div></div>
+    <button class="icon" id="pickerclose" aria-label="Close">&#215;</button>
+  </div>
+  <div class="sheetbody">
+    <input type="text" id="pickfilter" placeholder="Search" autocomplete="off" aria-label="Search exercises">
+    <div id="picklist" style="margin-top:12px"></div>
+  </div>
+  <div class="restdock"></div>
+  <div class="sheetfoot"><button class="btn ghost" id="pickercancel">Cancel</button></div>
+</section>
+
+<!-- ============ ONE EXERCISE, OVER TIME ============ -->
+<section class="sheet" id="exhist" role="dialog" aria-modal="true" aria-labelledby="exhist-title" inert aria-hidden="true">
+  <div class="sheethead">
+    <div class="txt"><h2 id="exhist-title" tabindex="-1">Exercise</h2>
+      <div class="sub" id="exhist-sub"></div></div>
+    <button class="icon" id="exhistclose" aria-label="Close">&#215;</button>
+  </div>
+  <div class="sheetbody" id="exhist-body"></div>
+  <div class="restdock"></div>
+  <div class="sheetfoot"><button class="btn" id="exhistdone">Done</button></div>
 </section>
 
 <!-- ============ SETTINGS ============ -->
@@ -646,7 +711,14 @@
 
     <label class="f" style="margin-top:16px"><span class="lab">When a rest timer ends</span>
       <select id="alertsel"></select></label>
-    <button class="btn ghost small wide" id="testalert" style="margin-top:10px">Test alert</button>
+    <label class="toggle" style="margin-top:14px">
+      <input type="checkbox" id="notifybox">
+      <span>Also notify when the app is in the background
+        <span class="sub">Reaches you if you switch apps mid-rest. It cannot wake a
+          phone that has suspended the app entirely.</span></span>
+    </label>
+
+    <button class="btn ghost small wide" id="testalert" style="margin-top:12px">Test alert</button>
     <div class="hint">Plays exactly what a finished timer plays, so you can find out
       whether it carries over the room before you are mid-set.</div>
 
@@ -770,12 +842,23 @@ const TRANSITION_OPTIONS = [15,20,30,45,60,90];
 
 // What a finished rest timer does. A gym is either too loud to hear a chime or
 // quiet enough that one is rude, so this needs to be a real choice.
+// A notification is the only alert that survives the app being backgrounded,
+// and even then only while the page is still alive — iOS suspends a home-screen
+// app outright, and nothing can run then. Off unless asked for.
 const ALERT_OPTIONS = [
   ['both',    'Sound and vibration'],
   ['sound',   'Sound only'],
   ['vibrate', 'Vibration only'],
   ['silent',  'Silent']
 ];
+
+// Severity as a sequential ramp: one hue, brighter for worse, which on a dark
+// ground reads as increasing intensity. Validated for lightness monotonicity,
+// adjacent step separation and visibility of the dimmest step — a green-to-red
+// scale would have been more colourful and unreadable to a red-green
+// colourblind reader, and bar height already carries the number anyway.
+const PAIN_RAMP = ['#9E3A40','#BE454C','#DA5158','#EE666D','#FF8C91'];
+const painColor = v => PAIN_RAMP[Math.min(PAIN_RAMP.length - 1, Math.floor(v / 2))];
 
 const RIR_HINT = {
   0:'Failure. Could not have done another rep.',
@@ -847,6 +930,18 @@ const store = {
     localStorage.setItem(k, v);
   }
 };
+
+// Without this the browser may evict localStorage under storage pressure, and
+// this app is the only copy of the data. Chrome grants it on engagement or
+// installation; Safari decides for itself. Failure is not worth reporting —
+// it only means storage stays best-effort, which is where it was already.
+async function claimPersistentStorage(){
+  try{
+    if(!navigator.storage?.persist) return null;
+    if(await navigator.storage.persisted()) return true;
+    return await navigator.storage.persist();
+  }catch(e){ return null; }
+}
 
 async function load(){
   let raw = null;
@@ -925,6 +1020,19 @@ async function doSave(){
   }
 }
 
+// Sessions logged since the last backup, which is the unit that matters: days
+// elapsed mean nothing if you did not train.
+const BACKUP_EVERY = 8;
+function sessionsSinceBackup(){
+  const since = db.settings.lastBackup || 0;
+  const dates = new Set(db.sets.filter(s => (setTime(s) || 0) > since).map(s => s.d));
+  return dates.size;
+}
+function backupOverdue(){
+  const n = sessionsSinceBackup();
+  return n >= BACKUP_EVERY && n >= (db.settings.backupSnooze || 0) + BACKUP_EVERY;
+}
+
 /* ---------- program access ---------- */
 const program = () => db.program || DEFAULT_PROGRAM;
 const dayById = id => program().find(d => d.id === id) || program()[0];
@@ -935,6 +1043,40 @@ function ownProgram(){
 const meta = ex => db.ex?.[ex] || {};
 const kindOf = ex => meta(ex).kind || DEFAULT_KIND[ex] || 'weight';
 const isUnilateral = ex => meta(ex).uni ?? !!DEFAULT_UNILATERAL[ex];
+
+// How much to add next time. Defaults to the smallest jump the rack allows,
+// which for a barbell is one plate a side.
+function progressionFor(ex){
+  const m = meta(ex).prog;
+  const set = m && typeof m === 'object' ? m[units()] : null;
+  if(set > 0) return set;
+  return isLoadable(ex) ? smallestPlate() * 2 : U().otherStep;
+}
+
+// Where the weight starts with no history: an empty bar already weighs
+// something, so counting up from zero means dialling past a number the lift
+// cannot go below. Zero is only right when there is no bar — machines counted
+// per side, dumbbells, bodyweight, carries.
+function startingWeight(ex){
+  if(kindOf(ex) === 'bodyweight') return 0;   // the field is added weight
+  return isLoadable(ex) ? (barFor(ex) || 0) : 0;
+}
+
+// What to put in the fields when the sheet opens.
+//   nothing logged     -> the bar, and the target's reps
+//   already going today-> repeat today's last set, because straight sets are
+//                         straight sets; progression is a between-sessions idea
+//   done before        -> last working set plus the progression amount
+function seedFor(ex){
+  const mine = db.sets.filter(s => s.e === ex && !isWarmup(s));
+  const today = mine.filter(s => s.d === state.date).slice(-1)[0];
+  const prior = mine.filter(s => s.d !== state.date).slice(-1)[0];
+  const base = today || prior;
+  const weight = !base ? startingWeight(ex)
+    : today ? toDisplay(today)
+    : +(toDisplay(prior) + progressionFor(ex)).toFixed(2);
+  return {weight, rir: base ? base.rir : 2, prior, base};
+}
 
 // Round a target up to an even number of sets, leaving the rest of the string
 // ("× 40m") alone.
@@ -951,6 +1093,13 @@ function barFor(ex){
 }
 const isLoadable = ex => barFor(ex) !== null && barFor(ex) !== undefined;
 const restTargetFor = ex => meta(ex).rest ?? REST_DEFAULT[ex] ?? 120;
+// "4 × 8" -> 8, "3 × 40m" -> 40, "4 × max" -> null. The target already states
+// the prescription, so it is what a fresh set should offer.
+function targetReps(target){
+  const m = /[×x]\s*(\d+(?:\.\d+)?)/.exec(target || '');
+  return m ? +m[1] : null;
+}
+
 function targetSets(target){
   const m = /^\s*(\d+)\s*[×x]/.exec(target || '');
   return m ? +m[1] : 0;
@@ -973,6 +1122,8 @@ function renderBanners(){
     <button data-act="backup">Back up</button></div>`);
   if(state.date !== todayISO()) out.push(`<div class="banner">Logging for ${esc(prettyDate(state.date))}, not today.
     <button data-act="today">Today</button></div>`);
+  if(backupOverdue()) out.push(`<div class="banner">${sessionsSinceBackup()} sessions since your last backup.
+    <button data-act="backup">Back up</button><button data-act="snooze" class="later">Later</button></div>`);
   if(pendingWorker) out.push(`<div class="banner">A new version is ready.
     <button data-act="update">Reload</button></div>`);
   if(installPrompt) out.push(`<div class="banner">Add Logbook to your home screen to use it offline.
@@ -1012,6 +1163,12 @@ function renderExercises(){
   $('#exlabel').textContent = day.name +
     (db.days[state.date]?.done ? ' — finished' : ' — exercises');
   $('#addex').classList.toggle('hide', !state.progEdit);
+  $('#dayedit').classList.toggle('hide', !state.progEdit);
+  if(state.progEdit){
+    $('#dayname').value = day.name || '';
+    $('#daytag').value = day.tag || '';
+    $('#delday').disabled = program().length <= 1;
+  }
   const rows = day.ex.map(([name,target], i)=>{
     const n = workingSets(setsFor(state.date, name)).length;
     const goal = targetSets(target);
@@ -1029,7 +1186,18 @@ function renderExercises(){
       </div>` : '';
     return `<div class="exrow">${ex}${tools}</div>`;
   });
-  $('#exlist').innerHTML = rows.join('') ||
+  // Anything logged today that this day does not list — a substitution when the
+  // rack was taken. Shown so it is not invisible, without joining the program.
+  const listed = new Set(day.ex.map(([n]) => n));
+  const extras = [...new Set(db.sets.filter(s => s.d === state.date && !listed.has(s.e)).map(s => s.e))];
+  const extraRows = extras.map(name => {
+    const n = workingSets(setsFor(state.date, name)).length;
+    return `<div class="exrow"><button class="ex extra" data-ex="${esc(name)}">
+      <span class="name">${esc(name)}<span class="pairline">Not in ${esc(day.name)}</span></span>
+      <span class="count">${n}</span></button></div>`;
+  });
+
+  $('#exlist').innerHTML = rows.concat(extraRows).join('') ||
     `<div class="empty">No exercises in this day yet. Tap Edit, then Add exercise.</div>`;
   renderFinish();
 }
@@ -1118,7 +1286,9 @@ $('#finishwrap').addEventListener('click', e=>{
 function renderPain(){
   const v = db.days[state.date]?.pain;
   $('#painscale').innerHTML = Array.from({length:11},(_,i)=>
-    `<button data-pain="${i}" aria-pressed="${v===i}" aria-label="Pain ${i} of 10">${i}</button>`).join('');
+    `<button data-pain="${i}" aria-pressed="${v===i}" aria-label="Pain ${i} of 10"${
+      v===i ? ` style="background:${painColor(i)};border-color:${painColor(i)};color:#fff"` : ''
+    }>${i}</button>`).join('');
   $('#notes').value = db.days[state.date]?.notes || '';
   $('#notestate').textContent = 'Notes save as you type.';
 }
@@ -1184,6 +1354,22 @@ const smallestPlate = () => {
   return a.length ? a[a.length - 1].w : U().minPlate;
 };
 
+// The number is now the thing you read off the diagram, so it has to be legible
+// on every plate — and a 5 is near-white while a 45 is deep red. Take whichever
+// of the two inks actually contrasts better rather than guessing a threshold;
+// picking by luminance alone left the 10 at 2.99:1.
+const relLum = hex => {
+  const c = [1,3,5].map(i => parseInt(hex.slice(i,i+2),16)/255)
+    .map(v => v <= 0.04045 ? v/12.92 : ((v+0.055)/1.055)**2.4);
+  return 0.2126*c[0] + 0.7152*c[1] + 0.0722*c[2];
+};
+const contrast = (a,b) => {
+  const [hi,lo] = [relLum(a), relLum(b)].sort((x,y) => y-x);
+  return (hi + 0.05) / (lo + 0.05);
+};
+const plateInk = hex =>
+  contrast('#FFFFFF', hex) >= contrast('#0A0B13', hex) ? '#FFFFFF' : '#0A0B13';
+
 function solvePlates(perSide){
   const stock = availablePlates();
   const out = []; let left = perSide;
@@ -1199,8 +1385,6 @@ function renderPlateMath(){
   box.classList.remove('hide');
 
   const u = U(), bar = barFor(state.ex);
-  $('#bars').innerHTML = u.bars.map(b =>
-    `<button data-bar="${b}" aria-pressed="${b===bar}">${esc(u.barLabel[b])}</button>`).join('');
 
   const total = parseFloat($('#wt').value);
   const svg = $('#barsvg'), txt = $('#pmtext'), warn = $('#pmwarn');
@@ -1217,28 +1401,58 @@ function renderPlateMath(){
   const perSide = (total - bar) / 2;
   const {plates, remainder} = solvePlates(perSide);
 
-  // draw: bar shaft left to right, plates stacked outward from the collar
-  const mid = 38, shaftY = mid - 3;
-  let x = 92;
-  const parts = [
-    `<rect x="14" y="${shaftY}" width="${bar?96:0}" height="6" rx="3" fill="var(--ink-3)"/>`,
-    bar ? `<rect x="86" y="${mid-13}" width="7" height="26" rx="2" fill="var(--line-2)"/>` : ''
-  ];
-  plates.forEach(p=>{
-    parts.push(`<rect x="${x}" y="${mid - p.h/2}" width="${p.t}" height="${p.h}" rx="2"
-      fill="${p.c}" stroke="var(--surface)" stroke-width="1.5"/>`);
-    x += p.t + 1.5;
-  });
-  if(plates.length){
-    parts.push(`<rect x="${x+1}" y="${mid-9}" width="6" height="18" rx="2" fill="var(--line-2)"/>`);
-    parts.push(`<rect x="${x+8}" y="${shaftY}" width="10" height="6" rx="3" fill="var(--ink-3)"/>`);
+  // Shaped like the real thing: a heavier plate is both wider across and
+  // thicker, both derived from its weight rather than hand-picked, so the
+  // stack reads at a glance before any number is. A label that will not fit
+  // across a thin plate turns to run along it instead.
+  const heaviest = Math.max(...u.plates.map(q => q.w));
+  const dia   = q => Math.round(26 + (q.w / heaviest) * 46);
+  const thick = q => Math.round(Math.max(11, 7 + (q.w / heaviest) * 21));
+
+  const GAP = 2.5, COLLAR = 9, SHAFT = 74, SLEEVE = 16;
+  const mid = 48, shaftY = mid - 4;
+  const span = plates.reduce((a,q) => a + thick(q) + GAP, 0) - (plates.length ? GAP : 0);
+  const totalW = bar ? SLEEVE + span + COLLAR + SHAFT : span;
+  let x = (300 - totalW) / 2;
+  const parts = [];
+
+  if(bar){
+    parts.push(`<rect x="${x}" y="${shaftY}" width="${SLEEVE + span + COLLAR}" height="8" rx="4" fill="var(--line-2)"/>`);
+    x += SLEEVE;
   }
-  parts.push(`<text x="150" y="82" text-anchor="middle" fill="var(--ink-3)"
-    font-family="system-ui,sans-serif" font-size="11" font-weight="600" letter-spacing="1.2">
-    ${bar ? 'ONE SIDE SHOWN' : 'ONE SIDE — NO BAR'}</text>`);
+
+  // Smallest outermost, so the largest sits against the collar — the order you
+  // actually load them in.
+  [...plates].reverse().forEach(q=>{
+    const w = thick(q), h = dia(q), label = String(q.w), ink = plateInk(q.c);
+    parts.push(`<rect x="${x}" y="${mid - h/2}" width="${w}" height="${h}" rx="${Math.min(5, w/3)}"
+      fill="${q.c}" stroke="var(--surface)" stroke-width="2"/>`);
+
+    // Does the number fit across the plate? 0.58em is a fair width per digit.
+    let size = label.length >= 4 ? 10 : label.length === 3 ? 11 : 13;
+    const across = label.length * size * 0.58 <= w - 5;
+    if(!across) size = Math.max(8, Math.min(size, Math.floor((h - 10) / (label.length * 0.58))));
+    const cx = x + w/2;
+    parts.push(`<text x="${cx}" y="${mid}" text-anchor="middle" dominant-baseline="central"
+      data-on="${q.c}" fill="${ink}" font-family="system-ui,sans-serif" font-size="${size}"
+      font-weight="700" letter-spacing="-.02em"${
+        across ? '' : ` transform="rotate(-90 ${cx} ${mid})"`}>${label}</text>`);
+    x += w + GAP;
+  });
+  if(plates.length) x -= GAP;   // no gap trailing the last plate
+
+  if(bar){
+    parts.push(`<rect x="${x}" y="${mid-12}" width="${COLLAR}" height="24" rx="3" fill="var(--ink-3)"/>`);
+    x += COLLAR;
+    parts.push(`<rect x="${x}" y="${shaftY}" width="${SHAFT}" height="8" rx="4" fill="var(--line-2)"/>`);
+    parts.push(`<text x="${x + SHAFT/2}" y="${mid}" text-anchor="middle" dominant-baseline="central"
+      fill="var(--ink-2)" font-family="system-ui,sans-serif" font-size="13" font-weight="700">${bar}</text>`);
+  }
+
   svg.innerHTML = parts.join('');
   svg.setAttribute('aria-label', plates.length
-    ? `${plates.map(p=>p.w).join(', ')} ${u.label} per side` : 'Empty bar');
+    ? `${plates.map(p=>p.w).join(', ')} ${u.label} per side on a ${bar} ${u.label} bar`
+    : 'Empty bar');
 
   txt.innerHTML = plates.length
     ? `${plates.map(p=>p.w).join(' · ')} <span class="per">per side</span>`
@@ -1311,6 +1525,34 @@ const wantsBuzz  = () => alertMode() === 'both' || alertMode() === 'vibrate';
 function fireAlert(short){
   if(wantsSound()) chime(short ? [0] : [0, .18]);
   if(wantsBuzz() && navigator.vibrate) navigator.vibrate(short ? [90] : [130,70,130]);
+  notifyRestDone(short);
+}
+
+// Only worth raising when you are looking at something else; on screen the
+// timer already turned green.
+function notifyRestDone(short){
+  if(!db.settings.notify) return;
+  if(typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  if(document.visibilityState === 'visible') return;
+  try{
+    const n = new Notification(short ? 'Go now' : 'Rest complete', {
+      body: rest.ex || 'Next set',
+      tag: 'logbook-rest',      // replaces rather than stacks
+      icon: 'icon-192.png',
+      silent: alertMode() === 'silent'
+    });
+    n.onclick = () => { window.focus(); n.close(); };
+  }catch(e){ /* denied or unsupported */ }
+}
+
+async function askNotify(on){
+  if(!on){ db.settings.notify = false; save(); return true; }
+  if(typeof Notification === 'undefined'){ toast('Not supported here'); return false; }
+  let perm = Notification.permission;
+  if(perm === 'default') perm = await Notification.requestPermission();
+  if(perm !== 'granted'){ toast('Notifications are blocked'); return false; }
+  db.settings.notify = true; save();
+  return true;
 }
 
 function chime(times){
@@ -1498,8 +1740,9 @@ function renderSheetSub(){
   const prev = db.sets.filter(s => s.e === ex && s.d !== state.date).slice(-1)[0];
   const done = workingSets(setsFor(state.date, ex)).length, goal = targetSets(target);
   const goalSets = targetSets(target);
-  const bits = [`Target ${target}` +
-    (isUnilateral(ex) && goalSets ? ` (${goalSets/2} per side)` : '')];
+  const bits = [target
+    ? `Target ${target}` + (isUnilateral(ex) && goalSets ? ` (${goalSets/2} per side)` : '')
+    : 'No target — logged for today only'];
   if(goal) bits.push(`${done}/${goal} done`);
   else if(done) bits.push(`${done} logged`);
   bits.push(prev
@@ -1519,14 +1762,18 @@ function openSheet(ex){
   state.target = target;
   renderSheetSub();
 
-  // Prefill from the most recent set of this exercise, today's included —
-  // the next set is nearly always a repeat of the last one.
-  const seed = db.sets.filter(s => s.e === ex).slice(-1)[0];
+  const seed = seedFor(ex);
+  const wantReps = targetReps(target);
   $('#wtlab').textContent = k === 'bodyweight' ? `Added weight (${u.label})` : `Weight (${u.label})`;
   $('#repslab').textContent = k === 'distance' ? `Distance (${u.dist})` : 'Reps';
-  $('#wt').value = seed ? fmtW(toDisplay(seed)) : (k === 'bodyweight' ? 0 : '');
-  $('#reps').value = seed ? seed.r : '';
-  state.rir = seed ? seed.rir : 2;
+  $('#wt').value = fmtW(seed.weight);
+  // Remembered so a settings change can refresh an untouched suggestion
+  // without overwriting a number you typed.
+  state.seededWeight = $('#wt').value;
+  // The target states the reps; only fall back to history when it does not
+  // name a number, as with "4 × max".
+  $('#reps').value = wantReps ?? (seed.base ? seed.base.r : '');
+  state.rir = seed.rir;
 
   const needsBw = k === 'bodyweight' && !bw();
   $('#bwhint').classList.toggle('hide', !needsBw);
@@ -1559,14 +1806,21 @@ function sparkline(vals){
   const pts = vals.map((v,i)=>[i/(vals.length-1)*w, h-2-((v-min)/rng)*(h-6)]);
   const d = pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
   return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
-    <path d="${d}" fill="none" stroke="var(--ink)" stroke-width="2"
+    <path d="${d}" fill="none" stroke="var(--accent-ink)" stroke-width="2"
       stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
     <circle cx="${pts.at(-1)[0].toFixed(1)}" cy="${pts.at(-1)[1].toFixed(1)}" r="4"
       fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/></svg>`;
 }
 
+const TREND_SPANS = [[8,'8'],[20,'20'],[50,'50'],['all','All']];
+
 function renderHistory(){
   const u = U();
+  const span = state.trendSpan || 8;
+  $('#trendlabel').textContent = span === 'all'
+    ? 'Estimated max — every session' : `Estimated max — last ${span} sessions`;
+  $('#trendspan').innerHTML = TREND_SPANS.map(([v,label]) =>
+    `<button data-span="${v}" aria-pressed="${String(v)===String(span)}">${label}</button>`).join('');
   const byEx = {};
   db.sets.forEach(s=>{
     if(isWarmup(s)) return; // a ramp-up rep is not evidence of a max
@@ -1581,7 +1835,8 @@ function renderHistory(){
     })
     .sort((a,b)=> b.dates.at(-1).localeCompare(a.dates.at(-1)))
     .map(c=>{
-      const vals = c.vals.slice(-8);
+      const span = state.trendSpan || 8;
+      const vals = span === 'all' ? c.vals : c.vals.slice(-span);
       const now = vals.at(-1), first = vals[0];
       const pct = first ? ((now-first)/first*100) : 0;
       const cls = vals.length<2 ? 'flat' : pct > 1.5 ? 'up' : pct < -1.5 ? 'down' : 'flat';
@@ -1589,11 +1844,12 @@ function renderHistory(){
         : cls==='flat' ? 'no clear change' : (pct>0?'+':'') + pct.toFixed(1) + '% over ' + vals.length + ' sessions';
       const unit = kindOf(c.ex) === 'distance' ? u.dist : u.label;
       const what = kindOf(c.ex) === 'distance' ? 'best distance' : 'est. max ' + unit;
-      return `<div class="card">
+      return `<button class="card trendcard" data-ex="${esc(c.ex)}"
+          aria-label="History for ${esc(c.ex)}">
         <h3>${esc(c.ex)}</h3>
         <div class="metric"><b>${Math.round(now)}</b><small>${esc(what)}</small>
           <small class="delta ${cls}" style="margin-left:auto">${esc(label)}</small></div>
-        ${sparkline(vals)}</div>`;
+        ${sparkline(vals)}</button>`;
     });
   $('#trends').innerHTML = cards.length ? cards.join('')
     : `<div class="empty">Nothing logged yet. Estimated max comes from weight, reps and RIR together, so a set of 8 at 3 RIR still tells you something — you never have to test a true max to see the trend.</div>`;
@@ -1610,7 +1866,7 @@ function renderHistory(){
     $('#paincard').innerHTML = `<div class="metric"><b>${avg.toFixed(1)}</b><small>average of ${rated.length} rated days</small></div>
       <div class="painstrip" role="img" aria-label="Pain by day: ${esc(rated.map(([d,v])=>`${d}: ${v.pain}`).join(', '))}">${
         rated.map(([d,v])=>`<div title="${esc(d)}: ${v.pain}" style="height:${
-          Math.max(v.pain/10*H, 2).toFixed(1)}px"></div>`).join('')}</div>`;
+          Math.max(v.pain/10*H, 2).toFixed(1)}px;background:${painColor(v.pain)}"></div>`).join('')}</div>`;
   }
 
   renderSessions();
@@ -1628,7 +1884,9 @@ function renderSessions(){
   const u = U();
   const byDate = {};
   db.sets.forEach(s => (byDate[s.d] ||= []).push(s));
-  const dates = Object.keys(byDate).sort().reverse().slice(0, 30);
+  const all = Object.keys(byDate).sort().reverse();
+  const shown = state.sessionsShown || 30;
+  const dates = all.slice(0, shown);
   if(!dates.length){ $('#sessions').innerHTML = `<div class="empty">No sessions logged yet.</div>`; return; }
   $('#sessions').innerHTML = dates.map(date=>{
     const sets = byDate[date];
@@ -1658,7 +1916,10 @@ function renderSessions(){
           return st && dn > st ? ' in ' + Math.max(1, Math.round((dn-st)/60000)) + ' min' : ''; })()}` : ''}</div>
       ${open ? `<div class="sessbody">${lines}${note?`<div class="sessnote">${esc(note)}</div>`:''}</div>` : ''}
     </div>`;
-  }).join('');
+  }).join('') + (all.length > dates.length
+    ? `<button class="btn ghost small wide" id="moresessions">Show 30 more · ${
+        all.length - dates.length} older</button>`
+    : '');
 }
 
 /* ---------- steppers ---------- */
@@ -1715,6 +1976,10 @@ $('#banners').addEventListener('click', e=>{
   const b = e.target.closest('[data-act]'); if(!b) return;
   if(b.dataset.act === 'today'){ state.date = todayISO(); refreshDate(); }
   if(b.dataset.act === 'backup') downloadBackup();
+  if(b.dataset.act === 'snooze'){
+    db.settings.backupSnooze = sessionsSinceBackup();
+    save(); renderBanners();
+  }
   if(b.dataset.act === 'update') applyUpdate();
   if(b.dataset.act === 'install') promptInstall();
 });
@@ -1762,15 +2027,46 @@ $('#editprog').addEventListener('click', ()=>{
 
 $('#addex').addEventListener('click', ()=>openExEditor(null));
 
+function editDay(field, value){
+  const day = ownProgram().find(d => d.id === state.day);
+  if(!day) return;
+  day[field] = value;
+  save(); renderDays(); renderExercises();
+}
+$('#dayname').addEventListener('input', e=>editDay('name', e.target.value));
+$('#daytag').addEventListener('input', e=>editDay('tag', e.target.value));
+
+$('#addday').addEventListener('click', ()=>{
+  const p = ownProgram();
+  // ids only have to be unique; the visible identity is the name.
+  const id = 'd' + Date.now().toString(36);
+  p.push({id, name:`Day ${p.length + 1}`, tag:'', ex:[]});
+  state.day = id;
+  db.settings.lastDay = id;
+  save(); renderDays(); renderExercises();
+  $('#dayname').focus();
+  toast('Day added');
+});
+
+$('#delday').addEventListener('click', ()=>{
+  const p = ownProgram();
+  if(p.length <= 1){ toast('Keep at least one day'); return; }
+  const i = p.findIndex(d => d.id === state.day);
+  if(i < 0) return;
+  const [removed] = p.splice(i, 1);
+  state.day = p[Math.min(i, p.length - 1)].id;
+  db.settings.lastDay = state.day;
+  save(); renderDays(); renderExercises();
+  // Logged sets keep their own day id, so nothing in history is lost with it.
+  toast('Day deleted', {label:'Undo', fn:()=>{
+    p.splice(i, 0, removed);
+    state.day = removed.id;
+    save(); renderDays(); renderExercises();
+  }});
+});
+
 /* ---------- events: log sheet ---------- */
 $('#wt').addEventListener('input', renderPlateMath);
-
-$('#bars').addEventListener('click', e=>{
-  const b = e.target.closest('[data-bar]'); if(!b) return;
-  const m = (db.ex[state.ex] ||= {});
-  m.bar = Object.assign({}, m.bar || DEFAULT_BAR[state.ex] || {}, {[units()]: +b.dataset.bar});
-  save(); renderPlateMath(); refreshStepperLabels();
-});
 
 $('#plates').addEventListener('click', e=>{
   const b = e.target.closest('[data-v]'); if(!b) return;
@@ -1871,6 +2167,8 @@ $('#setlist').addEventListener('click', e=>{
   renderPlates(); renderSetList(); renderPlateMath();
 });
 
+$('#exsettings').addEventListener('click', ()=>openExEditor(state.ex));
+
 $('#close').addEventListener('click', closeSheet);
 $('#scrim').addEventListener('click', closeTop);
 
@@ -1930,7 +2228,15 @@ function openExEditor(name){
   $('#exrest').innerHTML = REST_OPTIONS.map(v =>
     `<option value="${v}">${mmss(v)}</option>`).join('');
   $('#exrest').value = String(name ? restTargetFor(name) : 120);
-  $('#exdelete').classList.toggle('hide', !name);
+  const progSet = name ? (meta(name).prog || {})[units()] : null;
+  $('#exproglab').textContent = `Progression (${u.label})`;
+  $('#exprog').value = progSet > 0 ? progSet : '';
+  $('#exprog').placeholder = name ? String(progressionFor(name)) : '';
+  $('#exproghint').textContent = name
+    ? `Added to the last session's weight when this opens. Blank follows the rack — currently ${progressionFor(name)} ${u.label}.`
+    : 'Blank follows the smallest jump your plates allow.';
+  const inDay = !!name && dayById(state.day).ex.some(([n]) => n === name);
+  $('#exdelete').classList.toggle('hide', !inDay);
   openPanel($('#exsheet'), $('#exname'));
 }
 
@@ -1970,8 +2276,23 @@ $('#exsave').addEventListener('click', ()=>{
   if(barVal === '') delete m.bar;
   else m.bar = Object.assign({}, m.bar || {}, {[units()]: +barVal});
 
+  const progVal = parseFloat($('#exprog').value);
+  if(progVal > 0) m.prog = Object.assign({}, m.prog || {}, {[units()]: progVal});
+  else if(m.prog) delete m.prog[units()];
+
   save(); renderDays(); renderExercises();
   closePanel($('#exsheet'), ()=>exButton(name) || $('#editprog'));
+  if(sheetStack.includes($('#sheet'))){
+    state.ex = name;
+    state.target = target;
+    if($('#wt').value === state.seededWeight){
+      $('#wt').value = fmtW(seedFor(name).weight);
+      state.seededWeight = $('#wt').value;
+    }
+    const reps = targetReps(target);
+    if(reps != null && !state.editing) $('#reps').value = reps;
+    renderSheetSub(); renderPlateMath(); refreshStepperLabels(); renderSetList();
+  }
   toast(rounded ? `Rounded to ${targetSets(target)} sets — one side each` : (old ? 'Saved' : 'Added'));
 });
 
@@ -2007,11 +2328,19 @@ function openSettings(){
   $('#alertsel').innerHTML = ALERT_OPTIONS.map(([v,label]) =>
     `<option value="${v}">${esc(label)}</option>`).join('');
   $('#alertsel').value = alertMode();
+  $('#notifybox').checked = !!db.settings.notify &&
+    typeof Notification !== 'undefined' && Notification.permission === 'granted';
   $('#storagesub').textContent = storageBroken
     ? 'Saving is blocked on this device.'
-    : (window.storage ? 'Saved to this app.' : 'Saved in this browser.');
+    : persistentStorage === true
+      ? 'Saved in this browser, marked permanent.'
+      : 'Saved in this browser — the browser may clear it, so keep a backup.';
+  const since = sessionsSinceBackup();
   $('#datastat').textContent =
-    `${db.sets.length} sets across ${new Set(db.sets.map(s=>s.d)).size} days.`;
+    `${db.sets.length} sets across ${new Set(db.sets.map(s=>s.d)).size} days. ` +
+    (db.settings.lastBackup
+      ? (since ? `${since} session${since===1?'':'s'} since your last backup.` : 'Backed up.')
+      : 'Never backed up.');
   $('#appversion').textContent = `Logbook ${APP_VERSION}`;
   openPanel($('#settings'), $('#set-title'));
 }
@@ -2059,6 +2388,11 @@ $('#alertsel').addEventListener('change', e=>{
   fireAlert(false);
 });
 
+$('#notifybox').addEventListener('change', async e=>{
+  const ok = await askNotify(e.target.checked);
+  e.target.checked = ok && e.target.checked;
+});
+
 $('#testalert').addEventListener('click', ()=>{
   fireAlert(false);
   const label = (ALERT_OPTIONS.find(([v]) => v === alertMode()) || [])[1] || '';
@@ -2092,6 +2426,11 @@ const stamp = () => todayISO().replace(/-/g,'');
 
 function downloadBackup(){
   const ok = download(`logbook-${stamp()}.json`, JSON.stringify(db, null, 2), 'application/json');
+  if(ok){
+    db.settings.lastBackup = Date.now();
+    db.settings.backupSnooze = 0;
+    save(); renderBanners();
+  }
   toast(ok ? 'Backup downloaded' : 'Download blocked');
 }
 
@@ -2141,7 +2480,101 @@ function switchTab(t){
 $('#tab-train').addEventListener('click', ()=>switchTab('train'));
 $('#tab-history').addEventListener('click', ()=>switchTab('history'));
 
+// The trend line is a summary; this is the working underneath it, which is the
+// question a chart actually raises — what did I do, and when.
+// Every exercise the app knows: the whole program, plus anything ever logged.
+function allKnownExercises(){
+  const names = new Set();
+  program().forEach(d => d.ex.forEach(([n]) => names.add(n)));
+  db.sets.forEach(s => names.add(s.e));
+  return [...names].sort((a,b) => a.localeCompare(b));
+}
+
+function renderPickList(){
+  const q = $('#pickfilter').value.trim().toLowerCase();
+  const day = dayById(state.day);
+  const listed = new Set(day.ex.map(([n]) => n));
+  const hits = allKnownExercises().filter(n => !q || n.toLowerCase().includes(q));
+  $('#picklist').innerHTML = hits.length ? hits.map(n =>
+    `<div class="exrow"><button class="ex" data-pick="${esc(n)}">
+      <span class="name">${esc(n)}${listed.has(n) ? `<span class="pairline">In ${esc(day.name)}</span>` : ''}</span>
+    </button></div>`).join('')
+    : `<div class="empty">Nothing matches. Add it to a day from Edit if it is new.</div>`;
+}
+
+function openPicker(){
+  $('#pickfilter').value = '';
+  renderPickList();
+  openPanel($('#picker'), $('#pickfilter'));
+}
+
+$('#logother').addEventListener('click', openPicker);
+$('#pickfilter').addEventListener('input', renderPickList);
+$('#pickerclose').addEventListener('click', ()=>closePanel($('#picker')));
+$('#pickercancel').addEventListener('click', ()=>closePanel($('#picker')));
+$('#picklist').addEventListener('click', e=>{
+  const b = e.target.closest('[data-pick]'); if(!b) return;
+  const name = b.dataset.pick;
+  closePanel($('#picker'));
+  openSheet(name);
+});
+
+function openExHistory(ex){
+  const u = U(), k = kindOf(ex);
+  const mine = db.sets.filter(s => s.e === ex);
+  const byDate = {};
+  mine.forEach(s => (byDate[s.d] ||= []).push(s));
+  const dates = Object.keys(byDate).sort().reverse();
+
+  $('#exhist-title').textContent = ex;
+  const sessions = dates.length;
+  const best = Math.max(0, ...mine.filter(s => !isWarmup(s)).map(s => k === 'distance' ? s.r : e1rm(s)));
+  $('#exhist-sub').textContent = sessions
+    ? `${sessions} session${sessions===1?'':'s'} · best ${Math.round(best)} ${k==='distance'?u.dist:u.label}`
+    : 'Nothing logged yet';
+
+  $('#exhist-body').innerHTML = dates.length ? dates.map(d=>{
+    const list = byDate[d];
+    const detail = list.map(s => {
+      const load = k === 'distance' ? `${fmtW(s.r)}${u.dist}`
+        : k === 'bodyweight' ? `${toDisplay(s) > 0 ? `BW+${fmtW(toDisplay(s))}` : 'BW'}×${s.r}`
+        : `${fmtW(toDisplay(s))}×${s.r}`;
+      return isWarmup(s) ? `<em>${esc(load)}</em>` : esc(load);
+    }).join('  ');
+    const work = workingSets(list);
+    const top = work.length
+      ? Math.round(Math.max(...work.map(s => k === 'distance' ? s.r : e1rm(s)))) : null;
+    return `<div class="exhistday">
+      <b>${esc(prettyDate(d))}</b>
+      <span>${detail}</span>
+      ${top ? `<em>${top}</em>` : ''}
+    </div>`;
+  }).join('') : `<div class="empty">Nothing logged for this exercise yet.</div>`;
+
+  openPanel($('#exhist'), $('#exhist-title'));
+}
+
+$('#trends').addEventListener('click', e=>{
+  const b = e.target.closest('[data-ex]'); if(!b) return;
+  openExHistory(b.dataset.ex);
+});
+$('#exhistclose').addEventListener('click', ()=>closePanel($('#exhist')));
+$('#exhistdone').addEventListener('click', ()=>closePanel($('#exhist')));
+
+$('#trendspan').addEventListener('click', e=>{
+  const b = e.target.closest('[data-span]'); if(!b) return;
+  state.trendSpan = b.dataset.span === 'all' ? 'all' : +b.dataset.span;
+  renderHistory();
+});
+
 $('#sessions').addEventListener('click', e=>{
+  if(e.target.closest('#moresessions')){
+    // A fixed window of 30 quietly hid everything older; this walks back
+    // through it rather than pretending the rest is not there.
+    state.sessionsShown = (state.sessionsShown || 30) + 30;
+    renderSessions();
+    return;
+  }
   const b = e.target.closest('[data-sess]'); if(!b) return;
   state.openSession = state.openSession === b.dataset.sess ? null : b.dataset.sess;
   renderSessions();
@@ -2167,8 +2600,11 @@ function suggestDay(){
   return db.settings.lastDay || p[0].id;
 }
 
+let persistentStorage = null;
+
 (async ()=>{
   await load();
+  persistentStorage = await claimPersistentStorage();
   state.day = suggestDay();
   if(!program().some(d => d.id === state.day)) state.day = program()[0].id;
 
@@ -2180,14 +2616,19 @@ function suggestDay(){
     showRest();
   } else if(r){ db.rest = null; }
 
+  // Manifest shortcuts land here with ?view=history
+  const wanted = new URLSearchParams(location.search).get('view');
   rerenderAll();
+  if(wanted === 'history') switchTab('history');
 })();
 
 /* ---------- offline install ---------- */
 // A new version never reloads the page on its own — that would throw away a
 // half-entered set. It offers, and the user decides when.
+let updateRequested = false;
 function applyUpdate(){
   if(!pendingWorker) return;
+  updateRequested = true;
   pendingWorker.postMessage('SKIP_WAITING');
   pendingWorker = null;
   renderBanners();
@@ -2211,9 +2652,16 @@ window.addEventListener('appinstalled', ()=>{ installPrompt = null; renderBanner
 // Only meaningful over http(s). Opened straight from disk the app still runs,
 // it just has no offline cache to install.
 if('serviceWorker' in navigator && location.protocol.startsWith('http')){
+  // A page that loaded without a controller is a first install. clients.claim()
+  // fires controllerchange for it too, and reloading then restarts a page that
+  // is already showing current content — a visible flash on first launch, and a
+  // race against anything mid-flight. Reload only when a worker actually
+  // replaced another, or when the update was asked for.
+  const hadController = !!navigator.serviceWorker.controller;
   let reloading = false;
   navigator.serviceWorker.addEventListener('controllerchange', ()=>{
     if(reloading) return;
+    if(!hadController && !updateRequested) return;
     reloading = true;
     location.reload();
   });

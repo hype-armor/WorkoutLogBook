@@ -367,7 +367,9 @@ test('a v1 database migrates', async ({ browser }) => {
   await page.click('#tab-train');
   await page.click('.ex[data-ex="Deadlift"]');
   // v1 kept bar and rest overrides in flat maps and assumed pounds
-  await expect(page.locator('#bars button[aria-pressed="true"]')).toHaveText('45 bar');
+  await page.click('#exsettings');
+  await expect(page.locator('#exbar')).toHaveValue('45');
+  await page.click('#exclose');
   await page.click('#close');
 
   // v1 stored a "fractional" boolean, which was one answer to the broader
@@ -375,5 +377,195 @@ test('a v1 database migrates', async ({ browser }) => {
   await page.click('#gear');
   expect(await page.$$eval('#platesel button[aria-pressed="true"]',
     b => b.map(x => x.textContent.trim()))).toContain('1.25');
+  await ctx.close();
+});
+
+test.describe('data durability', () => {
+  // addInitScript runs on every navigation, so without this guard a reload
+  // re-seeds storage and silently undoes whatever the test just did.
+  const seedSessions = (page, n, lastBackup) => page.addInitScript(([count, backup]) => {
+    if (localStorage.getItem('logbook-v1')) return;
+    const sets = [];
+    for (let i = 0; i < count; i++) {
+      const t = Date.parse('2026-06-01') + i * 86400000;
+      sets.push({ id: t + 'x' + i, t, d: new Date(t).toISOString().slice(0, 10),
+                  e: 'Deadlift', dy: 'A', w: 225, r: 5, rir: 2, rest: 180, u: 'lb' });
+    }
+    localStorage.setItem('logbook-v1', JSON.stringify({
+      v: 2, sets, days: {}, pairs: {}, ex: {}, program: null,
+      settings: { units: 'lb', transition: 30, bw: { lb: 0, kg: 0 }, lastDay: 'A',
+                  alert: 'both', ...(backup ? { lastBackup: backup } : {}) },
+      rest: null
+    }));
+  }, [n, lastBackup]);
+
+  test('storage asks to be treated as permanent', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    const asked = [];
+    await page.exposeFunction('__persistCalled', () => asked.push(1));
+    await page.addInitScript(() => {
+      const real = navigator.storage.persist.bind(navigator.storage);
+      navigator.storage.persist = () => { window.__persistCalled(); return real(); };
+    });
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    // the app is the only copy of the data, so it has to ask
+    expect(asked.length).toBeGreaterThan(0);
+    await ctx.close();
+  });
+
+  test('a long stretch without a backup is surfaced, and can be deferred', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seedSessions(page, 9, null);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    await expect(page.locator('#banners')).toContainText('9 sessions since your last backup');
+    await page.click('#banners [data-act="snooze"]');
+    await expect(page.locator('#banners')).not.toContainText('since your last backup');
+
+    // and it stays quiet after a reload rather than nagging every launch
+    await page.reload();
+    await page.waitForSelector('.ex');
+    await expect(page.locator('#banners')).not.toContainText('since your last backup');
+    await ctx.close();
+  });
+
+  test('a few sessions is not worth nagging about', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seedSessions(page, 3, null);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await expect(page.locator('#banners')).not.toContainText('backup');
+    await ctx.close();
+  });
+
+  test('taking a backup clears the notice and is reported in settings', async ({ browser }) => {
+    const ctx = await phone(browser, { acceptDownloads: true });
+    const page = await ctx.newPage();
+    await seedSessions(page, 12, null);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await expect(page.locator('#banners')).toContainText('12 sessions');
+
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#banners [data-act="backup"]')]);
+    expect(dl.suggestedFilename()).toMatch(/^logbook-\d{8}\.json$/);
+    await expect(page.locator('#banners')).not.toContainText('since your last backup');
+
+    await page.click('#gear');
+    await expect(page.locator('#datastat')).toContainText('Backed up.');
+    await ctx.close();
+  });
+});
+
+test('the pain chart colours by severity as well as height', async ({ browser }) => {
+  const ctx = await phone(browser);
+  const page = await ctx.newPage();
+  await page.addInitScript(() => {
+    if (localStorage.getItem('logbook-v1')) return;
+    const days = {};
+    [0, 3, 5, 7, 10].forEach((v, i) => { days[`2026-08-0${i + 1}`] = { pain: v }; });
+    localStorage.setItem('logbook-v1', JSON.stringify({
+      v: 2, sets: [], days, pairs: {}, ex: {}, program: null,
+      settings: { units: 'lb', transition: 30, bw: { lb: 0, kg: 0 }, lastDay: 'A', alert: 'both' }, rest: null
+    }));
+  });
+  await page.goto(FILE_URL);
+  await page.click('#tab-history');
+
+  const bars = await page.$$eval('.painstrip div', els => els.map(e => ({
+    h: +e.getBoundingClientRect().height.toFixed(1),
+    bg: getComputedStyle(e).backgroundColor
+  })));
+  expect(bars).toHaveLength(5);
+
+  // one hue, getting brighter with severity — on a dark ground that reads as
+  // intensity, and it survives red-green colourblindness, which a green-to-red
+  // scale would not
+  const lum = rgb => {
+    const [r, g, b] = rgb.match(/\d+/g).map(n => +n / 255)
+      .map(v => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const lums = bars.map(b => lum(b.bg));
+  for (let i = 1; i < lums.length; i++) {
+    expect(lums[i], `step ${i} is not brighter than ${i - 1}`).toBeGreaterThan(lums[i - 1]);
+  }
+  // height still carries the number independently of colour
+  for (let i = 1; i < bars.length; i++) expect(bars[i].h).toBeGreaterThan(bars[i - 1].h);
+
+  // and rating a day previews the colour that day will take
+  await page.click('#tab-train');
+  await page.click('#painscale [data-pain="9"]');
+  const chosen = await page.$eval('#painscale [data-pain="9"]', e => getComputedStyle(e).backgroundColor);
+  expect(lum(chosen)).toBeGreaterThan(lums[0]);
+  await ctx.close();
+});
+
+test('the plate diagram labels every plate and stays centred', async ({ browser }) => {
+  const ctx = await phone(browser);
+  const page = await ctx.newPage();
+  await page.goto(FILE_URL);
+  await page.waitForSelector('.ex');
+  await page.click('#gear');
+  await page.click('#platesel [data-plate="1.25"]');   // exercise a 4-char label
+  await page.click('#setdone');
+  await page.click('.ex[data-ex="Deadlift"]');
+
+  const read = () => page.evaluate(() => {
+    const svg = document.querySelector('#barsvg');
+    const texts = [...svg.querySelectorAll('text')].map(t => t.textContent.trim());
+    const els = [...svg.querySelectorAll('rect')];
+    const xs = els.flatMap(e => { const b = e.getBBox(); return [b.x, b.x + b.width]; });
+    return { texts, left: Math.min(...xs), right: Math.max(...xs), width: svg.viewBox.baseVal.width };
+  });
+
+  for (const [weight, plates] of [['95', ['25']], ['225', ['45', '45']], ['322.5', ['45', '45', '45', '2.5', '1.25']]]) {
+    await page.fill('#wt', weight);
+    const d = await read();
+    // every plate carries its own number, and the bar carries its weight
+    for (const p of plates) expect(d.texts, `${weight} lb`).toContain(p);
+    expect(d.texts, 'bar weight is written on the bar').toContain('45');
+    // and the whole group is centred rather than anchored to one edge
+    expect(Math.abs((d.left + d.right) / 2 - d.width / 2), `${weight} lb off centre`).toBeLessThan(1);
+  }
+
+  // the label on each plate has to be legible against that plate. Matching by
+  // position broke once thin plates started running their labels sideways, so
+  // each label records the plate it sits on.
+  const inks = await page.evaluate(() => {
+    const rel = hex => {
+      const c = [1,3,5].map(i => parseInt(hex.slice(i,i+2),16)/255)
+        .map(v => v <= 0.04045 ? v/12.92 : ((v+0.055)/1.055)**2.4);
+      return 0.2126*c[0] + 0.7152*c[1] + 0.0722*c[2];
+    };
+    const toHex = rgb => rgb.startsWith('#') ? rgb : '#' + rgb.match(/\d+/g).slice(0,3)
+      .map(n => (+n).toString(16).padStart(2,'0')).join('');
+    return [...document.querySelectorAll('#barsvg text[data-on]')].map(t => {
+      const a = rel(toHex(getComputedStyle(t).fill));
+      const b = rel(toHex(t.dataset.on));
+      const [hi, lo] = [a, b].sort((x, y) => y - x);
+      return { label: t.textContent, ratio: (hi + 0.05) / (lo + 0.05) };
+    });
+  });
+  expect(inks.length).toBeGreaterThan(0);
+  for (const { label, ratio } of inks) expect(ratio, `label ${label}`).toBeGreaterThanOrEqual(4.5);
+
+  // a heavier plate is both wider and taller, as it is in a rack
+  const shapes = await page.evaluate(() =>
+    [...document.querySelectorAll('#barsvg rect')]
+      .map(r => ({ w: +r.getAttribute('width'), h: +r.getAttribute('height'), fill: r.getAttribute('fill') }))
+      .filter(r => r.fill && r.fill.startsWith('#')));
+  const big = shapes.find(r => r.h === Math.max(...shapes.map(s => s.h)));
+  const small = shapes.find(r => r.h === Math.min(...shapes.map(s => s.h)));
+  expect(big.w, 'a 45 should be thicker than a 1.25').toBeGreaterThan(small.w);
+  expect(big.h).toBeGreaterThan(small.h);
+
+  // the message the diagram used to carry is gone; "per side" still says it
+  expect((await page.textContent('#platemath')).toLowerCase()).not.toContain('one side shown');
+  await expect(page.locator('#pmtext')).toContainText(/per side/i);
   await ctx.close();
 });

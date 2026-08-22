@@ -39,12 +39,13 @@ npx playwright install chromium
 npm test
 ```
 
-45 assertions in `tests/`, run on every pull request and again before any
-deploy. They cover the things that actually broke: that a logged set survives a
-reload, that `Log set` and the RIR selector are never underneath the rest
-timer at phone sizes, that unit switching converts rather than corrupts, that
-a backup round-trips, that blocked storage is reported instead of retried
-forever, and that the app opens and keeps working with the network off.
+109 tests in `tests/`, run on every pull request and again before any deploy.
+They cover the things that actually broke: that a logged set survives a reload
+and a service-worker update, that `Log set` and the RIR selector are never
+underneath the rest timer at phone sizes, that unit switching converts rather
+than corrupts, that a backup round-trips, that blocked storage is reported
+instead of retried forever, and that the app opens and keeps working with the
+network off.
 
 Layout assertions read real bounding boxes at 375×667 and 390×844, so a
 regression that hides a control fails the build rather than being noticed in a
@@ -102,10 +103,14 @@ the `pages` concurrency group only queue behind each other.
 
 ## Your data
 
-Stored in `localStorage` under `logbook-v1`, on the device only. Clearing site
-data erases it, so use **Settings → Download backup (JSON)** now and then;
-**Restore from backup** reads it back. There's a CSV export for spreadsheets,
-but only the JSON backup round-trips.
+Stored in `localStorage` under `logbook-v1`, on the device only. The app asks
+the browser to mark that storage permanent so it is not evicted under storage
+pressure — Settings reports whether the request was granted — but the grant is
+the browser's to give, and clearing site data erases everything regardless.
+
+So it still nags: after eight sessions without one, a banner offers a backup.
+**Settings → Download backup (JSON)** round-trips through **Restore from
+backup**. The CSV export is for spreadsheets and does not restore.
 
 If a device blocks storage (private mode, a full disk), a banner says so
 instead of failing quietly.

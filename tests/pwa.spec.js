@@ -6,10 +6,11 @@ const { APP_PATH, SW_PATH, FILE_URL, phone, watchErrors } = require('./helpers')
 test.describe('installable and offline', () => {
   test.describe.configure({ mode: 'serial' });
 
-  let ctx, page, errs, base;
+  let ctx, page, errs, base, browser2;
 
   test.beforeAll(async ({ browser, baseURL }) => {
     base = baseURL;
+    browser2 = browser;
     ctx = await phone(browser);
     page = await ctx.newPage();
     // Navigating straight to a .png or .webmanifest makes Chrome ask for
@@ -39,6 +40,22 @@ test.describe('installable and offline', () => {
       expect(r.status(), icon.src).toBe(200);
       expect(r.headers()['content-type'], icon.src).toContain('image/png');
     }
+  });
+
+  test('a first install does not reload the page it just claimed', async () => {
+    const ctx2 = await phone(browser2);
+    const p2 = await ctx2.newPage();
+    let navs = 0;
+    p2.on('framenavigated', f => { if (f === p2.mainFrame()) navs++; });
+    await p2.goto(base);
+    await p2.waitForSelector('.ex');
+    await p2.evaluate(async () => { await navigator.serviceWorker.ready; });
+    await p2.waitForTimeout(1500);
+    // clients.claim() fires controllerchange on an uncontrolled page too;
+    // reloading there restarts a page already showing current content
+    expect(navs, 'reloaded itself on first install').toBe(1);
+    expect(await p2.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
+    await ctx2.close();
   });
 
   test('the service worker activates and precaches the shell', async () => {
