@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.6.0...logbook-v1.7.0) (2026-08-23)
+
+
+### Features
+
+* log an exercise on its own screen, with bigger steppers ([#21](https://github.com/hype-armor/WorkoutLogBook/issues/21)) ([4843139](https://github.com/hype-armor/WorkoutLogBook/commit/484313917e931fa7dc7955287ca94dc907d5a458))
+
 ## [1.6.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.5.1...logbook-v1.6.0) (2026-08-22)
 
 
