@@ -52,6 +52,33 @@ for (const size of SIZES) {
       expect(overlaps(r.rest, r.toast), 'rest timer over toast').toBe(false);
     });
 
+    test('the steppers give their width to the buttons, not the value', async () => {
+      const m = await page.evaluate(() => {
+        const bb = s => { const r = document.querySelector(s).getBoundingClientRect();
+          return { w: r.width, h: r.height }; };
+        return { down: bb('#wdown'), up: bb('#wup'), input: bb('#wt') };
+      });
+      // the buttons are what gets tapped between every set
+      for (const [name, b] of [['−', m.down], ['+', m.up]]) {
+        expect(b.h, `${name} height`).toBeGreaterThanOrEqual(56);
+        expect(b.w, `${name} width`).toBeGreaterThanOrEqual(88);
+      }
+      // and together they take more room than the value, which holds four or
+      // five characters
+      expect(m.down.w + m.up.w).toBeGreaterThan(m.input.w);
+
+      // narrower, but not so narrow it clips a real load
+      for (const v of ['5', '322.5', '1002.5', '999.75']) {
+        await page.fill('#wt', v);
+        const clipped = await page.evaluate(() => {
+          const i = document.querySelector('#wt');
+          return i.scrollWidth > i.clientWidth + 1;
+        });
+        expect(clipped, `${v} is clipped`).toBe(false);
+      }
+      await page.fill('#wt', '225');
+    });
+
     test('touch targets are big enough to hit mid-set', async () => {
       const del = await page.locator('.setrow .del').first().boundingBox();
       expect(del.height).toBeGreaterThanOrEqual(44);

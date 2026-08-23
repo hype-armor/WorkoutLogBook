@@ -322,12 +322,14 @@
   .toggle input{width:20px;height:20px;accent-color:var(--accent);flex:none}
   .toggle .sub{display:block;color:var(--ink-3);font-size:13px;margin-top:3px;line-height:1.4}
 
-  .stepper{display:flex;gap:8px;align-items:stretch}
-  .stepper input{flex:1;min-width:0}
+  .stepper{display:flex;gap:8px;align-items:stretch;min-height:64px}
+  /* 122px fits "322.5" at the input's own size with room to spare; everything
+     left over goes to the two things you actually tap between sets. */
+  .stepper input{flex:0 0 122px;min-width:0}
   .stepper button{
-    width:66px;flex:none;background:var(--surface-2);border:1px solid var(--line);
-    border-radius:var(--r-md);color:var(--ink);font-family:inherit;font-weight:640;
-    font-size:16px;letter-spacing:-.02em;cursor:pointer;
+    flex:1;min-width:0;background:var(--surface-2);border:1px solid var(--line);
+    border-radius:var(--r-md);color:var(--ink);font-family:inherit;font-weight:680;
+    font-size:20px;letter-spacing:-.02em;cursor:pointer;
   }
   .stepper button:active{background:var(--ink);color:var(--on-light);border-color:var(--ink)}
 
