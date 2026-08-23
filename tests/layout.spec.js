@@ -245,3 +245,41 @@ test.describe('safe-area insets', () => {
     await ctx.close();
   });
 });
+
+test('button text cannot be selected, but fields still can', async ({ browser }) => {
+  const ctx = await browser.newContext({ ...PHONE });
+  const page = await ctx.newPage();
+  await page.goto(FILE_URL);
+  await page.waitForSelector('.ex');
+  await page.click('.ex[data-ex="Deadlift"]');
+  await page.click('#logset');
+
+  // Triple-click is the bluntest way to ask for a selection; holding a stepper
+  // to repeat it is the way this actually shows up on a phone.
+  // Only controls that stay put: triple-clicking one that navigates lands the
+  // second and third clicks on whatever is underneath, which selects that
+  // instead and says nothing about the button.
+  for (const sel of ['#wup', '#wdown', '#logset', '.plate', '#setkind button', '.setrow .tap']) {
+    await page.click(sel, { clickCount: 3 });
+    const got = await page.evaluate(() => document.getSelection().toString());
+    expect(got, `${sel} selected "${got}"`).toBe('');
+  }
+
+  // every control reports it, so a new button inherits the behaviour
+  const styles = await page.evaluate(() =>
+    ['#wup', '#logset', '.plate', '#tab-train', '.ex', '.setrow .del', '#close']
+      .map(s => [s, getComputedStyle(document.querySelector(s)).userSelect]));
+  for (const [sel, v] of styles) expect(v, sel).toBe('none');
+
+  // the fields you type into are untouched — notes are prose you may want to edit
+  await page.click('#close');
+  await page.fill('#notes', 'felt sharp on set three');
+  await page.click('#notes', { clickCount: 3 });
+  const picked = await page.evaluate(() => {
+    const t = document.querySelector('#notes');
+    return t.value.slice(t.selectionStart, t.selectionEnd);
+  });
+  expect(picked).toBe('felt sharp on set three');
+  expect(await page.evaluate(() => getComputedStyle(document.querySelector('#wt')).userSelect)).toBe('text');
+  await ctx.close();
+});

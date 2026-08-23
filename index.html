@@ -76,6 +76,13 @@
      set here rather than via user-scalable=no, which would take zooming away
      entirely. As a bonus it removes the legacy 300ms click delay. */
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+  /* Holding a stepper to repeat it should add weight, not start selecting the
+     "+5" printed on it or raise the iOS callout menu. Every control opts out;
+     the fields you actually type into opt back in below. */
+  button, label, nav, .eyebrow, .lab{
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+  }
+  input, textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
   html,body{margin:0;padding:0}
   body{
     background:var(--bg);color:var(--ink);font-family:var(--body);
