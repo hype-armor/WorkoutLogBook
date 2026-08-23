@@ -76,6 +76,13 @@
      set here rather than via user-scalable=no, which would take zooming away
      entirely. As a bonus it removes the legacy 300ms click delay. */
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+  /* Holding a stepper to repeat it should add weight, not start selecting the
+     "+5" printed on it or raise the iOS callout menu. Every control opts out;
+     the fields you actually type into opt back in below. */
+  button, label, nav, .eyebrow, .lab{
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+  }
+  input, textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
   html,body{margin:0;padding:0}
   body{
     background:var(--bg);color:var(--ink);font-family:var(--body);
@@ -322,12 +329,14 @@
   .toggle input{width:20px;height:20px;accent-color:var(--accent);flex:none}
   .toggle .sub{display:block;color:var(--ink-3);font-size:13px;margin-top:3px;line-height:1.4}
 
-  .stepper{display:flex;gap:8px;align-items:stretch}
-  .stepper input{flex:1;min-width:0}
+  .stepper{display:flex;gap:8px;align-items:stretch;min-height:64px}
+  /* 122px fits "322.5" at the input's own size with room to spare; everything
+     left over goes to the two things you actually tap between sets. */
+  .stepper input{flex:0 0 122px;min-width:0}
   .stepper button{
-    width:66px;flex:none;background:var(--surface-2);border:1px solid var(--line);
-    border-radius:var(--r-md);color:var(--ink);font-family:inherit;font-weight:640;
-    font-size:16px;letter-spacing:-.02em;cursor:pointer;
+    flex:1;min-width:0;background:var(--surface-2);border:1px solid var(--line);
+    border-radius:var(--r-md);color:var(--ink);font-family:inherit;font-weight:680;
+    font-size:20px;letter-spacing:-.02em;cursor:pointer;
   }
   .stepper button:active{background:var(--ink);color:var(--on-light);border-color:var(--ink)}
 
@@ -467,6 +476,34 @@
   /* Pinned rather than overflow:hidden, which iOS Safari ignores on the
      document. The offset preserves the reading position, restored on close. */
   body.locked{position:fixed;left:0;right:0;width:100%;overflow:hidden}
+  /* A screen, not a sheet: it occupies the app rather than sliding over it,
+     and leaves by going back. Fixed so the action stays put while the middle
+     scrolls, which is the one thing the sheet got right. */
+  .exscreen{
+    position:fixed;inset:0;z-index:35;background:var(--bg);
+    display:flex;flex-direction:column;
+    animation:pushin .2s cubic-bezier(.32,.72,0,1);
+  }
+  @keyframes pushin{from{transform:translateX(14px);opacity:.4}to{transform:none;opacity:1}}
+  .exhead{
+    flex:none;display:flex;align-items:flex-start;gap:6px;
+    padding:calc(10px + var(--safe-top)) 12px 10px;
+    border-bottom:1px solid var(--line);
+  }
+  .exhead .txt{flex:1;min-width:0;padding-top:9px}
+  .exhead h2{font-size:21px;font-weight:700;letter-spacing:-.03em;margin:0 0 2px}
+  .exhead h2:focus{outline:none}
+  .exhead .sub{color:var(--ink-3);font-size:13px;line-height:1.4;letter-spacing:-.005em}
+  .icon.back{font-size:30px;font-weight:300;line-height:1}
+  .exbody{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;
+    padding:12px 16px 4px;-webkit-overflow-scrolling:touch}
+  .exfoot{
+    flex:none;padding:10px 16px calc(12px + var(--safe-bottom));
+    border-top:1px solid var(--line);background:var(--surface);
+  }
+  .exactions{display:flex;gap:10px}
+  .exactions .btn{margin-top:0}
+
   .hide{display:none!important}
   /* Sits clear of the rest bar rather than behind it. */
   .toast{
@@ -480,7 +517,7 @@
   }
   /* With a sheet open the bottom half is all controls, so the toast goes to
      the top where it covers nothing. */
-  body.sheetopen .toast{bottom:auto;top:calc(12px + var(--safe-top))}
+  body.sheetopen .toast, body.onexercise .toast{bottom:auto;top:calc(12px + var(--safe-top))}
   .toast.show{opacity:1}
   .toast.act{pointer-events:auto}
   .toast button{
@@ -557,17 +594,17 @@
 <div class="scrim" id="scrim"></div>
 
 <!-- ============ LOG SHEET ============ -->
-<section class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" inert aria-hidden="true">
-  <div class="sheethead">
+<main class="exscreen hide" id="view-exercise" aria-labelledby="sheet-title">
+  <div class="exhead">
+    <button class="icon back" id="close" aria-label="Back to exercises">&#8249;</button>
     <div class="txt">
       <h2 id="sheet-title" tabindex="-1">Exercise</h2>
       <div class="sub" id="sheet-sub"></div>
     </div>
     <button class="icon" id="exsettings" aria-label="Exercise settings">&#9881;</button>
-    <button class="icon" id="close" aria-label="Close">&#215;</button>
   </div>
 
-  <div class="sheetbody">
+  <div class="exbody">
     <button class="disclose" id="pairtoggle" aria-expanded="false" aria-controls="pairrow">Superset</button>
     <div class="pairrow hide" id="pairrow">
       <span>Pair with</span>
@@ -611,12 +648,14 @@
     </div>
   </div>
 
-  <div class="restdock"></div>
-  <div class="sheetfoot">
-    <button class="btn ghost hide" id="canceledit" style="flex:0 0 34%">Cancel</button>
-    <button class="btn" id="logset">Log set</button>
+  <div class="exfoot">
+    <div class="restdock"></div>
+    <div class="exactions">
+      <button class="btn ghost hide" id="canceledit" style="flex:0 0 34%">Cancel</button>
+      <button class="btn" id="logset">Log set</button>
+    </div>
   </div>
-</section>
+</main>
 
 <!-- ============ EXERCISE EDITOR ============ -->
 <section class="sheet" id="exsheet" role="dialog" aria-modal="true" aria-labelledby="exsheet-title" inert aria-hidden="true">
@@ -1642,6 +1681,12 @@ function tickRest(){
 /* ---------- sheets ---------- */
 const FOCUSABLE = 'button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[href],[tabindex]:not([tabindex="-1"])';
 
+// The exercise screen is a history entry, and the browser would otherwise
+// restore the scroll it recorded for this entry — which is zero, because the
+// body was already pinned when the entry was pushed. The app puts the position
+// back itself.
+if('scrollRestoration' in history) history.scrollRestoration = 'manual';
+
 // Scroll lock. The page keeps its position across open/close: pinning the body
 // sets scrollY to 0, so it has to be remembered and put back.
 let lockedScrollY = 0;
@@ -1665,7 +1710,8 @@ const topSheet = () => sheetStack[sheetStack.length - 1] || null;
 // the action button or the header. With nothing open it floats above the nav.
 function dockRest(){
   const el = $('#rest');
-  const slot = topSheet()?.querySelector('.restdock');
+  const slot = topSheet()?.querySelector('.restdock')
+    || (exerciseScreenOpen() ? $('#view-exercise .restdock') : null);
   if(slot){
     if(el.parentElement !== slot) slot.appendChild(el);
     el.classList.add('docked');
@@ -1717,6 +1763,7 @@ const exButton = name => [...document.querySelectorAll('.ex')].find(b => b.datas
 
 document.addEventListener('keydown', e=>{
   const top = topSheet();
+  if(e.key === 'Escape' && !top && exerciseScreenOpen()){ e.preventDefault(); closeSheet(); return; }
   if(e.key === 'Escape' && top){ e.preventDefault(); closeTop(); return; }
   if(e.key !== 'Tab' || !top) return;
   const list = [...top.querySelectorAll(FOCUSABLE)].filter(x => x.offsetParent !== null);
@@ -1729,7 +1776,7 @@ document.addEventListener('keydown', e=>{
 function closeTop(){
   const top = topSheet();
   if(!top) return;
-  if(top === $('#sheet')) closeSheet(); else closePanel(top);
+  closePanel(top);
 }
 
 // Recomputed after every log, edit and delete: a stale "first time logging
@@ -1784,15 +1831,57 @@ function openSheet(ex){
   $('#logset').textContent = 'Log set';
   renderSetKind(); renderPlates(); renderSetList(); renderPlateMath();
   refreshStepperLabels(); renderPairSelect();
-  openPanel($('#sheet'), $('#sheet-title'));
+  showExerciseScreen();
+}
+
+// Pushed over the tabs rather than floating above them, and left by going back
+// — including the phone's own back gesture, which a sheet never answered.
+function showExerciseScreen(){
+  state.screen = 'exercise';
+  $('#view-exercise').classList.remove('hide');
+  document.body.classList.add('onexercise');
+  document.querySelector('nav').classList.add('hide');
+  lockScroll();
+  dockRest();
+  $('#sheet-title').focus();
+  requestWake();
+  if(history.state?.screen !== 'exercise'){
+    history.pushState({screen:'exercise'}, '');
+  }
+}
+
+function hideExerciseScreen(){
+  state.screen = state.tab;
+  $('#view-exercise').classList.add('hide');
+  document.body.classList.remove('onexercise');
+  document.querySelector('nav').classList.remove('hide');
+  if(!sheetStack.length) unlockScroll();
+  dockRest();
+  if(!rest.start && !sheetStack.length) releaseWake();
 }
 
 function closeSheet(){
   const ex = state.ex;
   state.editing = null;
-  renderExercises(); // rebuild first, then restore focus to the surviving row
-  closePanel($('#sheet'), ()=>exButton(ex));
+  hideExerciseScreen();
+  renderExercises();
+  exButton(ex)?.focus();
+  // Leaving by the back button should also unwind the history entry, so the
+  // phone's back gesture does not have to be pressed twice.
+  if(history.state?.screen === 'exercise') history.back();
 }
+
+const exerciseScreenOpen = () => !$('#view-exercise').classList.contains('hide');
+
+window.addEventListener('popstate', ()=>{
+  if(exerciseScreenOpen()){
+    const ex = state.ex;
+    state.editing = null;
+    hideExerciseScreen();
+    renderExercises();
+    exButton(ex)?.focus();
+  }
+});
 
 /* ---------- history ---------- */
 function e1rm(s){
@@ -2282,7 +2371,7 @@ $('#exsave').addEventListener('click', ()=>{
 
   save(); renderDays(); renderExercises();
   closePanel($('#exsheet'), ()=>exButton(name) || $('#editprog'));
-  if(sheetStack.includes($('#sheet'))){
+  if(exerciseScreenOpen()){
     state.ex = name;
     state.target = target;
     if($('#wt').value === state.seededWeight){

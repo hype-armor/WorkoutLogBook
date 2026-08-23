@@ -45,14 +45,30 @@ const blankDb = (over = {}) => ({
 const set = (d, e, w, r, rir, dy = 'A') =>
   ({ id: `${e}-${d}-${w}-${r}-${rir}`, d, e, w, r, rir, rest: 180, u: 'lb', dy });
 
-/** Rectangles overlap. Used for the layout-collision assertions. */
-const overlaps = (a, b) => a.top < b.bottom && b.top < a.bottom && a.left < b.right && b.left < a.right;
+/** Rectangles overlap. Either being absent (scrolled out of sight) is no clash. */
+const overlaps = (a, b) =>
+  !!a && !!b && a.top < b.bottom && b.top < a.bottom && a.left < b.right && b.left < a.right;
 
 const rects = page => page.evaluate(() => {
+  // Clipped to every scrolling ancestor: an element scrolled out of its
+  // container still reports a box, and that box can land underneath a control
+  // it is nowhere near on screen. Comparing raw boxes called that a collision.
   const r = s => {
     const el = document.querySelector(s);
     if (!el) return null;
-    const b = el.getBoundingClientRect();
+    let b = el.getBoundingClientRect();
+    let p = el.parentElement;
+    while (p && p !== document.documentElement) {
+      const st = getComputedStyle(p);
+      if (/(auto|scroll|hidden)/.test(st.overflowY + ' ' + st.overflowX)) {
+        const q = p.getBoundingClientRect();
+        const top = Math.max(b.top, q.top), bottom = Math.min(b.bottom, q.bottom);
+        const left = Math.max(b.left, q.left), right = Math.min(b.right, q.right);
+        if (bottom - top <= 0 || right - left <= 0) return null;   // out of sight
+        b = { top, bottom, left, right, height: bottom - top, width: right - left };
+      }
+      p = p.parentElement;
+    }
     return { top: b.top, bottom: b.bottom, left: b.left, right: b.right, height: b.height, width: b.width };
   };
   return { logset: r('#logset'), rest: r('#rest'), toast: r('#toast'), plates: r('#plates'), vh: innerHeight };
@@ -63,7 +79,7 @@ const rects = page => page.evaluate(() => {
  * cover clicks, but reading getBoundingClientRect mid-transition measures the
  * sheet halfway up the screen and reports a false collision.
  */
-async function settle(page, selector = '#sheet') {
+async function settle(page, selector = '#view-exercise') {
   const loc = page.locator(selector);
   await loc.waitFor({ state: 'visible' });
   let prev = Number.NaN;

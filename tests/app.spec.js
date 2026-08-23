@@ -77,16 +77,15 @@ test.describe('logging a session', () => {
     // side, which is not loadable without plates most gyms do not stock.
     await expect(page.locator('#wup')).toHaveText('+5');
     // bar choice lives in the exercise's own settings now, not the log sheet
-    await expect(page.locator('#sheet #bars')).toHaveCount(0);
+    await expect(page.locator('#view-exercise #bars')).toHaveCount(0);
     await page.click('#exsettings');
     await expect(page.locator('#exbar')).toHaveValue('20');
     await page.click('#exclose');
   });
 
-  test('the timer docks inside the sheet and returns when it closes', async () => {
+  test('the timer docks into the exercise screen and returns when it closes', async () => {
     expect(await page.evaluate(() =>
-      document.querySelector('#sheet').contains(document.querySelector('#rest')))).toBe(true);
-    await expect(page.locator('#scrim')).toHaveClass(/open/);
+      document.querySelector('#view-exercise').contains(document.querySelector('#rest')))).toBe(true);
     await page.click('#close');
     expect(await page.evaluate(() =>
       document.querySelector('#rest').parentElement === document.body)).toBe(true);
@@ -612,8 +611,8 @@ test.describe('accessibility', () => {
     await page.waitForSelector('.ex');
 
     const closed = await page.evaluate(() => ({
-      inert: document.querySelector('#sheet').hasAttribute('inert'),
-      hidden: document.querySelector('#sheet').getAttribute('aria-hidden'),
+      inert: document.querySelector('#settings').hasAttribute('inert'),
+      hidden: document.querySelector('#settings').getAttribute('aria-hidden'),
       clockLive: document.querySelector('#restclock').getAttribute('aria-live'),
       tabRole: document.querySelector('#tab-train').getAttribute('role'),
       toastRole: document.querySelector('#toast').getAttribute('role'),
@@ -629,10 +628,10 @@ test.describe('accessibility', () => {
 
     await page.click('.ex[data-ex="Leg press"]');
     const open = await page.evaluate(() => ({
-      inert: document.querySelector('#sheet').hasAttribute('inert'),
-      focusInside: document.querySelector('#sheet').contains(document.activeElement)
+      hidden: document.querySelector('#view-exercise').classList.contains('hide'),
+      focusInside: document.querySelector('#view-exercise').contains(document.activeElement)
     }));
-    expect(open.inert).toBe(false);
+    expect(open.hidden).toBe(false);
     expect(open.focusInside).toBe(true);
 
     await page.click('#close');
@@ -673,15 +672,15 @@ test.describe('accessibility', () => {
     await ctx.close();
   });
 
-  test('escape closes the open sheet', async ({ browser }) => {
+  test('escape leaves the exercise screen', async ({ browser }) => {
     const ctx = await phone(browser);
     const page = await ctx.newPage();
     await page.goto(FILE_URL);
     await page.waitForSelector('.ex');
     await page.click('.ex[data-ex="Leg press"]');
-    await expect(page.locator('#sheet')).toHaveClass(/open/);
+    await expect(page.locator('#view-exercise')).toBeVisible();
     await page.keyboard.press('Escape');
-    await expect(page.locator('#sheet')).not.toHaveClass(/open/);
+    await expect(page.locator('#view-exercise')).toBeHidden();
     await ctx.close();
   });
 });
@@ -1011,6 +1010,97 @@ test.describe('what the fields start at', () => {
     await page.click('.ex[data-ex="Leg press"]');
     await page.click('#exsettings');
     await expect(page.locator('#exprog')).toHaveValue('');
+    await ctx.close();
+  });
+});
+
+test.describe('the exercise is a screen, not a sheet', () => {
+  test('selecting an exercise pushes a screen with back navigation', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    await expect(page.locator('#view-exercise')).toBeHidden();
+    await expect(page.locator('nav')).toBeVisible();
+
+    await page.click('.ex[data-ex="Deadlift"]');
+    await expect(page.locator('#view-exercise')).toBeVisible();
+    // it takes over rather than floating above: no scrim, no tab bar
+    await expect(page.locator('#scrim')).not.toHaveClass(/open/);
+    await expect(page.locator('nav')).toBeHidden();
+    await expect(page.locator('#sheet-title')).toHaveText('Deadlift');
+    await expect(page.locator('#close')).toBeVisible();
+
+    await page.click('#close');
+    await expect(page.locator('#view-exercise')).toBeHidden();
+    await expect(page.locator('nav')).toBeVisible();
+    await ctx.close();
+  });
+
+  test('the phone back gesture leaves the screen instead of the app', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    await page.click('.ex[data-ex="Deadlift"]');
+    await expect(page.locator('#view-exercise')).toBeVisible();
+
+    await page.goBack();
+    await expect(page.locator('#view-exercise')).toBeHidden();
+    await expect(page.locator('.ex[data-ex="Deadlift"]')).toBeVisible();
+    // still on the app, not backed out of it
+    await expect(page.locator('nav')).toBeVisible();
+    await ctx.close();
+  });
+
+  test('leaving by the back button does not strand a history entry', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    const depth = () => page.evaluate(() => history.length);
+    const cycle = async () => {
+      await page.click('.ex[data-ex="Deadlift"]');
+      await expect(page.locator('#view-exercise')).toBeVisible();
+      await page.click('#close');
+      await expect(page.locator('#view-exercise')).toBeHidden();
+      return depth();
+    };
+
+    // back() moves the pointer rather than dropping the entry, so length is not
+    // the measure — what matters is that opening and closing repeatedly does
+    // not pile up entries to press back through later
+    const first = await cycle();
+    expect(await cycle()).toBe(first);
+    expect(await cycle()).toBe(first);
+    expect(await page.evaluate(() => history.state && history.state.screen)).not.toBe('exercise');
+    await ctx.close();
+  });
+
+  test('logging still works on the screen, action stays put', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('.ex[data-ex="Deadlift"]');
+
+    await page.fill('#wt', '225');
+    await page.fill('#reps', '5');
+    for (let i = 0; i < 6; i++) await page.click('#logset');
+    await expect(page.locator('.setrow')).toHaveCount(6);
+
+    const g = await page.evaluate(() => {
+      const b = document.querySelector('#logset').getBoundingClientRect();
+      return { top: b.top, bottom: b.bottom, vh: innerHeight };
+    });
+    expect(g.top).toBeGreaterThanOrEqual(0);
+    expect(g.bottom).toBeLessThanOrEqual(g.vh + 0.5);
+
+    await page.click('#close');
+    await expect(page.locator('.ex[data-ex="Deadlift"] .count')).toHaveText('6/4');
     await ctx.close();
   });
 });
