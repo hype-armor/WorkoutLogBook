@@ -356,3 +356,39 @@ test.describe('what the exercise list says at a glance', () => {
     await ctx.close();
   });
 });
+
+test('the day picker folds away once a session is chosen', async ({ browser }) => {
+  const ctx = await browser.newContext({ ...PHONE });
+  const page = await ctx.newPage();
+  await page.goto(FILE_URL);
+  await page.waitForSelector('.ex');
+
+  const pickerHeight = () => page.locator('#days').boundingBox().then(b => b.height);
+  const firstExerciseY = () => page.locator('.ex').first().boundingBox().then(b => b.y);
+
+  // collapsed to the day you are on, so the exercises start higher up
+  await expect(page.locator('#daytoggle')).toBeVisible();
+  await expect(page.locator('.day')).toHaveCount(0);
+  const shut = await pickerHeight();
+  const highUp = await firstExerciseY();
+
+  await page.click('#daytoggle');
+  await expect(page.locator('.day')).toHaveCount(4);
+  const open = await pickerHeight();
+  expect(open).toBeGreaterThan(shut);
+  expect(await firstExerciseY()).toBeGreaterThan(highUp);
+
+  // choosing folds it again and gives the room back
+  await page.click('[data-day="C"]');
+  await expect(page.locator('.day')).toHaveCount(0);
+  await expect(page.locator('.daynow b')).toHaveText('Lower B');
+  expect(await firstExerciseY()).toBeCloseTo(highUp, 0);
+  await expect(page.locator('#exlabel')).toContainText('Lower B');
+
+  // editing the program needs every day on screen, so it stays open there
+  await page.click('#editprog');
+  await expect(page.locator('.day')).toHaveCount(4);
+  await page.click('#editprog');
+  await expect(page.locator('.day')).toHaveCount(0);
+  await ctx.close();
+});

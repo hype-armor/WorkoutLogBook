@@ -161,7 +161,19 @@
   .banner button.later{margin-left:0;background:none;color:var(--ink-3);border:1px solid var(--line)}
 
   /* session picker */
-  .days{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  .days{display:block}
+  .days.open{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  .daynow{
+    width:100%;display:flex;align-items:center;gap:12px;
+    background:linear-gradient(155deg,rgba(124,107,255,.20),rgba(124,107,255,.05));
+    border:1px solid var(--accent);border-radius:var(--r-lg);
+    padding:13px 15px;color:var(--ink);font-family:inherit;text-align:left;cursor:pointer;
+    min-height:58px;
+  }
+  .daynow .txt{flex:1;min-width:0}
+  .daynow b{display:block;font-size:17px;font-weight:680;letter-spacing:-.02em}
+  .daynow span{color:var(--ink-2);font-size:13px;letter-spacing:-.005em}
+  .daynow .chev{color:var(--accent-ink);font-size:15px;flex:none;line-height:1}
   .day{
     background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
     padding:14px;text-align:left;color:var(--ink);font-family:inherit;
@@ -1237,8 +1249,26 @@ function renderDate(){
     : `0 = none, 10 = worst. Rating ${prettyDate(state.date)}.`;
 }
 
+// A 2x2 grid of days cost about 230px at the top of every session for a choice
+// made once and then not touched again. Collapsed to the day you are on, with
+// the rest a tap away; kept open while editing the program, where seeing all
+// the days is the point.
 function renderDays(){
-  $('#days').innerHTML = program().map(d =>
+  const el = $('#days');
+  const open = state.dayPickerOpen || state.progEdit;
+  el.classList.toggle('open', open);
+
+  if(!open){
+    const d = dayById(state.day);
+    el.innerHTML = `<button class="daynow" id="daytoggle" aria-expanded="false">
+      <span class="txt"><b>${esc(d.name)}</b>${d.tag ? `<span>${esc(d.tag)}</span>` : ''}</span>
+      <span class="chev" aria-hidden="true">&#8964;</span>
+      <span class="sr-only">Change session</span>
+    </button>`;
+    return;
+  }
+
+  el.innerHTML = program().map(d =>
     `<button class="day" data-day="${esc(d.id)}" aria-pressed="${d.id===state.day}">
        <b>${esc(d.name)}</b><span>${esc(d.tag||'')}</span></button>`).join('');
 }
@@ -2146,9 +2176,17 @@ function refreshDate(){
 }
 
 $('#days').addEventListener('click', e=>{
+  if(e.target.closest('#daytoggle')){
+    state.dayPickerOpen = true;
+    renderDays();
+    return;
+  }
   const b = e.target.closest('[data-day]'); if(!b) return;
   state.day = b.dataset.day;
-  db.settings.lastDay = state.day; save();
+  db.settings.lastDay = state.day;
+  // picked, so fold it away again and give the room back to the exercises
+  if(!state.progEdit) state.dayPickerOpen = false;
+  save();
   renderDays(); renderExercises();
 });
 
@@ -2171,6 +2209,8 @@ $('#exlist').addEventListener('click', e=>{
 
 $('#editprog').addEventListener('click', ()=>{
   state.progEdit = !state.progEdit;
+  if(!state.progEdit) state.dayPickerOpen = false;
+  renderDays();
   $('#editprog').setAttribute('aria-pressed', state.progEdit);
   $('#editprog').textContent = state.progEdit ? 'Done' : 'Edit';
   renderExercises();
