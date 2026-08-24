@@ -283,3 +283,76 @@ test('button text cannot be selected, but fields still can', async ({ browser })
   expect(await page.evaluate(() => getComputedStyle(document.querySelector('#wt')).userSelect)).toBe('text');
   await ctx.close();
 });
+
+test.describe('what the exercise list says at a glance', () => {
+  const seed = page => page.addInitScript(() => {
+    if (localStorage.getItem('logbook-v1')) return;
+    const iso = new Date().toISOString().slice(0, 10);
+    const t = Date.now();
+    const mk = (e, w, i) => ({ id: e + i, t: t - i * 60000, d: iso, e, dy: 'A', w, r: 5, rir: 2, rest: 180, u: 'lb' });
+    // Deadlift finished (4 of 4), Leg press started (1 of 3), rest untouched
+    const sets = [mk('Deadlift', 315, 1), mk('Deadlift', 315, 2), mk('Deadlift', 315, 3),
+                  mk('Deadlift', 315, 4), mk('Leg press', 300, 5)];
+    localStorage.setItem('logbook-v1', JSON.stringify({
+      v: 2, sets, days: {}, pairs: {}, ex: {}, program: null,
+      settings: { units: 'lb', transition: 30, bw: { lb: 0, kg: 0 }, lastDay: 'A', alert: 'both' }, rest: null
+    }));
+  });
+
+  test('started, finished and untouched are told apart, and next is marked', async ({ browser }) => {
+    const ctx = await browser.newContext({ ...PHONE });
+    const page = await ctx.newPage();
+    await seed(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    const cls = async ex => (await page.getAttribute(`.ex[data-ex="${ex}"]`, 'class')).split(/\s+/);
+    // the stripe used to go green the moment an exercise was started, which
+    // said "done" while the badge beside it said "in progress"
+    expect(await cls('Deadlift')).toEqual(expect.arrayContaining(['done', 'full']));
+    expect(await cls('Leg press')).toEqual(expect.arrayContaining(['done']));
+    expect(await cls('Leg press')).not.toContain('full');
+    expect(await cls('Leg curl')).not.toContain('done');
+
+    // exactly one row is marked as what to do next, and it is the first unfinished
+    const next = await page.$$eval('.ex.next', e => e.map(x => x.dataset.ex));
+    expect(next).toEqual(['Leg press']);
+    await ctx.close();
+  });
+
+  test('every row state keeps its text readable', async ({ browser }) => {
+    const ctx = await browser.newContext({ ...PHONE });
+    const page = await ctx.newPage();
+    await seed(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    // dimming a finished row with opacity took its target text to 2.90:1
+    const worst = await page.evaluate(() => {
+      const rel = c => {
+        const [r, g, b] = c.match(/[\d.]+/g).map(Number).slice(0, 3)
+          .map(v => v / 255).map(v => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      const onPage = (c, alpha) => {          // composite over the page colour
+        const page = [10, 11, 19];
+        const p = c.match(/[\d.]+/g).map(Number).slice(0, 3);
+        return `rgb(${p.map((v, i) => v * alpha + page[i] * (1 - alpha)).join(',')})`;
+      };
+      let worst = 99;
+      for (const row of document.querySelectorAll('.ex')) {
+        const a = +getComputedStyle(row).opacity;
+        const bg = onPage(getComputedStyle(row).backgroundColor.startsWith('rgba(0, 0, 0, 0')
+          ? 'rgb(20,22,32)' : 'rgb(20,22,32)', 1);
+        for (const el of row.querySelectorAll('.name, .target')) {
+          const ink = onPage(getComputedStyle(el).color, a);
+          const [hi, lo] = [rel(ink), rel(bg)].sort((x, y) => y - x);
+          worst = Math.min(worst, (hi + 0.05) / (lo + 0.05));
+        }
+      }
+      return worst;
+    });
+    expect(worst).toBeGreaterThanOrEqual(4.5);
+    await ctx.close();
+  });
+});
