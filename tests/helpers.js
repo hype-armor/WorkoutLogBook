@@ -36,8 +36,9 @@ async function seed(page, db) {
   }, db);
 }
 
+/** A database in the current format. Migration tests pass an older `v` explicitly. */
 const blankDb = (over = {}) => ({
-  v: 2, sets: [], days: {}, pairs: {}, ex: {}, program: null,
+  v: 4, sets: [], days: {}, pairs: {}, ex: {}, program: null,
   settings: { units: 'lb', fractional: false, transition: 30, bw: { lb: 0, kg: 0 }, lastDay: 'A' },
   rest: null, ...over
 });

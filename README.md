@@ -39,7 +39,7 @@ npx playwright install chromium
 npm test
 ```
 
-133 tests in `tests/`, run on every pull request and again before any deploy.
+136 tests in `tests/`, run on every pull request and again before any deploy.
 They cover the things that actually broke: that a logged set survives a reload
 and a service-worker update, that `Log set` and the RIR selector are never
 underneath the rest timer at phone sizes, that unit switching converts rather
@@ -104,7 +104,7 @@ the `pages` concurrency group only queue behind each other.
 
 ## Pain
 
-Rated 0-10 per site, once a day, whether or not you trained — a rest day that
+Rated 0-5 per site, once a day, whether or not you trained — a rest day that
 hurts is data. Eleven sites are available; the card shows only the ones you
 track, plus any already rated on the day you are looking at, so an old rating
 is never hidden from the only control that can edit it. Sites that come in
@@ -113,6 +113,11 @@ re-answered daily.
 
 History charts one site at a time. Putting a knee and a lower back on the same
 strip would imply a relationship the data does not carry.
+
+Six levels rather than eleven: the whole scale fits one row, and nobody can
+tell a 6 from a 7 about their own back. Ratings written on the old 0-10 scale
+are halved on load, once — the migration is gated on the stored version, since
+every 0-5 rating is also a valid 0-10 one.
 
 ## Your data
 
