@@ -78,8 +78,8 @@ the bump is what makes installed clients notice a release at all. Edit
 background refresh, without ever being offered it.
 
 The update prompt never reloads the page on its own — that would discard a set
-being entered. It waits for a tap. The running version is shown at the bottom
-of Settings.
+being entered. It waits for a tap. The running version is shown as a badge in
+the Settings header, so confirming an update landed is one tap.
 
 ## Deploying
 
