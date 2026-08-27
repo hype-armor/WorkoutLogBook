@@ -2,7 +2,7 @@ const { test, expect } = require('@playwright/test');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { FILE_URL, phone, watchErrors, seed, blankDb, set } = require('./helpers');
+const { FILE_URL, phone, watchErrors, seed, blankDb, set, settle } = require('./helpers');
 
 test.describe('backup, restore and export', () => {
   test.describe.configure({ mode: 'serial' });
@@ -529,6 +529,14 @@ test('the plate diagram labels every plate and stays centred', async ({ browser 
   await page.click('#setdone');
   await page.click('.ex[data-ex="Deadlift"]');
 
+  // Every plate animates in on each re-render, and a plate measured mid-grow
+  // is not the size it settles at. settle() watches a sheet slide, which is a
+  // different thing, so wait on the drawing's own animations.
+  const drawn = () => page.waitForFunction(() => {
+    const svg = document.querySelector('#barsvg');
+    return svg && svg.getAnimations({ subtree: true }).every(a => a.playState === 'finished');
+  });
+
   const read = () => page.evaluate(() => {
     const svg = document.querySelector('#barsvg');
     const texts = [...svg.querySelectorAll('text')].map(t => t.textContent.trim());
@@ -539,6 +547,7 @@ test('the plate diagram labels every plate and stays centred', async ({ browser 
 
   for (const [weight, plates] of [['95', ['25']], ['225', ['45', '45']], ['322.5', ['45', '45', '45', '2.5', '1.25']]]) {
     await page.fill('#wt', weight);
+    await drawn();
     const d = await read();
     // every plate carries its own number, and the bar carries its weight
     for (const p of plates) expect(d.texts, `${weight} lb`).toContain(p);
@@ -549,7 +558,10 @@ test('the plate diagram labels every plate and stays centred', async ({ browser 
 
   // the label on each plate has to be legible against that plate. Matching by
   // position broke once thin plates started running their labels sideways, so
-  // each label records the plate it sits on.
+  // each label records the plate it sits on. The plate carries a sheen over
+  // its flat colour, so the reading has to be against what is actually behind
+  // the glyphs, not the fill underneath it.
+  await drawn();
   const inks = await page.evaluate(() => {
     const rel = hex => {
       const c = [1,3,5].map(i => parseInt(hex.slice(i,i+2),16)/255)
@@ -558,9 +570,32 @@ test('the plate diagram labels every plate and stays centred', async ({ browser 
     };
     const toHex = rgb => rgb.startsWith('#') ? rgb : '#' + rgb.match(/\d+/g).slice(0,3)
       .map(n => (+n).toString(16).padStart(2,'0')).join('');
+    const hexToRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+    const relRGB = a => {
+      const c = a.map(v => v / 255)
+        .map(v => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+      return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    };
+    // the sheen sampled at the height the labels sit at
+    const stops = [...document.querySelectorAll('#pmface stop')].map(st => ({
+      off: +st.getAttribute('offset'),
+      col: st.getAttribute('stop-color'),
+      op: +st.getAttribute('stop-opacity')
+    }));
+    let lo0 = stops[0], hi0 = stops[stops.length - 1];
+    for (let i = 0; i < stops.length - 1; i++) {
+      if (0.5 >= stops[i].off && 0.5 <= stops[i + 1].off) { lo0 = stops[i]; hi0 = stops[i + 1]; }
+    }
+    const f = (0.5 - lo0.off) / ((hi0.off - lo0.off) || 1);
+    const mix = (x, y) => x + (y - x) * f;
+    const sheenRgb = [0, 1, 2].map(i => mix(hexToRgb(lo0.col)[i], hexToRgb(hi0.col)[i]));
+    const sheenOp = mix(lo0.op, hi0.op);
+
     return [...document.querySelectorAll('#barsvg text[data-on]')].map(t => {
+      const base = hexToRgb(toHex(t.dataset.on));
+      const face = base.map((c, i) => c * (1 - sheenOp) + sheenRgb[i] * sheenOp);
       const a = rel(toHex(getComputedStyle(t).fill));
-      const b = rel(toHex(t.dataset.on));
+      const b = relRGB(face);
       const [hi, lo] = [a, b].sort((x, y) => y - x);
       return { label: t.textContent, ratio: (hi + 0.05) / (lo + 0.05) };
     });
@@ -577,6 +612,30 @@ test('the plate diagram labels every plate and stays centred', async ({ browser 
   const small = shapes.find(r => r.h === Math.min(...shapes.map(s => s.h)));
   expect(big.w, 'a 45 should be thicker than a 1.25').toBeGreaterThan(small.w);
   expect(big.h).toBeGreaterThan(small.h);
+
+  // A label turned sideways runs along the plate, but its glyph height is then
+  // measured across the plate's thickness. A 13px "10" on a 10px plate hung
+  // off both edges.
+  const spill = await page.evaluate(() => {
+    const plates = [...document.querySelectorAll('#barsvg rect')]
+      .filter(r => (r.getAttribute('fill') || '').startsWith('#'))
+      .map(r => ({ el: r, box: r.getBoundingClientRect() }));
+    return [...document.querySelectorAll('#barsvg text[data-on]')].map(t => {
+      const b = t.getBoundingClientRect();
+      const mid = b.left + b.width / 2;
+      const on = plates.find(p => mid >= p.box.left - 1 && mid <= p.box.right + 1);
+      if (!on) return { label: t.textContent, over: 999 };
+      return {
+        label: t.textContent,
+        over: Math.max(0, on.box.left - b.left, b.right - on.box.right,
+                          on.box.top - b.top, b.bottom - on.box.bottom)
+      };
+    });
+  });
+  expect(spill.length).toBeGreaterThan(0);
+  for (const { label, over } of spill) {
+    expect(over, `label ${label} hangs ${over.toFixed(1)}px off its plate`).toBeLessThanOrEqual(1);
+  }
 
   // the message the diagram used to carry is gone; "per side" still says it
   expect((await page.textContent('#platemath')).toLowerCase()).not.toContain('one side shown');

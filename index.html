@@ -597,6 +597,7 @@
     100%{box-shadow:0 0 0 0 rgba(41,170,99,0)}
   }
   @keyframes platein{from{opacity:0;transform:scaleY(.72)}to{opacity:1;transform:none}}
+  @keyframes platefade{from{opacity:0}to{opacity:1}}
 
   /* only the row that was just added, not every row on a re-render */
   .setrow.new{animation:rowin .22s cubic-bezier(.2,.7,.3,1)}
@@ -608,7 +609,12 @@
      just left the row that triggered it. */
   .toast.show{animation:toastin .2s cubic-bezier(.2,.7,.3,1)}
   .rest.ready{animation:readypulse 1.2s ease-out 2}
-  .barsvg rect, .barsvg text{animation:platein .18s ease-out}
+  /* Only the plates grow. scaleY on a label that has been turned 90 degrees
+     scales it along the screen's horizontal axis instead, so a sideways "1.25"
+     stretched out past both edges of its plate on every keystroke. Labels just
+     fade up with the plate they sit on. */
+  .barsvg rect{animation:platein .18s ease-out}
+  .barsvg text{animation:platefade .18s ease-out}
   /* a press should feel like one */
   .btn:active, .day:active, .plate:active, .bars button:active,
   .stepper button:active, nav button:active{transform:scale(.97)}
@@ -1694,18 +1700,35 @@ function renderPlateMath(){
   // stack reads at a glance before any number is. A label that will not fit
   // across a thin plate turns to run along it instead.
   const heaviest = Math.max(...u.plates.map(q => q.w));
-  const dia   = q => Math.round(26 + (q.w / heaviest) * 46);
-  const thick = q => Math.round(Math.max(11, 7 + (q.w / heaviest) * 21));
+  const dia   = q => Math.round(28 + (q.w / heaviest) * 50);
+  const thick = q => Math.round(Math.max(10, 6 + (q.w / heaviest) * 16));
 
-  const GAP = 2.5, COLLAR = 9, SHAFT = 74, SLEEVE = 16;
-  const mid = 48, shaftY = mid - 4;
+  const GAP = 1.5, COLLAR = 10, SHAFT = 74, SLEEVE = 16;
+  const mid = 48, shaftY = mid - 3.5;
   const span = plates.reduce((a,q) => a + thick(q) + GAP, 0) - (plates.length ? GAP : 0);
   const totalW = bar ? SLEEVE + span + COLLAR + SHAFT : span;
   let x = (300 - totalW) / 2;
-  const parts = [];
+
+  // Cast iron under gym lighting: a highlight along the top edge falling to
+  // shadow at the bottom. One alpha ramp serves every plate, so the fills stay
+  // the exact colours the plates are, and steel gets its own colder ramp.
+  const parts = [`<defs>
+    <linearGradient id="pmface" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".11"/>
+      <stop offset=".40" stop-color="#FFFFFF" stop-opacity=".01"/>
+      <stop offset=".60" stop-color="#000000" stop-opacity=".06"/>
+      <stop offset="1" stop-color="#000000" stop-opacity=".26"/>
+    </linearGradient>
+    <linearGradient id="pmsteel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#79839B"/>
+      <stop offset=".45" stop-color="#4C5568"/>
+      <stop offset="1" stop-color="#2B3141"/>
+    </linearGradient>
+  </defs>`];
 
   if(bar){
-    parts.push(`<rect x="${x}" y="${shaftY}" width="${SLEEVE + span + COLLAR}" height="8" rx="4" fill="var(--line-2)"/>`);
+    parts.push(`<rect x="${x}" y="${shaftY}" width="${SLEEVE + span + COLLAR}" height="7" rx="1"
+      fill="url(#pmsteel)"/>`);
     x += SLEEVE;
   }
 
@@ -1713,13 +1736,23 @@ function renderPlateMath(){
   // actually load them in.
   [...plates].reverse().forEach(q=>{
     const w = thick(q), h = dia(q), label = String(q.w), ink = plateInk(q.c);
-    parts.push(`<rect x="${x}" y="${mid - h/2}" width="${w}" height="${h}" rx="${Math.min(5, w/3)}"
-      fill="${q.c}" stroke="var(--surface)" stroke-width="2"/>`);
+    // Barely rounded: a plate is machined iron with a broken edge, and a 5px
+    // radius on a 22px plate was reading as a lozenge. The outline is a shadow
+    // rather than a light seam, so a loaded sleeve looks pressed together
+    // instead of like stickers laid side by side.
+    parts.push(`<rect x="${x}" y="${mid - h/2}" width="${w}" height="${h}" rx="1.5"
+      fill="${q.c}" stroke="rgba(0,0,0,.55)" stroke-width="1"/>`);
+    parts.push(`<rect x="${x}" y="${mid - h/2}" width="${w}" height="${h}" rx="1.5"
+      fill="url(#pmface)" stroke="none"/>`);
 
     // Does the number fit across the plate? 0.58em is a fair width per digit.
     let size = label.length >= 4 ? 10 : label.length === 3 ? 11 : 13;
     const across = label.length * size * 0.58 <= w - 5;
-    if(!across) size = Math.max(8, Math.min(size, Math.floor((h - 10) / (label.length * 0.58))));
+    // Turned sideways the glyphs run along the plate, but their height is now
+    // measured across its thickness — so it has to be clamped to that too, or
+    // a 13px "10" hangs off both edges of a 10px plate.
+    if(!across) size = Math.max(7, Math.min(size, w - 2,
+      Math.floor((h - 10) / (label.length * 0.58))));
     const cx = x + w/2;
     parts.push(`<text x="${cx}" y="${mid}" text-anchor="middle" dominant-baseline="central"
       data-on="${q.c}" fill="${ink}" font-family="system-ui,sans-serif" font-size="${size}"
@@ -1730,11 +1763,19 @@ function renderPlateMath(){
   if(plates.length) x -= GAP;   // no gap trailing the last plate
 
   if(bar){
-    parts.push(`<rect x="${x}" y="${mid-12}" width="${COLLAR}" height="24" rx="3" fill="var(--ink-3)"/>`);
+    // A clamp, not a bubble: square shoulders and a seam down the middle.
+    parts.push(`<rect x="${x}" y="${mid-13}" width="${COLLAR}" height="26" rx="1.5"
+      fill="url(#pmsteel)" stroke="rgba(0,0,0,.5)" stroke-width="1"/>`);
+    parts.push(`<rect x="${x + COLLAR/2 - 0.5}" y="${mid-13}" width="1" height="26"
+      fill="rgba(0,0,0,.35)" stroke="none"/>`);
     x += COLLAR;
-    parts.push(`<rect x="${x}" y="${shaftY}" width="${SHAFT}" height="8" rx="4" fill="var(--line-2)"/>`);
-    parts.push(`<text x="${x + SHAFT/2}" y="${mid}" text-anchor="middle" dominant-baseline="central"
-      fill="var(--ink-2)" font-family="system-ui,sans-serif" font-size="13" font-weight="700">${bar}</text>`);
+    parts.push(`<rect x="${x}" y="${shaftY}" width="${SHAFT}" height="7" rx="1" fill="url(#pmsteel)"/>`);
+    // Under the shaft rather than straddling it: at 13px the number was taller
+    // than the bar it was sitting on, which is what made the bar read as a
+    // label on a stick. Below, it annotates the bar the way a drawing would.
+    parts.push(`<text x="${x + SHAFT/2}" y="${mid + 17}" text-anchor="middle" dominant-baseline="central"
+      fill="var(--ink-3)" font-family="system-ui,sans-serif" font-size="11" font-weight="600"
+      letter-spacing=".04em">${bar}</text>`);
   }
 
   svg.innerHTML = parts.join('');
