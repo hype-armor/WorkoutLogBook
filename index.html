@@ -68,6 +68,9 @@
 
     --safe-top:env(safe-area-inset-top, 0px);
     --safe-bottom:env(safe-area-inset-bottom, 0px);
+    /* How much of the viewport the on-screen keyboard is covering. Zero until
+       something says otherwise, so every layout below is unchanged without it. */
+    --kb:0px;
   }
 
   /* Tapping Log set twice in a row should log two sets, not zoom the page.
@@ -269,14 +272,14 @@
     z-index:40;opacity:0;pointer-events:none;transition:opacity .18s}
   .scrim.open{opacity:1;pointer-events:auto}
   .sheet{
-    position:fixed;left:0;right:0;bottom:0;z-index:50;
+    position:fixed;left:0;right:0;bottom:var(--kb, 0px);z-index:50;
     background:var(--surface);border-top:1px solid var(--line-2);
     border-radius:var(--r-xl) var(--r-xl) 0 0;
     max-width:560px;margin:0 auto;transform:translateY(101%);
     transition:transform .26s cubic-bezier(.32,.72,0,1);
     /* 92dvh alone leaves only a few pixels above a tall sheet, which the status
        bar then eats into. Keep a real gap below the inset instead. */
-    max-height:min(92dvh, calc(100dvh - 12px - var(--safe-top)));
+    max-height:min(92dvh, calc(100dvh - 12px - var(--safe-top) - var(--kb, 0px)));
     display:flex;flex-direction:column;
   }
   .sheet.open{transform:translateY(0)}
@@ -1936,6 +1939,27 @@ if('scrollRestoration' in history) history.scrollRestoration = 'manual';
 // Scroll lock. The page keeps its position across open/close: pinning the body
 // sets scrollY to 0, so it has to be remembered and put back.
 let lockedScrollY = 0;
+// iOS does not shrink the layout viewport for the keyboard. A position:fixed
+// sheet stays anchored to a bottom edge that is now behind the keys, and the
+// page is scrolled to chase the caret, which is what makes the sheet jump and
+// its list stop scrolling. visualViewport is the only thing that reports where
+// the usable area actually is; without it nothing here changes.
+function trackKeyboard(){
+  const vv = window.visualViewport;
+  if(!vv) return;
+  const sync = () => {
+    const hidden = window.innerHeight - vv.height - vv.offsetTop;
+    // Clamped: a bad reading mid-rotation should do nothing, not park the
+    // sheet somewhere off the screen.
+    const kb = Math.min(Math.max(hidden, 0), window.innerHeight * 0.6);
+    document.documentElement.style.setProperty('--kb', Math.round(kb) + 'px');
+  };
+  vv.addEventListener('resize', sync);
+  vv.addEventListener('scroll', sync);
+  sync();
+}
+trackKeyboard();
+
 function lockScroll(){
   if(document.body.classList.contains('locked')) return;
   lockedScrollY = window.scrollY || document.documentElement.scrollTop || 0;
@@ -2681,7 +2705,10 @@ function openExEditor(name){
     : 'Blank follows the smallest jump your plates allow.';
   const inDay = !!name && dayById(state.day).ex.some(([n]) => n === name);
   $('#exdelete').classList.toggle('hide', !inDay);
-  openPanel($('#exsheet'), $('#exname'));
+  // Adding an exercise starts with typing its name, so the keyboard is wanted.
+  // Opening the settings of one that already exists is not — that arrives from
+  // the gear, where the name is the one thing you are not there to change.
+  openPanel($('#exsheet'), name ? $('#exsheet-title') : $('#exname'));
 }
 
 $('#exsave').addEventListener('click', ()=>{
@@ -2981,7 +3008,13 @@ function renderPickList(){
 function openPicker(){
   $('#pickfilter').value = '';
   renderPickList();
-  openPanel($('#picker'), $('#pickfilter'));
+  // Focus the heading, not the search box. Focusing an input raises the
+  // keyboard, and on iOS that leaves a position:fixed sheet anchored behind it
+  // while the page scrolls to chase the caret — the list ends up shoved off
+  // screen and unscrollable before you have read a single exercise. Most picks
+  // are a tap on a list of a dozen names; typing is the exception, and it is
+  // one tap away.
+  openPanel($('#picker'));
 }
 
 $('#logother').addEventListener('click', openPicker);

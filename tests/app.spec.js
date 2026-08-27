@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { FILE_URL, phone, watchErrors , chooseDay } = require('./helpers');
+const { FILE_URL, phone, watchErrors , chooseDay, settle } = require('./helpers');
 
 test.describe('logging a session', () => {
   test.describe.configure({ mode: 'serial' });
@@ -1101,6 +1101,106 @@ test.describe('the exercise is a screen, not a sheet', () => {
 
     await page.click('#close');
     await expect(page.locator('.ex[data-ex="Deadlift"] .count')).toHaveText('6/4');
+    await ctx.close();
+  });
+});
+
+test.describe('opening a sheet does not summon the keyboard', () => {
+  test('the exercise picker lands on its heading, with the list ready to scroll', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('#logother');
+
+    // Focusing the search box raises the keyboard, and on iOS that leaves a
+    // position:fixed sheet anchored behind it while the page scrolls to chase
+    // the caret — the list is shoved off screen before you have read a name.
+    expect(await page.evaluate(() => document.activeElement.id)).toBe('picker-title');
+    await expect(page.locator('#picklist .ex').first()).toBeVisible();
+    // the sheet slides in; measuring mid-transition reads it still off screen
+    await settle(page, '#picker');
+    expect(await page.$$eval('#picklist .ex', els => els.length)).toBeGreaterThan(5);
+
+    // and the sheet still reaches the bottom of the screen, unshifted
+    const vh = await page.evaluate(() => innerHeight);
+    const sheet = await page.locator('#picker').boundingBox();
+    expect(Math.round(sheet.y + sheet.height)).toBe(vh);
+    await ctx.close();
+  });
+
+  test('the search box shows it is focused the moment it is tapped', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('#logother');
+    await page.click('#pickfilter');
+
+    expect(await page.evaluate(() => document.activeElement.id)).toBe('pickfilter');
+    const ring = await page.$eval('#pickfilter', e => {
+      const c = getComputedStyle(e);
+      return { w: c.outlineWidth, style: c.outlineStyle };
+    });
+    // nothing should have to be typed before the box looks active
+    expect(ring.style).not.toBe('none');
+    expect(parseFloat(ring.w)).toBeGreaterThanOrEqual(2);
+
+    await page.fill('#pickfilter', 'dead');
+    const hits = await page.$$eval('#picklist .ex', els => els.map(e => e.textContent));
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits.every(h => /dead/i.test(h))).toBe(true);
+    await ctx.close();
+  });
+
+  test('the editor asks for a name only when there is not one yet', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    // the gear on an exercise you are already logging: the name is the one
+    // thing you are not there to change
+    await page.click('.ex[data-ex="Deadlift"]');
+    await page.click('#exsettings');
+    expect(await page.evaluate(() => document.activeElement.id)).toBe('exsheet-title');
+    await page.click('#exclose');
+    await page.click('#close');
+
+    // adding one starts with typing its name, so the keyboard is wanted
+    await page.click('#editprog');
+    await page.click('#addex');
+    expect(await page.evaluate(() => document.activeElement.id)).toBe('exname');
+    await ctx.close();
+  });
+
+  test('a sheet lifts clear of the keyboard instead of hiding behind it', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('#logother');
+    await settle(page, '#picker');
+
+    const geo = () => page.locator('#picker').boundingBox();
+    const vh = await page.evaluate(() => innerHeight);
+    const shut = await geo();
+    expect(Math.round(shut.y + shut.height)).toBe(vh);
+
+    // The real keyboard cannot be raised here, so drive the variable the
+    // visualViewport listener sets. What is under test is that the layout
+    // answers it at all: without this the sheet keeps its bottom edge behind
+    // the keys and the list becomes unreachable.
+    await page.evaluate(() => document.documentElement.style.setProperty('--kb', '300px'));
+    const up = await geo();
+    expect(Math.round(up.y + up.height), 'sheet still behind the keyboard').toBe(vh - 300);
+    expect(up.height, 'sheet did not shrink to fit').toBeLessThan(shut.height);
+    expect(up.y, 'sheet pushed off the top').toBeGreaterThanOrEqual(0);
+
+    await page.evaluate(() => document.documentElement.style.setProperty('--kb', '0px'));
+    const back = await geo();
+    expect(Math.round(back.y + back.height)).toBe(vh);
+    expect(Math.round(back.height)).toBe(Math.round(shut.height));
     await ctx.close();
   });
 });
