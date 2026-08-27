@@ -92,4 +92,11 @@ async function settle(page, selector = '#view-exercise') {
   }, { timeout: 5000, intervals: [60, 60, 60, 120, 250] }).toBe(true);
 }
 
-module.exports = { APP_PATH, SW_PATH, FILE_URL, PHONE, phone, watchErrors, seed, blankDb, set, overlaps, rects, settle };
+/** The day picker is collapsed to the current day; open it if it is not already. */
+async function chooseDay(page, id) {
+  if (await page.locator('#daytoggle').count()) await page.click('#daytoggle');
+  await page.click(`[data-day="${id}"]`);
+}
+
+module.exports = {
+  chooseDay, APP_PATH, SW_PATH, FILE_URL, PHONE, phone, watchErrors, seed, blankDb, set, overlaps, rects, settle };

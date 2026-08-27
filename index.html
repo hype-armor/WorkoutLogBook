@@ -143,6 +143,9 @@
     padding:8px 10px;margin:-8px -10px;cursor:pointer;border-radius:var(--r-sm);
   }
   .linkbtn[aria-pressed="true"]{color:var(--accent-ink);background:var(--accent-soft)}
+  /* A secondary action should not carry the same weight as the rows it sits
+     under, or it competes with the content for the eye. */
+  .wide-link{display:block;width:100%;margin:10px 0 0;padding:14px;text-align:center;min-height:48px}
 
   .banner{
     background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r-md);
@@ -158,7 +161,19 @@
   .banner button.later{margin-left:0;background:none;color:var(--ink-3);border:1px solid var(--line)}
 
   /* session picker */
-  .days{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  .days{display:block}
+  .days.open{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  .daynow{
+    width:100%;display:flex;align-items:center;gap:12px;
+    background:linear-gradient(155deg,rgba(124,107,255,.20),rgba(124,107,255,.05));
+    border:1px solid var(--accent);border-radius:var(--r-lg);
+    padding:13px 15px;color:var(--ink);font-family:inherit;text-align:left;cursor:pointer;
+    min-height:58px;
+  }
+  .daynow .txt{flex:1;min-width:0}
+  .daynow b{display:block;font-size:17px;font-weight:680;letter-spacing:-.02em}
+  .daynow span{color:var(--ink-2);font-size:13px;letter-spacing:-.005em}
+  .daynow .chev{color:var(--accent-ink);font-size:15px;flex:none;line-height:1}
   .day{
     background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
     padding:14px;text-align:left;color:var(--ink);font-family:inherit;
@@ -189,9 +204,12 @@
     border-radius:0 3px 3px 0;background:transparent;
   }
   .ex.extra{border-style:dashed}
-  .ex.done::before{background:var(--good)}
-  .ex.paired::before{background:var(--p35)}
-  .ex.paired.done::before{background:var(--good)}
+  /* The stripe carries progress and nothing else. It used to go green the
+     moment an exercise was started, saying "done" while the badge beside it
+     said "in progress", and superset pairing competed for the same channel —
+     pairing is already named in the row's second line. */
+  .ex.done::before{background:var(--accent)}
+  .ex.full::before{background:var(--good)}
   .ex .name{flex:1;min-width:0;font-weight:500}
   .ex .target{color:var(--ink-3);font-size:15px;letter-spacing:-.01em}
   .ex .count{
@@ -199,8 +217,18 @@
     background:var(--surface-3);border-radius:999px;padding:4px 10px;color:var(--ink-2);
     min-width:44px;text-align:center;
   }
+  .ex.done{background:linear-gradient(100deg,rgba(124,107,255,.09),transparent 62%)}
   .ex.done .count{background:var(--accent-soft);color:var(--accent-ink)}
+  /* Finished work recedes through colour, not opacity: dimming the row took
+     the target text to 2.90:1, and "done" is no reason to stop being readable.
+     The green tint and the filled badge carry it. Tint strengths are the most
+     the row can take while the tertiary ink on top still clears 4.5:1. */
+  .ex.full{background:linear-gradient(100deg,rgba(41,170,99,.07),transparent 62%)}
+  .ex.full .name{color:var(--ink-2)}
   .ex.full .count{background:var(--good);color:var(--on-light)}
+  .ex.full .name{text-decoration:none}
+  /* Whatever is next gets the only bright edge on the screen. */
+  .ex.next{border-color:var(--accent)}
   .exrow .tools{display:flex;flex-direction:column;gap:4px}
   .exrow .tools button{
     flex:1;min-width:44px;background:var(--surface-2);border:1px solid var(--line);
@@ -524,7 +552,43 @@
     background:none;border:0;border-left:1px solid rgba(10,12,16,.25);
     color:var(--on-light);font:inherit;font-weight:720;padding:4px 0 4px 14px;cursor:pointer;
   }
-  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+  /* ---------- motion ----------
+     Each of these shows cause and effect: the set you just logged arriving,
+     the timer reaching zero, a view replacing another. Nothing loops, nothing
+     decorates, and everything is short enough not to be waited on. */
+  @keyframes rowin{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+  @keyframes toastin{from{opacity:0;transform:translateX(-50%) translateY(8px)}
+                     to{opacity:1;transform:translateX(-50%) translateY(0)}}
+  @keyframes readypulse{
+    0%{box-shadow:0 0 0 0 rgba(41,170,99,.45)}
+    70%{box-shadow:0 0 0 12px rgba(41,170,99,0)}
+    100%{box-shadow:0 0 0 0 rgba(41,170,99,0)}
+  }
+  @keyframes platein{from{opacity:0;transform:scaleY(.72)}to{opacity:1;transform:none}}
+
+  /* only the row that was just added, not every row on a re-render */
+  .setrow.new{animation:rowin .22s cubic-bezier(.2,.7,.3,1)}
+  /* No animation on the views themselves. Animating a whole view moves every
+     control inside it for the duration, so a tap landing in that window hits a
+     target that is not where it looks — measured as the page scrolling out
+     from under a tap made 100ms after the view appeared. A tab switch is not
+     worth that; the screen push below keeps its motion because your finger has
+     just left the row that triggered it. */
+  .toast.show{animation:toastin .2s cubic-bezier(.2,.7,.3,1)}
+  .rest.ready{animation:readypulse 1.2s ease-out 2}
+  .barsvg rect, .barsvg text{animation:platein .18s ease-out}
+  /* a press should feel like one */
+  .btn:active, .day:active, .plate:active, .bars button:active,
+  .stepper button:active, nav button:active{transform:scale(.97)}
+  .btn, .day, .plate, .bars button, .stepper button, nav button{
+    transition:transform .08s ease, background .15s ease, border-color .15s ease, color .15s ease;
+  }
+
+  /* Someone who asked for less motion means it: animations too, not just
+     transitions, and the scrolls the app starts itself. */
+  @media (prefers-reduced-motion:reduce){
+    *{transition:none!important;animation:none!important;scroll-behavior:auto!important}
+  }
 </style>
 </head>
 <body>
@@ -564,7 +628,7 @@
   </div>
 
   <button class="btn ghost small wide hide" id="addex" style="margin-top:8px">+ Add exercise</button>
-  <button class="btn ghost small wide" id="logother" style="margin-top:8px">Log a different exercise</button>
+  <button class="linkbtn wide-link" id="logother">+ Log a different exercise</button>
 
   <div class="eyebrow">After training</div>
   <div class="card">
@@ -1185,8 +1249,26 @@ function renderDate(){
     : `0 = none, 10 = worst. Rating ${prettyDate(state.date)}.`;
 }
 
+// A 2x2 grid of days cost about 230px at the top of every session for a choice
+// made once and then not touched again. Collapsed to the day you are on, with
+// the rest a tap away; kept open while editing the program, where seeing all
+// the days is the point.
 function renderDays(){
-  $('#days').innerHTML = program().map(d =>
+  const el = $('#days');
+  const open = state.dayPickerOpen || state.progEdit;
+  el.classList.toggle('open', open);
+
+  if(!open){
+    const d = dayById(state.day);
+    el.innerHTML = `<button class="daynow" id="daytoggle" aria-expanded="false">
+      <span class="txt"><b>${esc(d.name)}</b>${d.tag ? `<span>${esc(d.tag)}</span>` : ''}</span>
+      <span class="chev" aria-hidden="true">&#8964;</span>
+      <span class="sr-only">Change session</span>
+    </button>`;
+    return;
+  }
+
+  el.innerHTML = program().map(d =>
     `<button class="day" data-day="${esc(d.id)}" aria-pressed="${d.id===state.day}">
        <b>${esc(d.name)}</b><span>${esc(d.tag||'')}</span></button>`).join('');
 }
@@ -1208,13 +1290,22 @@ function renderExercises(){
     $('#daytag').value = day.tag || '';
     $('#delday').disabled = program().length <= 1;
   }
+  // The next thing to do is the question this screen answers, so it is worth
+  // marking rather than leaving you to scan for the first unfinished row.
+  const nextUp = day.ex.findIndex(([nm, tg]) => {
+    const done = workingSets(setsFor(state.date, nm)).length;
+    const goal = targetSets(tg);
+    return !goal || done < goal;
+  });
+
   const rows = day.ex.map(([name,target], i)=>{
     const n = workingSets(setsFor(state.date, name)).length;
     const goal = targetSets(target);
     const p = partnerOf(name);
     const full = goal && n >= goal;
     const badge = goal ? `${n}/${goal}` : n;
-    const ex = `<button class="ex ${n?'done':''} ${full?'full':''} ${p?'paired':''}" data-ex="${esc(name)}">
+    const ex = `<button class="ex ${n?'done':''} ${full?'full':''} ${p?'paired':''} ${
+      i === nextUp ? 'next' : ''}" data-ex="${esc(name)}">
       <span class="name">${esc(name)}${p?`<span class="pairline">Superset · ${esc(p)}</span>`:''}</span>
       <span class="target">${esc(target)}</span>
       <span class="count">${badge}</span></button>`;
@@ -1365,7 +1456,8 @@ function renderSetList(){
     if(k === 'distance') load = `${fmtW(s.r)} ${U().dist}${toDisplay(s) > 0 ? ` @ ${fmtW(toDisplay(s))}` : ''}`;
     else if(k === 'bodyweight') load = `${toDisplay(s) > 0 ? `BW+${fmtW(toDisplay(s))}` : 'BW'} × ${s.r}`;
     else load = `${fmtW(toDisplay(s))} × ${s.r}`;
-    return `<div class="setrow ${warm?'warm':''} ${state.editing===s.id?'editing':''}">
+    return `<div class="setrow ${warm?'warm':''} ${state.editing===s.id?'editing':''} ${
+      state.justLogged === s.id ? 'new' : ''}">
        <button class="tap" data-edit="${esc(s.id)}" aria-label="Edit ${warm?'warm-up':'set '+n}">
          <span class="idx">${idx}</span>
          <span class="load">${esc(load)}</span>
@@ -1802,7 +1894,7 @@ function openSheet(ex){
   const day = dayById(state.day);
   const row = day.ex.find(([n]) => n === ex);
   const target = row ? row[1] : '';
-  state.ex = ex; state.editing = null; state.warmup = false;
+  state.ex = ex; state.editing = null; state.warmup = false; state.justLogged = null;
   const k = kindOf(ex), u = U();
   $('#sheet-title').textContent = ex;
 
@@ -2084,9 +2176,17 @@ function refreshDate(){
 }
 
 $('#days').addEventListener('click', e=>{
+  if(e.target.closest('#daytoggle')){
+    state.dayPickerOpen = true;
+    renderDays();
+    return;
+  }
   const b = e.target.closest('[data-day]'); if(!b) return;
   state.day = b.dataset.day;
-  db.settings.lastDay = state.day; save();
+  db.settings.lastDay = state.day;
+  // picked, so fold it away again and give the room back to the exercises
+  if(!state.progEdit) state.dayPickerOpen = false;
+  save();
   renderDays(); renderExercises();
 });
 
@@ -2109,6 +2209,8 @@ $('#exlist').addEventListener('click', e=>{
 
 $('#editprog').addEventListener('click', ()=>{
   state.progEdit = !state.progEdit;
+  if(!state.progEdit) state.dayPickerOpen = false;
+  renderDays();
   $('#editprog').setAttribute('aria-pressed', state.progEdit);
   $('#editprog').textContent = state.progEdit ? 'Done' : 'Edit';
   renderExercises();
@@ -2199,7 +2301,9 @@ $('#logset').addEventListener('click', ()=>{
   const now = Date.now();
   // Still adding sets, so the session is not finished after all.
   if(db.days[state.date]?.done) delete db.days[state.date].done;
-  db.sets.push({id: now+''+Math.random().toString(36).slice(2,6), t: now,
+  const newId = now + '' + Math.random().toString(36).slice(2,6);
+  state.justLogged = newId;
+  db.sets.push({id: newId, t: now,
                 d: state.date, e: state.ex, dy: state.day,
                 w, r, rir: state.rir, rest: restTaken, u: units(),
                 ...(state.warmup ? {wu: true} : {})});

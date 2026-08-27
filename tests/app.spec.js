@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { FILE_URL, phone, watchErrors } = require('./helpers');
+const { FILE_URL, phone, watchErrors , chooseDay } = require('./helpers');
 
 test.describe('logging a session', () => {
   test.describe.configure({ mode: 'serial' });
@@ -98,7 +98,7 @@ test.describe('logging a session', () => {
     await page.dispatchEvent('#bwinput', 'change');
     await page.click('#setdone');
 
-    await page.click('[data-day="D"]');
+    await chooseDay(page, 'D');
     await page.click('.ex[data-ex="Pull-up"]');
     await expect(page.locator('#wtlab')).toContainText(/added/i);
     await page.fill('#wt', '0');
@@ -124,7 +124,7 @@ test.describe('logging a session', () => {
 
   test('distance work is logged in metres and kept out of plate math', async () => {
     await page.click('#tab-train');
-    await page.click('[data-day="A"]');
+    await chooseDay(page, 'A');
     await page.click('.ex[data-ex="Suitcase carry"]');
     await expect(page.locator('#repslab')).toContainText(/distance/i);
     await expect(page.locator('#platemath')).toBeHidden();
@@ -385,7 +385,7 @@ test.describe('one-sided exercises get an even target', () => {
     await page.click('#close');
 
     // and two legs
-    await page.click('[data-day="C"]');
+    await chooseDay(page, 'C');
     await expect(page.locator('.ex[data-ex="Bulgarian split squat"] .target')).toHaveText('4 × 10');
     await page.click('.ex[data-ex="Bulgarian split squat"]');
     await expect(page.locator('#sheet-sub')).toContainText('(2 per side)');
@@ -808,9 +808,9 @@ test.describe('program shape', () => {
     await expect(extra.locator('.count')).toHaveText('1');
 
     // and Lower B is unchanged — this was a one-off, not a program edit
-    await page.click('[data-day="C"]');
+    await chooseDay(page, 'C');
     await expect(page.locator('#exlist')).toContainText('Front squat');
-    await page.click('[data-day="A"]');
+    await chooseDay(page, 'A');
     await page.reload();
     await page.waitForSelector('.ex');
     await expect(page.locator('.ex.extra[data-ex="Front squat"]')).toBeVisible();
@@ -904,7 +904,7 @@ test.describe('what the fields start at', () => {
     await page.goto(FILE_URL);
     await page.waitForSelector('.ex');
 
-    await page.click('[data-day="C"]');
+    await chooseDay(page, 'C');
     await page.click('.ex[data-ex="Trap bar deadlift"]'); // 55 trap, not 45
     await expect(page.locator('#wt')).toHaveValue('55');
     await page.click('#close');
@@ -922,7 +922,7 @@ test.describe('what the fields start at', () => {
     const page = await ctx.newPage();
     await page.goto(FILE_URL);
     await page.waitForSelector('.ex');
-    await page.click('[data-day="D"]');
+    await chooseDay(page, 'D');
     await page.click('.ex[data-ex="Pull-up"]');
     await expect(page.locator('#wtlab')).toContainText(/added/i);
     await expect(page.locator('#wt')).toHaveValue('0');
@@ -934,7 +934,7 @@ test.describe('what the fields start at', () => {
     const page = await ctx.newPage();
     await page.goto(FILE_URL);
     await page.waitForSelector('.ex');
-    await page.click('[data-day="D"]');
+    await chooseDay(page, 'D');
 
     await page.click('.ex[data-ex="Pull-up"]');           // target 4 × max
     await expect(page.locator('#reps')).toHaveValue('');
@@ -965,7 +965,7 @@ test.describe('what the fields start at', () => {
     });
     await page.goto(FILE_URL);
     await page.waitForSelector('.ex');
-    await page.click('[data-day="A"]');   // last session was not today, so it opened on the next day
+    await chooseDay(page, 'A');   // last session was not today, so it opened on the next day
 
     // default progression is the smallest jump the rack allows: two 2.5s
     await page.click('.ex[data-ex="Deadlift"]');
@@ -993,7 +993,7 @@ test.describe('what the fields start at', () => {
     });
     await page.goto(FILE_URL);
     await page.waitForSelector('.ex');
-    await page.click('[data-day="A"]');
+    await chooseDay(page, 'A');
 
     await page.click('.ex[data-ex="Deadlift"]');
     // the gear reaches this exercise's own settings from the logging sheet
