@@ -251,6 +251,55 @@ test.describe('safe-area insets', () => {
     expect(back.y, 'back button under the status bar').toBeGreaterThanOrEqual(TOP);
     await ctx.close();
   });
+
+  test('the footer sits on the bottom edge, clear of the home indicator', async ({ browser }) => {
+    const ctx = await browser.newContext({ ...PHONE });
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.evaluate(([t, b]) => {
+      document.documentElement.style.setProperty('--safe-top', t + 'px');
+      document.documentElement.style.setProperty('--safe-bottom', b + 'px');
+    }, [TOP, BOTTOM]);
+    await page.click('.ex[data-ex="Deadlift"]');
+
+    const vh = await page.evaluate(() => innerHeight);
+    const clearance = async (what, sel) => {
+      const btn = await page.locator(sel).boundingBox();
+      const below = vh - (btn.y + btn.height);
+      // the indicator pill sits about 13px up, so this has to stay above it
+      expect(below, `${what} crowds the home indicator`).toBeGreaterThanOrEqual(16);
+      // and padding the whole inset, then adding 12px on top of it, put 46px
+      // of nothing under a 52px button
+      expect(below, `${what} has dead space under it`).toBeLessThanOrEqual(BOTTOM - 8);
+    };
+    await clearance('log button', '#logset');
+    await ctx.close();
+  });
+
+  test('the sheet footer sits on the bottom edge too', async ({ browser }) => {
+    const ctx = await browser.newContext({ ...PHONE });
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.evaluate(([t, b]) => {
+      document.documentElement.style.setProperty('--safe-top', t + 'px');
+      document.documentElement.style.setProperty('--safe-bottom', b + 'px');
+    }, [TOP, BOTTOM]);
+
+    // the sheet slides in, so measuring before it lands reads a closed sheet
+    // parked below the viewport
+    await page.click('#gear');
+    await expect(page.locator('#settings')).toHaveClass(/open/);
+    await settle(page, '#settings');
+
+    const vh = await page.evaluate(() => innerHeight);
+    const btn = await page.locator('#setdone').boundingBox();
+    const below = vh - (btn.y + btn.height);
+    expect(below, 'sheet footer crowds the home indicator').toBeGreaterThanOrEqual(16);
+    expect(below, 'sheet footer has dead space under it').toBeLessThanOrEqual(BOTTOM - 8);
+    await ctx.close();
+  });
 });
 
 test('button text cannot be selected, but fields still can', async ({ browser }) => {
