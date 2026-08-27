@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.8.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.7.0...logbook-v1.8.0) (2026-08-27)
+
+
+### Features
+
+* colour the exercise list by state, and add motion that shows cause ([da33196](https://github.com/hype-armor/WorkoutLogBook/commit/da3319622a5ae31e8aee8f0b4bb4ea0ca52d15e3))
+* fold the day picker away once a session is chosen ([6c7d88c](https://github.com/hype-armor/WorkoutLogBook/commit/6c7d88cfd4333b0de957552b7327b2855f69563f))
+
 ## [1.7.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.6.0...logbook-v1.7.0) (2026-08-23)
 
 
