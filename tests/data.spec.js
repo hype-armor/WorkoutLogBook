@@ -302,7 +302,9 @@ test('the pain chart scales with the rating', async ({ browser }) => {
   const ctx = await phone(browser);
   const page = await ctx.newPage();
   const days = {};
-  [1, 3, 5, 8, 10, 2, 4].forEach((v, i) => { days[`2026-08-0${i + 1}`] = { pain: v }; });
+  [1, 2, 3, 4, 5, 1, 2].forEach((v, i) => {
+    days[`2026-08-0${i + 1}`] = { pains: { 'lower-back': v } };
+  });
   await seed(page, blankDb({ days }));
   await page.goto(FILE_URL);
   await page.click('#tab-history');
@@ -313,15 +315,14 @@ test('the pain chart scales with the rating', async ({ browser }) => {
   // this used to read the day record instead of its pain value, so every bar
   // collapsed to the 2px minimum and the chart was a flat line
   expect(bars).toHaveLength(7);
-  expect(bars[4]).toBeCloseTo(strip.height, 0); // pain 10 fills the strip
+  expect(bars[4]).toBeCloseTo(strip.height, 0); // the top of the scale fills the strip
   expect(bars[4]).toBeGreaterThan(bars[3]);
   expect(bars[3]).toBeGreaterThan(bars[2]);
   expect(bars[0]).toBeLessThan(bars[2]);
 
   const label = await page.getAttribute('.painstrip', 'aria-label');
-  // seeded in the v2 shape, so this also proves the migration landed on lower back
   expect(label).toContain('Lower back');
-  expect(label).toContain('2026-08-05: 10');
+  expect(label).toContain('2026-08-05: 5');
   expect(label).not.toContain('object Object');
   await ctx.close();
 });
@@ -364,7 +365,8 @@ test('a v1 database migrates', async ({ browser }) => {
 
   await page.click('#tab-history');
   await expect(page.locator('#trends')).toContainText('Deadlift');
-  await expect(page.locator('#paincard')).toContainText('4.0');
+  // a v1 database rated 0-10, so its 4 lands at 2 on the current scale
+  await expect(page.locator('#paincard')).toContainText('2.0');
 
   await page.click('#tab-train');
   await page.click('.ex[data-ex="Deadlift"]');
@@ -474,10 +476,14 @@ test('the pain chart colours by severity as well as height', async ({ browser })
   await page.addInitScript(() => {
     if (localStorage.getItem('logbook-v1')) return;
     const days = {};
-    [0, 3, 5, 7, 10].forEach((v, i) => { days[`2026-08-0${i + 1}`] = { pain: v }; });
+    // one per level above none: 0 and 1 deliberately share the dimmest step
+    [1, 2, 3, 4, 5].forEach((v, i) => {
+      days[`2026-08-0${i + 1}`] = { pains: { 'lower-back': v } };
+    });
     localStorage.setItem('logbook-v1', JSON.stringify({
-      v: 2, sets: [], days, pairs: {}, ex: {}, program: null,
-      settings: { units: 'lb', transition: 30, bw: { lb: 0, kg: 0 }, lastDay: 'A', alert: 'both' }, rest: null
+      v: 4, sets: [], days, pairs: {}, ex: {}, program: null,
+      settings: { units: 'lb', transition: 30, bw: { lb: 0, kg: 0 }, lastDay: 'A', alert: 'both',
+                  painSites: ['lower-back'] }, rest: null
     }));
   });
   await page.goto(FILE_URL);
@@ -507,8 +513,8 @@ test('the pain chart colours by severity as well as height', async ({ browser })
   // and rating a day previews the colour that day will take
   await page.click('#tab-train');
   const scale = '.painsite[data-site="lower-back"]';
-  await page.click(`${scale} [data-pain="9"]`);
-  const chosen = await page.$eval(`${scale} [data-pain="9"]`, e => getComputedStyle(e).backgroundColor);
+  await page.click(`${scale} [data-pain="5"]`);
+  const chosen = await page.$eval(`${scale} [data-pain="5"]`, e => getComputedStyle(e).backgroundColor);
   expect(lum(chosen)).toBeGreaterThan(lums[0]);
   await ctx.close();
 });
@@ -590,7 +596,7 @@ test.describe.serial('pain sites', () => {
   test('a v2 back rating becomes lower back rather than being dropped', async ({ browser }) => {
     const ctx = await phone(browser);
     const page = await ctx.newPage();
-    await seed(page, blankDb({ days: { '2026-08-01': { pain: 6, notes: 'sore' } } }));
+    await seed(page, blankDb({ v: 2, days: { '2026-08-01': { pain: 6, notes: 'sore' } } }));
     await page.goto(FILE_URL);
     await page.waitForSelector('.ex');
 
@@ -600,26 +606,118 @@ test.describe.serial('pain sites', () => {
 
     // rate something so the migrated shape is written back
     await page.click('.painsite[data-site="lower-back"] [data-pain="2"]');
-    await expect.poll(async () => (await stored(page)).v).toBe(3);
+    await expect.poll(async () => (await stored(page)).v).toBe(4);
     const db = await stored(page);
-    expect(db.days['2026-08-01'].pains).toEqual({ 'lower-back': 6 });
+    // 6 on the old 0-10 scale is 3 on the current one
+    expect(db.days['2026-08-01'].pains).toEqual({ 'lower-back': 3 });
     expect(db.days['2026-08-01'].pain).toBeUndefined();
     expect(db.days['2026-08-01'].notes).toBe('sore');
+    await ctx.close();
+  });
+
+  test('0-10 ratings are halved onto the 0-5 scale, once and only once', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    const days = {};
+    for(let v = 0; v <= 10; v++){
+      days[`2026-07-${String(v + 1).padStart(2, '0')}`] = { pains: { 'lower-back': v } };
+    }
+    await seed(page, blankDb({ v: 3, days }));
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    const vals = async () => {
+      const db = await stored(page);
+      return { v: db.v, pains: Object.keys(db.days).filter(k => k.startsWith('2026-07')).sort()
+        .map(k => db.days[k].pains['lower-back']) };
+    };
+    // a write is what commits the migrated shape to storage
+    const touch = async () => {
+      await page.click('.painsite[data-site="lower-back"] [data-pain="0"]');
+      await page.click('.painsite[data-site="lower-back"] [data-pain="0"]');
+    };
+    await touch();
+    const want = [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5];
+    await expect.poll(async () => (await vals()).pains).toEqual(want);
+    expect((await vals()).v).toBe(4);
+
+    // Every 0-5 rating is also a valid 0-10 one, so a migration that sniffed
+    // the values instead of the version would halve this again on every load
+    // until the whole history read 0.
+    for(let i = 0; i < 3; i++){
+      await page.reload();
+      await page.waitForSelector('.ex');
+      await touch();
+      await expect.poll(async () => (await vals()).pains, `halved again on reload ${i + 1}`)
+        .toEqual(want);
+    }
+    await ctx.close();
+  });
+
+  test('the scale is six buttons on one row', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seed(page, blankDb());
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    const scale = '.painsite[data-site="lower-back"] [data-pain]';
+    expect(await page.$$eval(scale, els => els.map(e => e.textContent.trim())))
+      .toEqual(['0', '1', '2', '3', '4', '5']);
+    // eleven buttons wrapped onto two rows; six fit across, so the whole scale
+    // is one glance and one reach
+    const rows = await page.$$eval(scale,
+      els => new Set(els.map(e => Math.round(e.getBoundingClientRect().top))).size);
+    expect(rows).toBe(1);
+    const box = await page.locator(scale).first().boundingBox();
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+    await ctx.close();
+  });
+
+  test('the chosen rating stays readable at every level', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seed(page, blankDb());
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    // The ramp brightens with severity, so a white label goes from fine at the
+    // bottom to 2.2:1 at the top. The ink is picked per step by whichever of
+    // white or near-black has more contrast, the same way plate labels are.
+    const pick = async v => page.evaluate(n => {
+      const q = () => document.querySelector(`.painsite[data-site="lower-back"] [data-pain="${n}"]`);
+      q().click();                       // re-queried: rating re-renders the card
+      const cs = getComputedStyle(q());
+      return { bg: cs.backgroundColor, fg: cs.color };
+    }, v);
+    const lum = rgb => {
+      const [r, g, b] = rgb.match(/\d+/g).map(x => +x / 255)
+        .map(c => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    for (let v = 0; v <= 5; v++) {
+      const { bg, fg } = await pick(v);
+      const [hi, lo] = [lum(bg), lum(fg)].sort((a, b) => b - a);
+      const ratio = (hi + 0.05) / (lo + 0.05);
+      expect(ratio, `rating ${v} label is ${ratio.toFixed(2)}:1 on its fill`)
+        .toBeGreaterThanOrEqual(4.5);
+    }
     await ctx.close();
   });
 
   test('a site is added, rated, and removed without touching earlier days', async ({ browser }) => {
     const ctx = await phone(browser);
     const page = await ctx.newPage();
-    await seed(page, blankDb({ days: { '2026-08-01': { pains: { knee: 8 } } } }));
+    await seed(page, blankDb({ days: { '2026-08-01': { pains: { knee: 4 } } } }));
     await page.goto(FILE_URL);
     await page.waitForSelector('.ex');
 
     await page.click('#addsite');
     await page.check('#sitelist [data-site="knee"]');
     await page.click('#sitedone');
-    await page.click('.painsite[data-site="knee"] [data-pain="5"]');
-    await expect.poll(async () => (await stored(page)).days[today()]?.pains?.knee).toBe(5);
+    await page.click('.painsite[data-site="knee"] [data-pain="3"]');
+    await expect.poll(async () => (await stored(page)).days[today()]?.pains?.knee).toBe(3);
 
     // untracking has to clear today's rating too: the scale is the only way to
     // edit it, so hiding the scale would strand the number in the record
@@ -629,7 +727,7 @@ test.describe.serial('pain sites', () => {
     await expect(page.locator('.painsite[data-site="knee"]')).toHaveCount(0);
     await expect.poll(async () => (await stored(page)).days[today()]?.pains?.knee).toBeUndefined();
     // but the day already recorded keeps its rating
-    expect((await stored(page)).days['2026-08-01'].pains.knee).toBe(8);
+    expect((await stored(page)).days['2026-08-01'].pains.knee).toBe(4);
     await ctx.close();
   });
 
@@ -663,7 +761,7 @@ test.describe.serial('pain sites', () => {
     // no side chosen for today yet
     await expect(page.locator('.painsite[data-site="knee"] [data-side="l"]'))
       .toHaveAttribute('aria-pressed', 'false');
-    await page.click('.painsite[data-site="knee"] [data-pain="6"]');
+    await page.click('.painsite[data-site="knee"] [data-pain="4"]');
     await expect(page.locator('.painsite[data-site="knee"] [data-side="l"]'))
       .toHaveAttribute('aria-pressed', 'true');
     await expect.poll(async () => (await stored(page)).days[today()]?.sides?.knee).toBe('l');
@@ -688,12 +786,12 @@ test.describe.serial('pain sites', () => {
     await page.waitForSelector('.ex');
 
     const scale = '.painsite[data-site="lower-back"]';
-    await page.click(`${scale} [data-pain="7"]`);
-    await expect.poll(async () => (await stored(page)).days[today()]?.pains?.['lower-back']).toBe(7);
-    await page.click(`${scale} [data-pain="7"]`);
+    await page.click(`${scale} [data-pain="4"]`);
+    await expect.poll(async () => (await stored(page)).days[today()]?.pains?.['lower-back']).toBe(4);
+    await page.click(`${scale} [data-pain="4"]`);
     await expect.poll(async () =>
       (await stored(page)).days[today()]?.pains?.['lower-back']).toBeUndefined();
-    await expect(page.locator(`${scale} [data-pain="7"]`)).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.locator(`${scale} [data-pain="4"]`)).toHaveAttribute('aria-pressed', 'false');
     await ctx.close();
   });
 
@@ -703,14 +801,14 @@ test.describe.serial('pain sites', () => {
     // one day trained, one day only rated — the rest day used to be invisible
     await seed(page, blankDb({
       sets: [set('2026-08-01', 'Deadlift', 225, 5, 2)],
-      days: { '2026-08-02': { pains: { knee: 6 }, sides: { knee: 'r' } } }
+      days: { '2026-08-02': { pains: { knee: 3 }, sides: { knee: 'r' } } }
     }));
     await page.goto(FILE_URL);
     await page.click('#tab-history');
 
     const heads = await page.$$eval('#sessions .card h3', els => els.map(e => e.textContent.trim()));
     expect(heads.some(h => /Rest day/.test(h))).toBe(true);
-    await expect(page.locator('#sessions')).toContainText('Knee 6 (right)');
+    await expect(page.locator('#sessions')).toContainText('Knee 3 (right)');
     await ctx.close();
   });
 
@@ -732,8 +830,8 @@ test.describe.serial('pain sites', () => {
     const ctx = await phone(browser);
     const page = await ctx.newPage();
     const days = {};
-    [3, 4, 5].forEach((v, i) => {
-      days[`2026-08-0${i + 1}`] = { pains: { 'lower-back': v, knee: 10 - v } };
+    [1, 2, 3].forEach((v, i) => {
+      days[`2026-08-0${i + 1}`] = { pains: { 'lower-back': v, knee: 5 - v } };
     });
     await seed(page, blankDb({ days }));
     await page.goto(FILE_URL);
@@ -746,7 +844,7 @@ test.describe.serial('pain sites', () => {
     const back = await px(page);
     await page.click('#painpick [data-site="knee"]');
     const knee = await px(page);
-    // lower back climbs 3,4,5 while the knee falls 7,6,5 — two series, not one
+    // lower back climbs 1,2,3 while the knee falls 4,3,2 — two series, not one
     expect(back[0]).toBeLessThan(back[2]);
     expect(knee[0]).toBeGreaterThan(knee[2]);
     expect(knee).not.toEqual(back);
@@ -760,7 +858,7 @@ test.describe.serial('pain sites', () => {
       sets: [set('2026-08-01', 'Deadlift', 225, 5, 2)],
       days: {
         '2026-08-01': { pains: { 'lower-back': 4 } },
-        '2026-08-02': { pains: { knee: 6 }, sides: { knee: 'l' }, notes: 'rest day ache' }
+        '2026-08-02': { pains: { knee: 3 }, sides: { knee: 'l' }, notes: 'rest day ache' }
       }
     }));
     await page.goto(FILE_URL);
@@ -799,10 +897,10 @@ test.describe.serial('saving', () => {
     // edge debounce the rating existed only in memory at this point, and a
     // tab killed here would have taken it.
     const seen = await page.evaluate(() => {
-      document.querySelector('.painsite[data-site="lower-back"] [data-pain="6"]').click();
+      document.querySelector('.painsite[data-site="lower-back"] [data-pain="4"]').click();
       return JSON.parse(localStorage.getItem('logbook-v1')).days;
     });
-    expect(Object.values(seen).some(d => d.pains?.['lower-back'] === 6)).toBe(true);
+    expect(Object.values(seen).some(d => d.pains?.['lower-back'] === 4)).toBe(true);
     await ctx.close();
   });
 
@@ -821,14 +919,14 @@ test.describe.serial('saving', () => {
       // detached button never reaches the delegated handler
       for(let i = 0; i < 30; i++){
         document.querySelectorAll(
-          '.painsite[data-site="lower-back"] [data-pain]')[i % 11].click();
+          '.painsite[data-site="lower-back"] [data-pain]')[i % 6].click();
       }
       const days = JSON.parse(localStorage.getItem('logbook-v1')).days;
       return Object.values(days).map(d => d.pains?.['lower-back'])[0];
     });
-    // 30 clicks over 11 buttons ends on index 29 % 11 === 7, and an even
-    // number of visits to a value would have toggled it back off
-    expect(last).toBe(7);
+    // 30 clicks over 6 buttons ends on index 29 % 6 === 5, and no value is ever
+    // visited twice in a row, so nothing toggles back off
+    expect(last).toBe(5);
     await ctx.close();
   });
 
@@ -842,13 +940,13 @@ test.describe.serial('saving', () => {
     // two changes back to back: the first writes immediately, the second is
     // coalesced — and must still be on disk once the window closes
     await page.evaluate(() => {
-      document.querySelector('.painsite[data-site="lower-back"] [data-pain="3"]').click();
-      document.querySelector('.painsite[data-site="lower-back"] [data-pain="8"]').click();
+      document.querySelector('.painsite[data-site="lower-back"] [data-pain="1"]').click();
+      document.querySelector('.painsite[data-site="lower-back"] [data-pain="5"]').click();
     });
     await expect.poll(async () => {
       const days = (await stored(page)).days;
       return Object.values(days).map(d => d.pains?.['lower-back'])[0];
-    }).toBe(8);
+    }).toBe(5);
     await ctx.close();
   });
 });
