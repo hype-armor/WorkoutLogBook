@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.9.1](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.9.0...logbook-v1.9.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* drop the dead space under the footer buttons ([8e26ce3](https://github.com/hype-armor/WorkoutLogBook/commit/8e26ce371794af8f0c2ab716347879daa28fac8a))
+* drop the dead space under the footer buttons ([0acf1f0](https://github.com/hype-armor/WorkoutLogBook/commit/0acf1f055cfecc110efab88bf48852845c55df43))
+
 ## [1.9.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.8.0...logbook-v1.9.0) (2026-08-27)
 
 
