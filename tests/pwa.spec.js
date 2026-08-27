@@ -208,6 +208,15 @@ test('the version is shown in settings and matches sw.js', async ({ browser }) =
   const shown = await page.textContent('#appversion');
   const swVersion = /const VERSION = '([^']+)'/.exec(fs.readFileSync(SW_PATH, 'utf8'))[1];
   // release-please bumps both; drift means one annotation was lost
-  expect(shown).toBe(`Logbook ${swVersion}`);
+  expect(shown).toBe(`v${swVersion}`);
+
+  // It used to render at the foot of the settings body, ~1540px down a 844px
+  // viewport, so checking which version you were on meant scrolling the whole
+  // sheet. It has to be readable the moment settings opens.
+  const seen = await page.locator('#appversion').evaluate(n => {
+    const r = n.getBoundingClientRect();
+    return r.top >= 0 && r.bottom <= innerHeight && r.width > 0;
+  });
+  expect(seen).toBe(true);
   await ctx.close();
 });

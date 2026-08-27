@@ -485,7 +485,7 @@ test.describe('finishing a session', () => {
     await expect(page.locator('#rest')).not.toHaveClass(/show/);
     await expect(page.locator('#exlabel')).toContainText('finished');
     // pain was never rated, so the toast points at it rather than staying quiet
-    await expect(page.locator('#toast')).toContainText(/rate your back pain/i);
+    await expect(page.locator('#toast')).toContainText(/rate your pain/i);
     expect(await page.evaluate(() =>
       !!JSON.parse(localStorage.getItem('logbook-v1')).days[Object.keys(
         JSON.parse(localStorage.getItem('logbook-v1')).days)[0]].done)).toBe(true);
