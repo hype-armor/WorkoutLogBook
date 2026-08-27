@@ -417,11 +417,16 @@ test.describe('data durability', () => {
     await ctx.close();
   });
 
-  test('a long stretch without a backup is surfaced, and can be deferred', async ({ browser }) => {
+  // Served over HTTP rather than from disk, because this one reloads. Chromium
+  // does not durably carry localStorage across a rapid reload of a file:// URL
+  // — the reloaded document can read a snapshot from before the write, which
+  // made this test fail about once in thirty runs for reasons that had nothing
+  // to do with the app. Over HTTP, as it actually ships, storage is stable.
+  test('a long stretch without a backup is surfaced, and can be deferred', async ({ browser, baseURL }) => {
     const ctx = await phone(browser);
     const page = await ctx.newPage();
     await seedSessions(page, 9, null);
-    await page.goto(FILE_URL);
+    await page.goto(baseURL);
     await page.waitForSelector('.ex');
 
     await expect(page.locator('#banners')).toContainText('9 sessions since your last backup');
@@ -773,6 +778,77 @@ test.describe.serial('pain sites', () => {
     expect(lines[2]).toContain('2026-08-02');
     expect(lines[2]).toContain('knee:l');
     expect(lines[2]).toContain('rest day ache');
+    await ctx.close();
+  });
+});
+
+/* ---------- durability of the write itself ---------- */
+
+test.describe.serial('saving', () => {
+  const stored = page => page.evaluate(() => JSON.parse(localStorage.getItem('logbook-v1')));
+
+  test('a change is in storage before the tab can be taken away', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seed(page, blankDb());
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    // Clicking and reading back inside one task: no timer can have fired, no
+    // unload event has run, nothing has been awaited. Under the old trailing
+    // edge debounce the rating existed only in memory at this point, and a
+    // tab killed here would have taken it.
+    const seen = await page.evaluate(() => {
+      document.querySelector('.painsite[data-site="lower-back"] [data-pain="6"]').click();
+      return JSON.parse(localStorage.getItem('logbook-v1')).days;
+    });
+    expect(Object.values(seen).some(d => d.pains?.['lower-back'] === 6)).toBe(true);
+    await ctx.close();
+  });
+
+  test('a burst leaves nothing waiting to be written', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seed(page, blankDb());
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    // Thirty changes and then an immediate read, all inside one task. Nothing
+    // is queued for later, so the last one is already stored — there is no
+    // window in which the tab can go away and take it.
+    const last = await page.evaluate(() => {
+      // re-queried each time: rating re-renders the card, and a click on a
+      // detached button never reaches the delegated handler
+      for(let i = 0; i < 30; i++){
+        document.querySelectorAll(
+          '.painsite[data-site="lower-back"] [data-pain]')[i % 11].click();
+      }
+      const days = JSON.parse(localStorage.getItem('logbook-v1')).days;
+      return Object.values(days).map(d => d.pains?.['lower-back'])[0];
+    });
+    // 30 clicks over 11 buttons ends on index 29 % 11 === 7, and an even
+    // number of visits to a value would have toggled it back off
+    expect(last).toBe(7);
+    await ctx.close();
+  });
+
+  test('the last change of a burst is not lost when the timer never fires', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seed(page, blankDb());
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    // two changes back to back: the first writes immediately, the second is
+    // coalesced — and must still be on disk once the window closes
+    await page.evaluate(() => {
+      document.querySelector('.painsite[data-site="lower-back"] [data-pain="3"]').click();
+      document.querySelector('.painsite[data-site="lower-back"] [data-pain="8"]').click();
+    });
+    await expect.poll(async () => {
+      const days = (await stored(page)).days;
+      return Object.values(days).map(d => d.pains?.['lower-back'])[0];
+    }).toBe(8);
     await ctx.close();
   });
 });

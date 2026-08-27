@@ -1193,24 +1193,20 @@ function lastSideFor(site){
 // A day counts as pain-only when it carries ratings or a note but no sets.
 const hasPain = date => Object.values(painsOn(date)).some(v => typeof v === 'number');
 
-let saveTimer;
-function save(){
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(()=>{ saveTimer = null; doSave(); }, 250);
-}
-
-// The debounce is there to avoid thrashing storage, but it means a set logged
-// in the last quarter second is still only in memory. Phones kill backgrounded
-// tabs without warning, so flush on the way out.
-function flushSave(){
-  if(!saveTimer) return;
-  clearTimeout(saveTimer);
-  saveTimer = null;
-  doSave();
-}
-window.addEventListener('pagehide', flushSave);
-document.addEventListener('visibilitychange', ()=>{ if(document.hidden) flushSave(); });
-async function doSave(){
+// Every change is written the moment it happens. There is no debounce.
+//
+// The delay that used to sit here wrote on the trailing edge only, so for
+// 250ms a change existed nowhere but memory, with flushSave() on pagehide and
+// visibilitychange as its only cover. Those events do fire on an ordinary
+// navigation — but an OS that kills a backgrounded tab outright sends nothing,
+// and that is exactly the moment the last quarter second matters.
+//
+// The delay was there to stop storage thrashing, and nothing calls this in a
+// stream: the weight and reps steppers only touch their own inputs, the rest
+// timer persists on start and stop rather than per tick, and notes are already
+// debounced upstream. Every caller is one discrete action, and a write costs
+// about 2ms at 2,000 sets — so the delay bought nothing and cost a window.
+async function save(){
   try{
     await store.set(KEY, JSON.stringify(db));
     if(saveFails){ saveFails = 0; storageBroken = false; renderBanners(); }
@@ -1223,7 +1219,7 @@ async function doSave(){
       renderBanners();
       toast('Saving is blocked — back up');
     }
-    if(saveFails <= 3) setTimeout(doSave, saveFails * 500);
+    if(saveFails <= 3) setTimeout(save, saveFails * 500);
   }
 }
 
@@ -1492,7 +1488,7 @@ function renderFinish(){
 function finishSession(){
   (db.days[state.date] ||= {}).done = Date.now();
   stopRest(); // you are not resting between sets any more
-  save(); flushSave();
+  save();
   renderExercises();
   if(hasPain(state.date)){
     toast('Session finished');
