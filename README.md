@@ -1,7 +1,7 @@
 # Logbook
 
 A lifting logbook that works offline. Sets, plate math, a rest timer, superset
-pairing, and back-pain tracking. Data lives in the browser on your device —
+pairing, and pain tracking by site. Data lives in the browser on your device —
 nothing is uploaded anywhere.
 
 ## Files
@@ -39,12 +39,13 @@ npx playwright install chromium
 npm test
 ```
 
-119 tests in `tests/`, run on every pull request and again before any deploy.
+128 tests in `tests/`, run on every pull request and again before any deploy.
 They cover the things that actually broke: that a logged set survives a reload
 and a service-worker update, that `Log set` and the RIR selector are never
 underneath the rest timer at phone sizes, that unit switching converts rather
 than corrupts, that a backup round-trips, that blocked storage is reported
-instead of retried forever, and that the app opens and keeps working with the
+instead of retried forever, that a pain rating written before sites existed
+still lands under Lower back, and that the app opens and keeps working with the
 network off.
 
 Layout assertions read real bounding boxes at 375×667 and 390×844, so a
@@ -100,6 +101,18 @@ Turning Pages on also offers to commit a starter workflow of its own,
 `static.yml`. Decline it, or delete it afterwards: it uploads and deploys with
 no test step, so a red build would publish anyway, and two workflows sharing
 the `pages` concurrency group only queue behind each other.
+
+## Pain
+
+Rated 0-10 per site, once a day, whether or not you trained — a rest day that
+hurts is data. Eleven sites are available; the card shows only the ones you
+track, plus any already rated on the day you are looking at, so an old rating
+is never hidden from the only control that can edit it. Sites that come in
+pairs take an optional left/right tag, which carries forward rather than being
+re-answered daily.
+
+History charts one site at a time. Putting a knee and a lower back on the same
+strip would imply a relationship the data does not carry.
 
 ## Your data
 

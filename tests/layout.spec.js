@@ -84,9 +84,16 @@ for (const size of SIZES) {
       expect(del.height).toBeGreaterThanOrEqual(44);
       expect(del.width).toBeGreaterThanOrEqual(44);
       await page.click('#close');
-      const pain = await page.locator('#painscale button').first().boundingBox();
+      const pain = await page.locator('.painsite .pain button').first().boundingBox();
       expect(pain.height).toBeGreaterThanOrEqual(44);
       expect(pain.width).toBeGreaterThanOrEqual(44);
+      // the side tag is secondary, but it is still a target you hit with a thumb
+      await page.click('#addsite');
+      await page.check('#sitelist [data-site="knee"]');
+      await page.click('#sitedone');
+      const side = await page.locator('.sidepick button').first().boundingBox();
+      expect(side.height).toBeGreaterThanOrEqual(44);
+      expect(side.width).toBeGreaterThanOrEqual(44);
     });
 
     test('no page errors', () => {

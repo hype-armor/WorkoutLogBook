@@ -2,7 +2,7 @@ const { test, expect } = require('@playwright/test');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { FILE_URL, phone, watchErrors, seed, blankDb } = require('./helpers');
+const { FILE_URL, phone, watchErrors, seed, blankDb, set } = require('./helpers');
 
 test.describe('backup, restore and export', () => {
   test.describe.configure({ mode: 'serial' });
@@ -319,6 +319,8 @@ test('the pain chart scales with the rating', async ({ browser }) => {
   expect(bars[0]).toBeLessThan(bars[2]);
 
   const label = await page.getAttribute('.painstrip', 'aria-label');
+  // seeded in the v2 shape, so this also proves the migration landed on lower back
+  expect(label).toContain('Lower back');
   expect(label).toContain('2026-08-05: 10');
   expect(label).not.toContain('object Object');
   await ctx.close();
@@ -499,8 +501,9 @@ test('the pain chart colours by severity as well as height', async ({ browser })
 
   // and rating a day previews the colour that day will take
   await page.click('#tab-train');
-  await page.click('#painscale [data-pain="9"]');
-  const chosen = await page.$eval('#painscale [data-pain="9"]', e => getComputedStyle(e).backgroundColor);
+  const scale = '.painsite[data-site="lower-back"]';
+  await page.click(`${scale} [data-pain="9"]`);
+  const chosen = await page.$eval(`${scale} [data-pain="9"]`, e => getComputedStyle(e).backgroundColor);
   expect(lum(chosen)).toBeGreaterThan(lums[0]);
   await ctx.close();
 });
@@ -568,4 +571,208 @@ test('the plate diagram labels every plate and stays centred', async ({ browser 
   expect((await page.textContent('#platemath')).toLowerCase()).not.toContain('one side shown');
   await expect(page.locator('#pmtext')).toContainText(/per side/i);
   await ctx.close();
+});
+
+/* ---------- pain by site (issues #25, #26) ---------- */
+
+test.describe.serial('pain sites', () => {
+  const today = () => {
+    const d = new Date();
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  };
+  const stored = page => page.evaluate(() => JSON.parse(localStorage.getItem('logbook-v1')));
+
+  test('a v2 back rating becomes lower back rather than being dropped', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seed(page, blankDb({ days: { '2026-08-01': { pain: 6, notes: 'sore' } } }));
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    // the only site on the card is the one the old data migrated into
+    expect(await page.$$eval('.painsite', els => els.map(e => e.dataset.site)))
+      .toEqual(['lower-back']);
+
+    // rate something so the migrated shape is written back
+    await page.click('.painsite[data-site="lower-back"] [data-pain="2"]');
+    await expect.poll(async () => (await stored(page)).v).toBe(3);
+    const db = await stored(page);
+    expect(db.days['2026-08-01'].pains).toEqual({ 'lower-back': 6 });
+    expect(db.days['2026-08-01'].pain).toBeUndefined();
+    expect(db.days['2026-08-01'].notes).toBe('sore');
+    await ctx.close();
+  });
+
+  test('a site is added, rated, and removed without touching earlier days', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seed(page, blankDb({ days: { '2026-08-01': { pains: { knee: 8 } } } }));
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    await page.click('#addsite');
+    await page.check('#sitelist [data-site="knee"]');
+    await page.click('#sitedone');
+    await page.click('.painsite[data-site="knee"] [data-pain="5"]');
+    await expect.poll(async () => (await stored(page)).days[today()]?.pains?.knee).toBe(5);
+
+    // untracking has to clear today's rating too: the scale is the only way to
+    // edit it, so hiding the scale would strand the number in the record
+    await page.click('#addsite');
+    await page.uncheck('#sitelist [data-site="knee"]');
+    await page.click('#sitedone');
+    await expect(page.locator('.painsite[data-site="knee"]')).toHaveCount(0);
+    await expect.poll(async () => (await stored(page)).days[today()]?.pains?.knee).toBeUndefined();
+    // but the day already recorded keeps its rating
+    expect((await stored(page)).days['2026-08-01'].pains.knee).toBe(8);
+    await ctx.close();
+  });
+
+  test('a rated day always shows its sites, even ones no longer tracked', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    // wrist is rated today but is not in the tracked list
+    await seed(page, blankDb({
+      days: { [today()]: { pains: { wrist: 4 } } },
+      settings: { units: 'lb', transition: 30, bw: { lb: 0, kg: 0 }, lastDay: 'A',
+                  alert: 'both', painSites: ['lower-back'] }
+    }));
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    expect(await page.$$eval('.painsite', els => els.map(e => e.dataset.site)))
+      .toEqual(['lower-back', 'wrist']);
+    await ctx.close();
+  });
+
+  test('a bilateral site carries its side forward instead of asking daily', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seed(page, blankDb({
+      days: { '2026-08-01': { pains: { knee: 4 }, sides: { knee: 'l' } } },
+      settings: { units: 'lb', transition: 30, bw: { lb: 0, kg: 0 }, lastDay: 'A',
+                  alert: 'both', painSites: ['knee'] }
+    }));
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    // no side chosen for today yet
+    await expect(page.locator('.painsite[data-site="knee"] [data-side="l"]'))
+      .toHaveAttribute('aria-pressed', 'false');
+    await page.click('.painsite[data-site="knee"] [data-pain="6"]');
+    await expect(page.locator('.painsite[data-site="knee"] [data-side="l"]'))
+      .toHaveAttribute('aria-pressed', 'true');
+    await expect.poll(async () => (await stored(page)).days[today()]?.sides?.knee).toBe('l');
+
+    // and it can still be changed
+    await page.click('.painsite[data-site="knee"] [data-side="r"]');
+    await expect.poll(async () => (await stored(page)).days[today()]?.sides?.knee).toBe('r');
+
+    // sites that do not come in pairs are not asked the question at all
+    await page.click('#addsite');
+    await page.check('#sitelist [data-site="neck"]');
+    await page.click('#sitedone');
+    await expect(page.locator('.painsite[data-site="neck"] .sidepick')).toHaveCount(0);
+    await ctx.close();
+  });
+
+  test('tapping the chosen number again clears a mis-tap', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seed(page, blankDb());
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    const scale = '.painsite[data-site="lower-back"]';
+    await page.click(`${scale} [data-pain="7"]`);
+    await expect.poll(async () => (await stored(page)).days[today()]?.pains?.['lower-back']).toBe(7);
+    await page.click(`${scale} [data-pain="7"]`);
+    await expect.poll(async () =>
+      (await stored(page)).days[today()]?.pains?.['lower-back']).toBeUndefined();
+    await expect(page.locator(`${scale} [data-pain="7"]`)).toHaveAttribute('aria-pressed', 'false');
+    await ctx.close();
+  });
+
+  test('pain logged on a day without training still shows in history', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    // one day trained, one day only rated — the rest day used to be invisible
+    await seed(page, blankDb({
+      sets: [set('2026-08-01', 'Deadlift', 225, 5, 2)],
+      days: { '2026-08-02': { pains: { knee: 6 }, sides: { knee: 'r' } } }
+    }));
+    await page.goto(FILE_URL);
+    await page.click('#tab-history');
+
+    const heads = await page.$$eval('#sessions .card h3', els => els.map(e => e.textContent.trim()));
+    expect(heads.some(h => /Rest day/.test(h))).toBe(true);
+    await expect(page.locator('#sessions')).toContainText('Knee 6 (right)');
+    await ctx.close();
+  });
+
+  test('History offers a way back to rating pain on a rest day', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seed(page, blankDb());
+    await page.goto(FILE_URL);
+    await page.click('#tab-history');
+    await page.click('#logpain');
+
+    await expect(page.locator('#tab-train')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#dateinput')).toHaveValue(today());
+    await expect(page.locator('.painsite').first()).toBeVisible();
+    await ctx.close();
+  });
+
+  test('the chart shows one site at a time', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    const days = {};
+    [3, 4, 5].forEach((v, i) => {
+      days[`2026-08-0${i + 1}`] = { pains: { 'lower-back': v, knee: 10 - v } };
+    });
+    await seed(page, blankDb({ days }));
+    await page.goto(FILE_URL);
+    await page.click('#tab-history');
+
+    // a knee and a lower back on one strip would imply a link the data has not
+    expect(await page.$$eval('#painpick button', els => els.map(e => e.textContent.trim())))
+      .toEqual(['Lower back', 'Knee']);
+    const px = page => page.$$eval('.painstrip div', els => els.map(e => parseFloat(e.style.height)));
+    const back = await px(page);
+    await page.click('#painpick [data-site="knee"]');
+    const knee = await px(page);
+    // lower back climbs 3,4,5 while the knee falls 7,6,5 — two series, not one
+    expect(back[0]).toBeLessThan(back[2]);
+    expect(knee[0]).toBeGreaterThan(knee[2]);
+    expect(knee).not.toEqual(back);
+    await ctx.close();
+  });
+
+  test('the CSV carries every site and does not drop rest days', async ({ browser }, testInfo) => {
+    const ctx = await phone(browser, { acceptDownloads: true });
+    const page = await ctx.newPage();
+    await seed(page, blankDb({
+      sets: [set('2026-08-01', 'Deadlift', 225, 5, 2)],
+      days: {
+        '2026-08-01': { pains: { 'lower-back': 4 } },
+        '2026-08-02': { pains: { knee: 6 }, sides: { knee: 'l' }, notes: 'rest day ache' }
+      }
+    }));
+    await page.goto(FILE_URL);
+    await page.click('#gear');
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#export')]);
+    const out = testInfo.outputPath('sites.csv');
+    await dl.saveAs(out);
+
+    const lines = fs.readFileSync(out, 'utf8').trim().split('\n');
+    expect(lines[0]).toContain('pain_lower_back');
+    expect(lines[0]).toContain('pain_knee');
+    expect(lines[0]).toContain('pain_sides');
+    // header + the set + the rest day, which has no set to hang a row on
+    expect(lines).toHaveLength(3);
+    expect(lines[2]).toContain('2026-08-02');
+    expect(lines[2]).toContain('knee:l');
+    expect(lines[2]).toContain('rest day ache');
+    await ctx.close();
+  });
 });

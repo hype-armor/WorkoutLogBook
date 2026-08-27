@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="color-scheme" content="dark">
-<meta name="description" content="A lifting logbook that works offline: sets, plate math, rest timer, and back-pain tracking.">
+<meta name="description" content="A lifting logbook that works offline: sets, plate math, rest timer, and pain tracking.">
 <title>Logbook</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
@@ -461,6 +461,21 @@
     font-weight:600;letter-spacing:-.02em;cursor:pointer;font-variant-numeric:tabular-nums;
   }
   .pain button[aria-pressed="true"]{background:var(--ink);color:var(--on-light);border-color:var(--ink)}
+  .painsite{padding:12px 0;border-top:1px solid var(--line)}
+  .painsite:first-child{border-top:0;padding-top:4px}
+  .painsitehead{display:flex;align-items:center;gap:10px;min-height:44px}
+  .painsitename{flex:1;min-width:0;font-size:15px;font-weight:600;letter-spacing:-.015em}
+  /* The side tag is secondary to the number, so it is quieter and smaller —
+     but still a real target, not a 20px sliver. */
+  .sidepick{display:flex;gap:4px;flex:none}
+  .sidepick button{
+    min-height:44px;min-width:44px;padding:6px 12px;border-radius:var(--r-sm);
+    border:1px solid var(--line);background:var(--surface-2);color:var(--ink-3);
+    font-family:inherit;font-size:13px;font-weight:600;letter-spacing:-.01em;cursor:pointer;
+  }
+  .sidepick button[aria-pressed="true"]{
+    background:var(--accent-soft);border-color:var(--accent);color:var(--accent-ink);
+  }
 
   /* history */
   .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:16px;margin-bottom:10px}
@@ -640,11 +655,12 @@
   <button class="btn ghost small wide hide" id="addex" style="margin-top:8px">+ Add exercise</button>
   <button class="linkbtn wide-link" id="logother">+ Log a different exercise</button>
 
-  <div class="eyebrow">After training</div>
+  <div class="eyebrow">How you feel</div>
   <div class="card">
-    <h3>Back pain</h3>
-    <div class="hint" style="margin-top:2px" id="painsub">0 = none, 10 = worst. Rate once, after the session.</div>
-    <div class="pain" id="painscale"></div>
+    <h3>Pain</h3>
+    <div class="hint" style="margin-top:2px" id="painsub">0 = none, 10 = worst.</div>
+    <div id="painsites"></div>
+    <button class="linkbtn wide-link" id="addsite">Add or remove sites</button>
     <textarea id="notes" rows="2" placeholder="Notes — what aggravated it, what helped" style="margin-top:10px"></textarea>
     <div class="hint" id="notestate">Notes save as you type.</div>
   </div>
@@ -659,7 +675,7 @@
     <div class="bars" id="trendspan"></div>
   </div>
   <div id="trends"></div>
-  <div class="eyebrow">Back pain — last 21 rated days</div>
+  <div class="eyebrow">Pain — last 21 rated days</div>
   <div class="card" id="paincard"></div>
   <div class="eyebrow">Sessions</div>
   <div id="sessions"></div>
@@ -785,6 +801,22 @@
 </section>
 
 <!-- ============ ONE EXERCISE, OVER TIME ============ -->
+<!-- ============ PAIN SITES ============ -->
+<section class="sheet" id="sitesheet" role="dialog" aria-modal="true" aria-labelledby="sitesheet-title" inert aria-hidden="true">
+  <div class="sheethead">
+    <div class="txt"><h2 id="sitesheet-title" tabindex="-1">Pain sites</h2>
+      <div class="sub">Track only what you need — the rest stay out of the way.</div></div>
+    <button class="icon" id="siteclose" aria-label="Close">&#215;</button>
+  </div>
+  <div class="sheetbody">
+    <div id="sitelist"></div>
+    <div class="hint">Untracking a site clears its rating on the day you are viewing.
+      Earlier days keep theirs, and the site is always shown again on any day it was rated.</div>
+  </div>
+  <div class="restdock"></div>
+  <div class="sheetfoot"><button class="btn" id="sitedone">Done</button></div>
+</section>
+
 <section class="sheet" id="exhist" role="dialog" aria-modal="true" aria-labelledby="exhist-title" inert aria-hidden="true">
   <div class="sheethead">
     <div class="txt"><h2 id="exhist-title" tabindex="-1">Exercise</h2>
@@ -972,6 +1004,27 @@ const ALERT_OPTIONS = [
 const PAIN_RAMP = ['#9E3A40','#BE454C','#DA5158','#EE666D','#FF8C91'];
 const painColor = v => PAIN_RAMP[Math.min(PAIN_RAMP.length - 1, Math.floor(v / 2))];
 
+// The sites worth tracking, ordered head to foot so the list scans like a body
+// rather than an alphabet. `sided` marks the ones that come in pairs: "knee"
+// on its own loses which knee, which is the whole point of tracking it.
+const PAIN_SITES = [
+  {id:'neck',       name:'Neck',       sided:false},
+  {id:'shoulder',   name:'Shoulder',   sided:true},
+  {id:'upper-back', name:'Upper back', sided:false},
+  {id:'mid-back',   name:'Mid back',   sided:false},
+  {id:'lower-back', name:'Lower back', sided:false},
+  {id:'elbow',      name:'Elbow',      sided:true},
+  {id:'wrist',      name:'Wrist',      sided:true},
+  {id:'hip',        name:'Hip',        sided:true},
+  {id:'knee',       name:'Knee',       sided:true},
+  {id:'ankle',      name:'Ankle',      sided:true},
+  {id:'foot',       name:'Foot',       sided:true}
+];
+const SIDES = [['l','L'],['r','R'],['b','Both']];
+const SIDE_WORD = {l:'left', r:'right', b:'both sides'};
+const siteById = id => PAIN_SITES.find(s => s.id === id);
+const siteName = id => siteById(id)?.name || id;
+
 const RIR_HINT = {
   0:'Failure. Could not have done another rep.',
   1:'One more rep was in there.',
@@ -982,14 +1035,14 @@ const RIR_HINT = {
 
 /* ---------- state ---------- */
 let db = blank();
-let state = {day:'A', ex:null, rir:2, tab:'train', date:todayISO(), editing:null, progEdit:false, editingEx:null, warmup:false};
+let state = {day:'A', ex:null, rir:2, tab:'train', date:todayISO(), editing:null, progEdit:false, editingEx:null, warmup:false, painSite:null};
 let undoBuf = null, saveFails = 0, storageBroken = false;
 let pendingWorker = null, installPrompt = null;
 
 function blank(){
-  return {v:2, sets:[], days:{}, pairs:{}, ex:{}, program:null,
+  return {v:3, sets:[], days:{}, pairs:{}, ex:{}, program:null,
           settings:{units:'lb', plates:null, transition:30, bw:{lb:0,kg:0},
-                    lastDay:'A', alert:'both'},
+                    lastDay:'A', alert:'both', painSites:['lower-back']},
           rest:null};
 }
 
@@ -1094,9 +1147,51 @@ function migrate(d){
     (out.ex[name] ||= {}).bar = typeof v === 'number' ? {lb:v, kg:+(v/LB_PER_KG).toFixed(1)} : v;
   if(d.rests) for(const [name, v] of Object.entries(d.rests)) (out.ex[name] ||= {}).rest = v;
   out.sets.forEach(s => { if(!s.u) s.u = 'lb'; });
-  out.v = 2;
+  // v2 stored one number per day and called it back pain. The app only ever
+  // asked about the back, and its own copy was about whether pulls aggravate
+  // it, so that history is lower back — moving it there keeps the trend line
+  // continuous instead of starting a new one today.
+  for(const day of Object.values(out.days)){
+    if(!day || typeof day !== 'object') continue;
+    if(day.pains && typeof day.pains !== 'object') delete day.pains;
+    if(typeof day.pain === 'number'){
+      day.pains = Object.assign({'lower-back': day.pain}, day.pains || {});
+      delete day.pain;
+    }
+    if(day.sides && typeof day.sides !== 'object') delete day.sides;
+  }
+  if(!Array.isArray(out.settings.painSites)) out.settings.painSites = ['lower-back'];
+  out.settings.painSites = out.settings.painSites.filter(id => siteById(id));
+  out.v = 3;
   return out;
 }
+
+const painsOn = date => db.days[date]?.pains || {};
+const sidesOn = date => db.days[date]?.sides || {};
+
+// Show what you track, plus anything already rated on the day being viewed.
+// Without the second half, opening an older date could hide a rating that is
+// still in the data and give you no way to correct it.
+function sitesShown(date){
+  const tracked = db.settings.painSites || [];
+  const rated = painsOn(date);
+  return PAIN_SITES.filter(s => tracked.includes(s.id) || rated[s.id] !== undefined)
+    .map(s => s.id);
+}
+
+// A bad knee stays the same knee. Carry the last side you tagged forward so it
+// is not re-answered daily, but never overwrite a tag the day already has.
+function lastSideFor(site){
+  let best = '', bestDate = '';
+  for(const [d, v] of Object.entries(db.days)){
+    const side = v?.sides?.[site];
+    if(side && d > bestDate){ best = side; bestDate = d; }
+  }
+  return best;
+}
+
+// A day counts as pain-only when it carries ratings or a note but no sets.
+const hasPain = date => Object.values(painsOn(date)).some(v => typeof v === 'number');
 
 let saveTimer;
 function save(){
@@ -1254,7 +1349,7 @@ function renderDate(){
   $('#datestamp').textContent = prettyDate(state.date);
   $('#datewrap').classList.toggle('past', state.date !== todayISO());
   $('#painsub').textContent = state.date === todayISO()
-    ? '0 = none, 10 = worst. Rate once, after the session.'
+    ? '0 = none, 10 = worst. Rate once a day, training or not.'
     : `0 = none, 10 = worst. Rating ${prettyDate(state.date)}.`;
 }
 
@@ -1399,13 +1494,13 @@ function finishSession(){
   stopRest(); // you are not resting between sets any more
   save(); flushSave();
   renderExercises();
-  const rated = typeof db.days[state.date].pain === 'number';
-  if(rated){
+  if(hasPain(state.date)){
     toast('Session finished');
   } else {
-    // The card says to rate once, after the session — this is that moment.
-    toast('Finished — rate your back pain');
-    $('#painscale').scrollIntoView({block:'center', behavior:'smooth'});
+    // The card asks for one rating a day — this is the moment you have the
+    // best sense of it.
+    toast('Finished — rate your pain');
+    $('#painsites').scrollIntoView({block:'center', behavior:'smooth'});
   }
   announce('Session finished. ' + sessionSummary(state.date));
 }
@@ -1423,14 +1518,40 @@ $('#finishwrap').addEventListener('click', e=>{
 });
 
 function renderPain(){
-  const v = db.days[state.date]?.pain;
-  $('#painscale').innerHTML = Array.from({length:11},(_,i)=>
-    `<button data-pain="${i}" aria-pressed="${v===i}" aria-label="Pain ${i} of 10"${
-      v===i ? ` style="background:${painColor(i)};border-color:${painColor(i)};color:#fff"` : ''
-    }>${i}</button>`).join('');
+  const pains = painsOn(state.date), sides = sidesOn(state.date);
+  const shown = sitesShown(state.date);
+  $('#painsites').innerHTML = shown.length ? shown.map(id=>{
+    const site = siteById(id), v = pains[id], side = sides[id] || '';
+    const label = site ? site.name : id;
+    return `<div class="painsite" data-site="${esc(id)}">
+      <div class="painsitehead">
+        <span class="painsitename">${esc(label)}${
+          side ? ` <span style="color:var(--ink-3);font-weight:500">· ${esc(SIDE_WORD[side])}</span>` : ''}</span>
+        ${site && site.sided ? `<div class="sidepick" role="group" aria-label="${esc(label)} side">${
+          SIDES.map(([k,txt])=>`<button data-side="${k}" aria-pressed="${side===k}"
+            aria-label="${esc(label)}: ${esc(SIDE_WORD[k])}">${txt}</button>`).join('')}</div>` : ''}
+      </div>
+      <div class="pain" data-scale="${esc(id)}">${Array.from({length:11},(_,i)=>
+        `<button data-pain="${i}" aria-pressed="${v===i}" aria-label="${esc(label)} pain ${i} of 10"${
+          v===i ? ` style="background:${painColor(i)};border-color:${painColor(i)};color:#fff"` : ''
+        }>${i}</button>`).join('')}</div>
+    </div>`;
+  }).join('') : `<div class="empty" style="padding:12px 0">No sites tracked yet.</div>`;
   $('#notes').value = db.days[state.date]?.notes || '';
   $('#notestate').textContent = 'Notes save as you type.';
 }
+
+function renderSiteList(){
+  const tracked = db.settings.painSites || [];
+  const rated = painsOn(state.date);
+  $('#sitelist').innerHTML = PAIN_SITES.map(s=>
+    `<label class="toggle"><input type="checkbox" data-site="${esc(s.id)}"${
+      tracked.includes(s.id) || rated[s.id] !== undefined ? ' checked' : ''}>
+      <span>${esc(s.name)}${s.sided ? '<span class="sub">Can be tagged left, right or both.</span>' : ''}</span></label>`
+  ).join('');
+}
+
+function openSites(){ renderSiteList(); openPanel($('#sitesheet'), $('#sitesheet-title')); }
 
 function renderSetKind(){
   $('#setkind').innerHTML = [['work','Working'],['warm','Warm-up']].map(([v,label]) =>
@@ -2044,19 +2165,38 @@ function renderHistory(){
   $('#trends').innerHTML = cards.length ? cards.join('')
     : `<div class="empty">Nothing logged yet. Estimated max comes from weight, reps and RIR together, so a set of 8 at 3 RIR still tells you something — you never have to test a true max to see the trend.</div>`;
 
-  const rated = Object.entries(db.days).filter(([,v])=>typeof v.pain==='number')
-    .sort((a,b)=>a[0].localeCompare(b[0])).slice(-21);
-  if(!rated.length){
-    $('#paincard').innerHTML = `<div class="empty" style="padding:4px 0">No pain ratings yet. Rate after each session — the point is to see whether pulls actually aggravate it, or whether that's a story.</div>`;
+  // One series per site. Charting them together would put a knee and a lower
+  // back on the same strip and imply a relationship the data does not carry.
+  const bySite = {};
+  for(const [d, v] of Object.entries(db.days)){
+    for(const [site, val] of Object.entries(v?.pains || {})){
+      if(typeof val === 'number') (bySite[site] ||= []).push([d, val]);
+    }
+  }
+  const sites = PAIN_SITES.map(x=>x.id).filter(id => bySite[id]?.length);
+  if(!sites.length){
+    $('#paincard').innerHTML = `<div class="empty" style="padding:4px 0">No pain ratings yet. Rate once a day — the point is to see whether pulls actually aggravate it, or whether that's a story.</div>`
+      + `<button class="btn ghost small wide" id="logpain">Log pain for today</button>`;
   } else {
-    const avg = rated.reduce((a,[,v])=>a+v.pain,0)/rated.length;
-    // Each entry is [date, dayRecord], so the bar height comes from v.pain —
-    // using v itself yields NaN and silently collapses every bar to min-height.
+    // Default to the site you rate most: the one you are actually tracking.
+    if(!sites.includes(state.painSite))
+      state.painSite = sites.slice().sort((a,b)=>bySite[b].length-bySite[a].length)[0];
+    const rated = bySite[state.painSite].sort((a,b)=>a[0].localeCompare(b[0])).slice(-21);
+    const avg = rated.reduce((a,[,v])=>a+v,0)/rated.length;
     const H = 48;
-    $('#paincard').innerHTML = `<div class="metric"><b>${avg.toFixed(1)}</b><small>average of ${rated.length} rated days</small></div>
-      <div class="painstrip" role="img" aria-label="Pain by day: ${esc(rated.map(([d,v])=>`${d}: ${v.pain}`).join(', '))}">${
-        rated.map(([d,v])=>`<div title="${esc(d)}: ${v.pain}" style="height:${
-          Math.max(v.pain/10*H, 2).toFixed(1)}px;background:${painColor(v.pain)}"></div>`).join('')}</div>`;
+    const picker = sites.length > 1
+      ? `<div class="bars" id="painpick" style="margin:0 0 10px;justify-content:flex-start;flex-wrap:wrap">${
+          sites.map(id=>`<button data-site="${esc(id)}" aria-pressed="${id===state.painSite}">${
+            esc(siteName(id))}</button>`).join('')}</div>`
+      : `<div class="sessmeta" style="margin-bottom:8px">${esc(siteName(state.painSite))}</div>`;
+    $('#paincard').innerHTML = picker
+      + `<div class="metric"><b>${avg.toFixed(1)}</b><small>average of ${rated.length} rated day${
+          rated.length===1?'':'s'}</small></div>
+      <div class="painstrip" role="img" aria-label="${esc(siteName(state.painSite))} pain by day: ${
+        esc(rated.map(([d,v])=>`${d}: ${v}`).join(', '))}">${
+        rated.map(([d,v])=>`<div title="${esc(d)}: ${v}" style="height:${
+          Math.max(v/10*H, 2).toFixed(1)}px;background:${painColor(v)}"></div>`).join('')}</div>`
+      + `<button class="btn ghost small wide" id="logpain" style="margin-top:14px">Log pain for today</button>`;
   }
 
   renderSessions();
@@ -2070,20 +2210,49 @@ function dayNameFor(sets){
   return hit ? hit.name : '';
 }
 
+// "Lower back 4 · Knee 2 (left)" — every site rated that day, in body order.
+function painSummary(date){
+  const pains = painsOn(date), sides = sidesOn(date);
+  return PAIN_SITES.filter(x => typeof pains[x.id] === 'number')
+    .map(x => `${x.name} ${pains[x.id]}${sides[x.id] ? ` (${SIDE_WORD[sides[x.id]]})` : ''}`)
+    .join(' · ');
+}
+
+// A day with ratings but no sets. It gets a card of its own rather than being
+// dressed up as a session with zero volume.
+function restCard(date){
+  const pain = painSummary(date);
+  const note = db.days[date]?.notes;
+  const open = state.openSession === date;
+  return `<div class="card">
+    <button class="sesshead" data-sess="${esc(date)}" aria-expanded="${!!open}">
+      <h3 style="margin:0">${esc(prettyDate(date))} · Rest day</h3>
+      <span class="sessmeta">${note ? (open?' ▴':' ▾') : ''}</span>
+    </button>
+    <div class="sessmeta" style="margin-top:4px">${pain ? esc(pain) : 'Note only'}</div>
+    ${open && note ? `<div class="sessbody"><div class="sessnote">${esc(note)}</div></div>` : ''}
+  </div>`;
+}
+
 function renderSessions(){
   const u = U();
   const byDate = {};
   db.sets.forEach(s => (byDate[s.d] ||= []).push(s));
-  const all = Object.keys(byDate).sort().reverse();
+  // A rest day you rated is still a day worth seeing. Keyed off sets alone it
+  // was recorded, charted, and then invisible in the list underneath.
+  const restDays = Object.keys(db.days).filter(d =>
+    !byDate[d] && (hasPain(d) || db.days[d]?.notes));
+  const all = [...Object.keys(byDate), ...restDays].sort().reverse();
   const shown = state.sessionsShown || 30;
   const dates = all.slice(0, shown);
   if(!dates.length){ $('#sessions').innerHTML = `<div class="empty">No sessions logged yet.</div>`; return; }
   $('#sessions').innerHTML = dates.map(date=>{
     const sets = byDate[date];
+    if(!sets) return restCard(date);
     // One source for both summaries. Computing it twice is what let the finish
     // card and this card disagree about the same session.
     const {count, warmups, tonnage} = sessionStats(date);
-    const pain = db.days[date]?.pain;
+    const pain = painSummary(date);
     const note = db.days[date]?.notes;
     const open = state.openSession === date;
     const byEx = {};
@@ -2101,7 +2270,7 @@ function renderSessions(){
           warmups ? ` + ${warmups} warm-up${warmups===1?'':'s'}` : ''}${open?' ▴':' ▾'}</span>
       </button>
       <div class="sessmeta" style="margin-top:4px">${Math.round(tonnage).toLocaleString()} ${esc(u.label)} volume${
-        typeof pain === 'number' ? ` · pain ${pain}` : ''}${
+        pain ? ` · ${esc(pain)}` : ''}${
         db.days[date]?.done ? ` · finished${(()=>{ const st=sessionStats(date).start, dn=db.days[date].done;
           return st && dn > st ? ' in ' + Math.max(1, Math.round((dn-st)/60000)) + ' min' : ''; })()}` : ''}</div>
       ${open ? `<div class="sessbody">${lines}${note?`<div class="sessnote">${esc(note)}</div>`:''}</div>` : ''}
@@ -2397,10 +2566,59 @@ document.addEventListener('visibilitychange', ()=>{
 });
 
 /* ---------- events: pain and notes ---------- */
-$('#painscale').addEventListener('click', e=>{
-  const b = e.target.closest('[data-pain]'); if(!b) return;
-  (db.days[state.date] ||= {}).pain = +b.dataset.pain;
-  save(); renderPain(); toast('Pain rated');
+$('#painsites').addEventListener('click', e=>{
+  const holder = e.target.closest('[data-site]'); if(!holder) return;
+  const site = holder.dataset.site;
+  const day = (db.days[state.date] ||= {});
+
+  const b = e.target.closest('[data-pain]');
+  if(b){
+    const v = +b.dataset.pain;
+    const pains = (day.pains ||= {});
+    // Tapping the number already chosen clears it. Without this a mis-tap on a
+    // site you do not have a problem with is stuck in the record for good.
+    if(pains[site] === v){
+      delete pains[site];
+      toast(`${siteName(site)} cleared`);
+    } else {
+      pains[site] = v;
+      const sides = (day.sides ||= {});
+      if(!sides[site]){ const last = lastSideFor(site); if(last) sides[site] = last; }
+      toast(`${siteName(site)} rated ${v}`);
+    }
+    save(); renderPain();
+    return;
+  }
+
+  const sb = e.target.closest('[data-side]');
+  if(sb){
+    const k = sb.dataset.side;
+    const sides = (day.sides ||= {});
+    if(sides[site] === k) delete sides[site]; else sides[site] = k;
+    save(); renderPain();
+  }
+});
+
+$('#addsite').addEventListener('click', openSites);
+$('#siteclose').addEventListener('click', ()=>closePanel($('#sitesheet'), $('#addsite')));
+$('#sitedone').addEventListener('click', ()=>closePanel($('#sitesheet'), $('#addsite')));
+
+$('#sitelist').addEventListener('change', e=>{
+  const cb = e.target.closest('[data-site]'); if(!cb) return;
+  const id = cb.dataset.site;
+  const list = Array.isArray(db.settings.painSites) ? db.settings.painSites : [];
+  if(cb.checked){
+    if(!list.includes(id)) list.push(id);
+    db.settings.painSites = list;
+  } else {
+    db.settings.painSites = list.filter(x => x !== id);
+    // The scale is the only way to edit a rating, so leaving one behind after
+    // hiding its scale would strand it in the record and the history chart.
+    const day = db.days[state.date];
+    if(day?.pains) delete day.pains[id];
+    if(day?.sides) delete day.sides[id];
+  }
+  save(); renderPain(); renderSiteList();
 });
 
 let noteTimer;
@@ -2638,12 +2856,29 @@ function downloadBackup(){
 
 function csv(){
   const q = v => { v = String(v ?? ''); return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; };
+  // One column per site that has data, so a spreadsheet can chart a site
+  // directly. Sites you never rated would only add empty columns.
+  const used = PAIN_SITES.filter(x =>
+    Object.values(db.days).some(v => typeof v?.pains?.[x.id] === 'number'));
+  const painCols = used.map(x => 'pain_' + x.id.replace(/-/g, '_'));
+  const painFor = d => used.map(x => painsOn(d)[x.id] ?? '');
+  const sideFor = d => used.filter(x => sidesOn(d)[x.id])
+    .map(x => `${x.id}:${sidesOn(d)[x.id]}`).join(' ');
+
   const rows = [['date','day','exercise','kind','warmup','weight','unit','reps_or_distance','rir',
-                 'est_max','rest_sec','back_pain','notes']];
+                 'est_max','rest_sec', ...painCols, 'pain_sides', 'notes']];
   db.sets.forEach(s=>rows.push([s.d, s.dy || '', s.e, kindOf(s.e), isWarmup(s) ? 'yes' : '',
     s.w, s.u || 'lb', s.r, s.rir,
     kindOf(s.e)==='distance' ? '' : e1rm(s).toFixed(1), s.rest ?? '',
-    db.days[s.d]?.pain ?? '', db.days[s.d]?.notes || ''].map(q)));
+    ...painFor(s.d), sideFor(s.d), db.days[s.d]?.notes || ''].map(q)));
+
+  // Rest days carry no set, so without a row of their own a rating logged on
+  // one would exist in the app and be missing from the export.
+  const logged = new Set(db.sets.map(s => s.d));
+  Object.keys(db.days).filter(d => !logged.has(d) && (hasPain(d) || db.days[d]?.notes))
+    .sort().forEach(d => rows.push([d, '', '', '', '', '', '', '', '', '', '',
+      ...painFor(d), sideFor(d), db.days[d]?.notes || ''].map(q)));
+
   return rows.map(r=>r.join(',')).join('\n');
 }
 
@@ -2681,6 +2916,21 @@ function switchTab(t){
 }
 $('#tab-train').addEventListener('click', ()=>switchTab('train'));
 $('#tab-history').addEventListener('click', ()=>switchTab('history'));
+
+// Pain is a daily thing, not a training thing, but the card that shows the
+// trend lives in History — so the way back to rating it starts here.
+$('#paincard').addEventListener('click', e=>{
+  const pick = e.target.closest('#painpick [data-site]');
+  if(pick){ state.painSite = pick.dataset.site; renderHistory(); return; }
+  if(e.target.closest('#logpain')){
+    state.date = todayISO();
+    refreshDate();
+    switchTab('train');
+    $('#painsites').scrollIntoView({block:'center', behavior:'smooth'});
+    const first = $('#painsites .pain button');
+    if(first) first.focus({preventScroll:true});
+  }
+});
 
 // The trend line is a summary; this is the working underneath it, which is the
 // question a chart actually raises — what did I do, and when.

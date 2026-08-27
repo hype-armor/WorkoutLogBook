@@ -1,7 +1,7 @@
 {
   "name": "Logbook — lifting log",
   "short_name": "Logbook",
-  "description": "A lifting logbook that works offline: sets, plate math, rest timer, and back-pain tracking.",
+  "description": "A lifting logbook that works offline: sets, plate math, rest timer, and pain tracking.",
   "start_url": "./",
   "scope": "./",
   "id": "./",
