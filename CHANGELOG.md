@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.9.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.8.0...logbook-v1.9.0) (2026-08-27)
+
+
+### Features
+
+* track pain by site on any day, and surface the version ([f2516ab](https://github.com/hype-armor/WorkoutLogBook/commit/f2516ab890df8a5a5e800229824a943e377068b5))
+* track pain by site, on any day ([88dd0af](https://github.com/hype-armor/WorkoutLogBook/commit/88dd0af9afd729cb0b67cfd32cfdd191f292a216))
+
+
+### Bug Fixes
+
+* surface the app version in the settings header ([e3fbcd9](https://github.com/hype-armor/WorkoutLogBook/commit/e3fbcd91f457109808797e5bceb7c8a26649feb7))
+* write every change immediately instead of debouncing ([db183ac](https://github.com/hype-armor/WorkoutLogBook/commit/db183ac600c892581a97b63643dd1b52ab5bc068))
+
 ## [1.8.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.7.0...logbook-v1.8.0) (2026-08-27)
 
 
