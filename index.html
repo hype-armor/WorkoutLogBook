@@ -302,7 +302,7 @@
   .sheetbody{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;
     padding:12px 16px 4px;-webkit-overflow-scrolling:touch}
   .sheetfoot{
-    flex:none;padding:10px 16px calc(12px + var(--safe-bottom));
+    flex:none;padding:10px 16px max(10px, calc(var(--safe-bottom) - 14px));
     border-top:1px solid var(--line);background:var(--surface);
     display:flex;gap:10px;
   }
@@ -550,8 +550,12 @@
   .icon.back{font-size:30px;font-weight:300;line-height:1}
   .exbody{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;
     padding:12px 16px 4px;-webkit-overflow-scrolling:touch}
+  /* The home indicator needs clearance, not the whole 34px inset: the pill is
+     about 5px tall and sits ~8px up, so ~20px below the button clears it with
+     room to spare. Padding the full inset and then adding 12px on top of it
+     put 46px of nothing under a 52px button. */
   .exfoot{
-    flex:none;padding:10px 16px calc(12px + var(--safe-bottom));
+    flex:none;padding:10px 16px max(10px, calc(var(--safe-bottom) - 14px));
     border-top:1px solid var(--line);background:var(--surface);
   }
   .exactions{display:flex;gap:10px}
