@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.10.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.9.1...logbook-v1.10.0) (2026-08-27)
+
+
+### Features
+
+* rate pain 0-5 instead of 0-10 ([e70126a](https://github.com/hype-armor/WorkoutLogBook/commit/e70126ad5466a6686d27cb2d940b53800cd8a91b))
+* rate pain 0-5 instead of 0-10 ([dbf6340](https://github.com/hype-armor/WorkoutLogBook/commit/dbf634041365a2a06191c4d287651a60421e9365))
+
 ## [1.9.1](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.9.0...logbook-v1.9.1) (2026-08-27)
 
 
