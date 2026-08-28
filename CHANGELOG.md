@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.10.2](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.10.1...logbook-v1.10.2) (2026-08-28)
+
+
+### Bug Fixes
+
+* keyboard on the exercise screen, day deletion, and empty programs ([cf782a1](https://github.com/hype-armor/WorkoutLogBook/commit/cf782a14e06281e28af393af389046001c86bc16))
+* keyboard on the exercise screen, day deletion, and empty programs ([3634e29](https://github.com/hype-armor/WorkoutLogBook/commit/3634e2956f59dcde76b15ec6691f5670b6487de4))
+
 ## [1.10.1](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.10.0...logbook-v1.10.1) (2026-08-28)
 
 
