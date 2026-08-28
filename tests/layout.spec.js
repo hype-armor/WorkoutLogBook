@@ -277,6 +277,38 @@ test.describe('safe-area insets', () => {
     await ctx.close();
   });
 
+  test('the exercise screen lifts clear of the keyboard', async ({ browser }) => {
+    const ctx = await browser.newContext({ ...PHONE });
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('.ex[data-ex="Deadlift"]');
+    await page.waitForFunction(() => document.querySelector('#view-exercise')
+      .getAnimations().every(a => a.playState === 'finished'));
+
+    const vh = await page.evaluate(() => innerHeight);
+    const btn = () => page.locator('#logset').boundingBox();
+    const shut = await btn();
+    expect(Math.round(shut.y + shut.height)).toBeLessThanOrEqual(vh);
+
+    // Weight and reps are number inputs on this screen, so it is the one place
+    // a keyboard is certain to come up, and Log set lives in a fixed footer.
+    // The real keyboard cannot be raised here, so drive the variable the
+    // visualViewport listener sets; what is under test is that the layout
+    // answers it. Without it the button stayed put, behind the keys.
+    await page.evaluate(() => document.documentElement.style.setProperty('--kb', '300px'));
+    const up = await btn();
+    expect(up.y + up.height, 'Log set is behind the keyboard').toBeLessThanOrEqual(vh - 300);
+    // and the list above it is still reachable rather than clipped away
+    const body = await page.locator('.exbody').boundingBox();
+    expect(body.height, 'nothing left to scroll').toBeGreaterThan(60);
+
+    await page.evaluate(() => document.documentElement.style.setProperty('--kb', '0px'));
+    const back = await btn();
+    expect(Math.round(back.y + back.height)).toBe(Math.round(shut.y + shut.height));
+    await ctx.close();
+  });
+
   test('the sheet footer sits on the bottom edge too', async ({ browser }) => {
     const ctx = await browser.newContext({ ...PHONE });
     const page = await ctx.newPage();

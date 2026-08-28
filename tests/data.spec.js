@@ -1009,3 +1009,64 @@ test.describe.serial('saving', () => {
     await ctx.close();
   });
 });
+
+/* ---------- the program as a record, not just a menu ---------- */
+
+test('deleting a day does not relabel the sessions it left behind', async ({ browser }) => {
+  const ctx = await phone(browser);
+  const page = await ctx.newPage();
+  await page.goto(FILE_URL);
+  await page.waitForSelector('.ex');
+
+  const named = () => page.textContent('#sessions .card h3');
+  await page.click('.ex[data-ex="Deadlift"]');
+  await page.fill('#wt', '225');
+  await page.fill('#reps', '5');
+  await page.click('#logset');
+  await page.click('#close');
+
+  await page.click('#tab-history');
+  const before = (await named()).trim();
+  expect(before).toMatch(/Lower A/);
+
+  await page.click('#tab-train');
+  await page.click('#editprog');
+  await page.click('#delday');
+
+  // dayById falls back to whichever day is now first, so this session used to
+  // come back named after a day it was never logged against — the weights were
+  // intact but the record said something untrue. No name beats the wrong one.
+  await page.click('#tab-history');
+  const after = (await named()).trim();
+  expect(after, 'session took another day\'s name').not.toMatch(/Upper A/);
+  expect(after).not.toMatch(/Lower A/);
+  // the set itself is untouched
+  await expect(page.locator('#sessions')).toContainText('1 set');
+  await ctx.close();
+});
+
+test('a program with no days falls back instead of taking the screen down', async ({ browser }) => {
+  const ctx = await phone(browser);
+  const page = await ctx.newPage();
+  const errs = watchErrors(page);
+  // Delete day is disabled at the last one, so the app cannot produce this —
+  // a hand-edited or truncated backup can, and every day lookup then returned
+  // undefined.
+  await seed(page, blankDb({ program: [] }));
+  await page.goto(FILE_URL);
+
+  // Settle on whichever comes first, the exercises or the throw. Waiting on
+  // the selector alone means a regression reports a bare 60s timeout instead
+  // of the error that caused it.
+  await expect.poll(async () =>
+    errs.length || page.$$eval('.ex', els => els.length), { timeout: 5000 })
+    .toBeGreaterThan(0);
+  expect(errs, 'an empty program threw').toEqual([]);
+  expect(await page.$$eval('.ex', els => els.length)).toBeGreaterThan(0);
+  // and the recovery reaches storage, so the next launch is not broken either.
+  // Opening a screen writes nothing, so make an actual change.
+  await page.click('.painsite[data-site="lower-back"] [data-pain="2"]');
+  await expect.poll(async () => page.evaluate(() =>
+    JSON.parse(localStorage.getItem('logbook-v1')).program)).not.toEqual([]);
+  await ctx.close();
+});
