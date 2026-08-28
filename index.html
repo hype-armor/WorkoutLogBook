@@ -536,7 +536,10 @@
      and leaves by going back. Fixed so the action stays put while the middle
      scrolls, which is the one thing the sheet got right. */
   .exscreen{
-    position:fixed;inset:0;z-index:35;background:var(--bg);
+    /* Bottom, not inset:0 — the weight and reps fields live on this screen, so
+       it is the one place a keyboard is certain to come up, and Log set sits
+       in a fixed footer that would otherwise be behind it. */
+    position:fixed;top:0;left:0;right:0;bottom:var(--kb, 0px);z-index:35;background:var(--bg);
     display:flex;flex-direction:column;
     animation:pushin .2s cubic-bezier(.32,.72,0,1);
   }
@@ -1148,6 +1151,12 @@ function migrate(d){
   if(!UNITS[out.settings.units]) out.settings.units = 'lb';
   if(!out.settings.bw || typeof out.settings.bw !== 'object') out.settings.bw = {lb:0,kg:0};
   out.ex = d.ex && typeof d.ex === 'object' ? d.ex : {};
+  // A program that is empty, or not a list at all, leaves nothing to log
+  // against and makes every day lookup undefined. Delete day is disabled at
+  // the last one so the app cannot produce this, but a hand-edited or
+  // truncated backup can, and it took the whole Train view down. Falling back
+  // to the default program is recoverable; a broken screen is not.
+  if(!Array.isArray(out.program) || !out.program.length) out.program = null;
   if(Array.isArray(out.program)){
     out.program.forEach(day => day.ex?.forEach(row => {
       if(DEFAULT_UNILATERAL[row[0]] || out.ex?.[row[0]]?.uni) row[1] = evenTarget(row[1]);
@@ -2293,7 +2302,10 @@ function renderHistory(){
 
 function dayNameFor(sets){
   const ids = new Set(sets.map(s=>s.dy).filter(Boolean));
-  if(ids.size === 1) return dayById([...ids][0])?.name || '';
+  // Strict lookup, not dayById: that falls back to whichever day is now first,
+  // so deleting a day silently relabelled its past sessions — one logged as
+  // Lower A came back as Upper A. Better to show no day than the wrong one.
+  if(ids.size === 1) return program().find(d => d.id === [...ids][0])?.name || '';
   // Older sets carry no day id: infer from where the exercises live.
   const hit = program().find(d => sets.some(s => d.ex.some(([n]) => n === s.e)));
   return hit ? hit.name : '';
