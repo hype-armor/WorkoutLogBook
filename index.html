@@ -1150,6 +1150,14 @@ function migrate(d){
   out.settings = Object.assign(b.settings, d.settings || {});
   if(!UNITS[out.settings.units]) out.settings.units = 'lb';
   if(!out.settings.bw || typeof out.settings.bw !== 'object') out.settings.bw = {lb:0,kg:0};
+  // Anyone who switched units before bodyweight was carried across is sitting
+  // on a zero in the unit they are now using, and their bodyweight sets have
+  // been scoring nothing. Fill the empty side from the one that has a number.
+  for(const [a, b] of [['lb','kg'], ['kg','lb']]){
+    if(+out.settings.bw[a] > 0 && !(+out.settings.bw[b] > 0)){
+      out.settings.bw[b] = +conv(+out.settings.bw[a], a, b).toFixed(1);
+    }
+  }
   out.ex = d.ex && typeof d.ex === 'object' ? d.ex : {};
   // A program that is empty, or not a list at all, leaves nothing to log
   // against and makes every day lookup undefined. Delete day is disabled at
@@ -1310,6 +1318,22 @@ function startingWeight(ex){
   return isLoadable(ex) ? (barFor(ex) || 0) : 0;
 }
 
+// Round a suggestion to something the rack can actually make. Without it, a
+// converted weight plus a progression lands on 107.06 kg and the plate
+// calculator warns about the app's own proposal — offering to change your
+// plates to reach a number you never asked for.
+function roundLoadable(w, ex){
+  if(!(w > 0) || kindOf(ex) === 'distance') return w;
+  if(!isLoadable(ex)){
+    const step = U().otherStep || 1;
+    return +(Math.round(w / step) * step).toFixed(2);
+  }
+  const bar = barFor(ex) || 0, step = smallestPlate() * 2;
+  if(!(step > 0)) return w;
+  // Below the bar there is nothing to round to.
+  return w <= bar ? bar : +(bar + Math.round((w - bar) / step) * step).toFixed(2);
+}
+
 // What to put in the fields when the sheet opens.
 //   nothing logged     -> the bar, and the target's reps
 //   already going today-> repeat today's last set, because straight sets are
@@ -1322,7 +1346,7 @@ function seedFor(ex){
   const base = today || prior;
   const weight = !base ? startingWeight(ex)
     : today ? toDisplay(today)
-    : +(toDisplay(prior) + progressionFor(ex)).toFixed(2);
+    : roundLoadable(toDisplay(prior) + progressionFor(ex), ex);
   return {weight, rir: base ? base.rir : 2, prior, base};
 }
 
@@ -1355,6 +1379,18 @@ function targetSets(target){
 
 /* ---------- weight helpers ---------- */
 const conv = (w, from, to) => from === to ? w : (to === 'kg' ? w / LB_PER_KG : w * LB_PER_KG);
+
+// Plates are stored per unit because a kg rack really does hold different
+// discs. Bodyweight is not like that — it is one fact with two spellings, and
+// leaving the other slot at zero told the app the lifter weighed nothing, so
+// every pull-up scored zero volume. Only an empty slot is filled: a number
+// entered by hand is never overwritten.
+function carryBodyweight(from, to){
+  const w = db.settings.bw;
+  if(!w || typeof w !== 'object') return;
+  if(+w[to] > 0 || !(+w[from] > 0)) return;
+  w[to] = +conv(+w[from], from, to).toFixed(1);
+}
 const toDisplay = s => conv(s.w, s.u || 'lb', units());
 // Effective load: bodyweight work is only meaningful with the lifter on it.
 function loadOf(s){
@@ -2204,9 +2240,16 @@ window.addEventListener('popstate', ()=>{
 });
 
 /* ---------- history ---------- */
+// Epley only means anything to about a dozen reps; past that it climbs without
+// limit, so a 225x30 back-off set estimated out at 465 and outranked a genuine
+// 315x5 at 389. Reps are now clamped the way RIR already was: a high-rep set
+// still contributes, but as if it were twelve, which is conservative rather
+// than absurd. Capping rather than discarding keeps a trend line for anyone
+// who trains mostly in that range.
+const E1RM_REP_CAP = 12;
 function e1rm(s){
   if(kindOf(s.e) === 'distance') return 0;
-  return loadOf(s) * (1 + (s.r + Math.min(s.rir, 4))/30);
+  return loadOf(s) * (1 + (Math.min(s.r, E1RM_REP_CAP) + Math.min(s.rir, 4))/30);
 }
 
 function sparkline(vals){
@@ -2875,7 +2918,9 @@ $('#setdone').addEventListener('click', ()=>closePanel($('#settings')));
 
 $('#unitsel').addEventListener('click', e=>{
   const b = e.target.closest('[data-unit]'); if(!b) return;
-  db.settings.units = b.dataset.unit;
+  const from = units(), to = b.dataset.unit;
+  db.settings.units = to;
+  carryBodyweight(from, to);
   save(); openSettings(); rerenderAll();
   toast('Now in ' + U().label);
 });
