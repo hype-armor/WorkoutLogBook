@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.10.1](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.10.0...logbook-v1.10.1) (2026-08-28)
+
+
+### Bug Fixes
+
+* draw the bar and plates like equipment rather than toys ([b726387](https://github.com/hype-armor/WorkoutLogBook/commit/b72638740f393158dc67219b08a5f79bde9f4292))
+* draw the plates as equipment, and stop the picker raising the keyboard ([6011538](https://github.com/hype-armor/WorkoutLogBook/commit/60115383052572e9ea1aaabf97824b73f8e3e77a))
+* stop the exercise picker opening the keyboard on top of itself ([ea5d48c](https://github.com/hype-armor/WorkoutLogBook/commit/ea5d48cfd6843e79f87a07f016166c974313bb4a))
+
 ## [1.10.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.9.1...logbook-v1.10.0) (2026-08-27)
 
 
