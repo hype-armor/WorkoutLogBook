@@ -39,7 +39,7 @@ npx playwright install chromium
 npm test
 ```
 
-136 tests in `tests/`, run on every pull request and again before any deploy.
+140 tests in `tests/`, run on every pull request and again before any deploy.
 They cover the things that actually broke: that a logged set survives a reload
 and a service-worker update, that `Log set` and the RIR selector are never
 underneath the rest timer at phone sizes, that unit switching converts rather
