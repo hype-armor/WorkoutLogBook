@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.11.2](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.11.1...logbook-v1.11.2) (2026-08-29)
+
+
+### Bug Fixes
+
+* stop the session estimate restyling the exercise rows below it ([83718b7](https://github.com/hype-armor/WorkoutLogBook/commit/83718b773208d2fcd03e8ed56f916b249d9a4127))
+* stop the session estimate restyling the exercise rows below it ([805f98b](https://github.com/hype-armor/WorkoutLogBook/commit/805f98bfd7974385cc1479395f5d0b5a49ede9d1))
+
 ## [1.11.1](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.11.0...logbook-v1.11.1) (2026-08-29)
 
 
