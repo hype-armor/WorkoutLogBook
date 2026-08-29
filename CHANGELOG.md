@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.10.3](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.10.2...logbook-v1.10.3) (2026-08-29)
+
+
+### Bug Fixes
+
+* bodyweight across units, a rep cap on the estimate, loadable suggestions ([2a7fdf4](https://github.com/hype-armor/WorkoutLogBook/commit/2a7fdf4588c15710f988e1d35ccda9dee87ae66b))
+* bodyweight across units, a rep cap on the estimate, loadable suggestions ([653d968](https://github.com/hype-armor/WorkoutLogBook/commit/653d968bf8864b89d97c0a058bfa9b831deae4b5))
+
 ## [1.10.2](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.10.1...logbook-v1.10.2) (2026-08-28)
 
 
