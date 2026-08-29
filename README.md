@@ -39,7 +39,7 @@ npx playwright install chromium
 npm test
 ```
 
-161 tests in `tests/`, run on every pull request and again before any deploy.
+162 tests in `tests/`, run on every pull request and again before any deploy.
 They cover the things that actually broke: that a logged set survives a reload
 and a service-worker update, that `Log set` and the RIR selector are never
 underneath the rest timer at phone sizes, that unit switching converts rather
@@ -128,6 +128,10 @@ history at all it is the rest target plus 45 seconds.
 Medians rather than means, over intervals clamped to between 15 seconds and 15
 minutes: a phone call in the middle of a session should not teach the app that
 your sets take two hours.
+
+It shows nothing when there is nothing left to estimate — every target met, the
+session finished, or a day whose targets carry no set count (`max` rather than
+`3 × max`), since without one there is no way to know how many sets are coming.
 
 ## Pain
 
