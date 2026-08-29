@@ -1204,3 +1204,119 @@ test.describe('opening a sheet does not summon the keyboard', () => {
     await ctx.close();
   });
 });
+
+test.describe('how long the session will take', () => {
+  const seedPace = (page, perSet) => page.addInitScript(secs => {
+    const sets = []; let id = 0;
+    for (const ex of ['Deadlift', 'Leg press', 'Romanian deadlift', 'Leg curl']) {
+      for (let d = 1; d <= 6; d++) {
+        for (let i = 0; i < 4; i++) {
+          sets.push({ id: 's' + (id++), t: Date.parse(`2026-07-0${d}`) + id * 1000,
+            d: `2026-07-0${d}`, e: ex, dy: 'A', w: 135, r: 5, rir: 2,
+            // the first set of an exercise has no interval: no timer was running
+            rest: i === 0 ? null : secs, u: 'lb' });
+        }
+      }
+    }
+    localStorage.setItem('logbook-v1', JSON.stringify({ v: 4, sets, days: {}, pairs: {}, ex: {},
+      program: null, settings: { units: 'lb', transition: 30, bw: { lb: 0, kg: 0 },
+      lastDay: 'A', alert: 'both', painSites: ['lower-back'] }, rest: null }));
+  }, perSet);
+
+  const onDayA = page => page.evaluate(() => {
+    state.day = 'A'; renderDays(); renderExercises();
+  });
+
+  test('a fresh install still estimates, from the rest targets', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    // nothing logged anywhere, so there is no measured pace to lean on
+    await expect(page.locator('#extime')).toHaveText(/^~\d+ min$/);
+    await ctx.close();
+  });
+
+  test('it learns the pace from what you actually logged', async ({ browser }) => {
+    const slow = await phone(browser), fast = await phone(browser);
+    const a = await slow.newPage(), bpage = await fast.newPage();
+    await seedPace(a, 240);
+    await seedPace(bpage, 90);
+    for (const p of [a, bpage]) { await p.goto(FILE_URL); await p.waitForSelector('.ex'); await onDayA(p); }
+
+    // The interval on a set is the gap from the previous one: the rest and the
+    // set itself together. Nothing has to be assumed about the lifting part.
+    const mins = p => p.evaluate(() => Math.round(sessionEstimate(state.date).secs / 60));
+    const slowMins = await mins(a), fastMins = await mins(bpage);
+    expect(slowMins, `240s pace estimated ${slowMins} min`).toBeGreaterThan(fastMins);
+    expect(await a.textContent('#extime')).not.toBe(await bpage.textContent('#extime'));
+    await slow.close(); await fast.close();
+  });
+
+  test('it counts down as the session goes, and says so', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    const secs = () => page.evaluate(() => sessionEstimate(state.date).secs);
+    const before = await secs();
+    await expect(page.locator('#extime')).not.toContainText('left');
+
+    await page.click('.ex');
+    await page.fill('#wt', '225');
+    await page.fill('#reps', '5');
+    await page.click('#logset');
+    await page.click('#logset');
+    await page.click('#close');
+
+    expect(await secs(), 'two logged sets did not come off the estimate').toBeLessThan(before);
+    // only once part of it is behind you does "left" mean anything
+    await expect(page.locator('#extime')).toContainText('left');
+    await ctx.close();
+  });
+
+  test('one long break does not become the pace', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.addInitScript(() => {
+      const sets = []; let id = 0;
+      for (let i = 0; i < 8; i++) {
+        sets.push({ id: 's' + (id++), t: Date.parse('2026-07-01') + id * 1000,
+          d: '2026-07-01', e: 'Deadlift', dy: 'A', w: 135, r: 5, rir: 2,
+          rest: i === 3 ? 7200 : 200, u: 'lb' });   // one two-hour interruption
+      }
+      localStorage.setItem('logbook-v1', JSON.stringify({ v: 4, sets, days: {}, pairs: {}, ex: {},
+        program: null, settings: { units: 'lb', transition: 30, bw: { lb: 0, kg: 0 },
+        lastDay: 'A', alert: 'both', painSites: ['lower-back'] }, rest: null }));
+    });
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    // a median over clamped intervals, not a mean: a phone call in the middle
+    // of a session must not tell the app that sets take two hours
+    const pace = await page.evaluate(() => paceFor('Deadlift', typicalOverhead()));
+    expect(pace, `one 2h gap moved the pace to ${pace}s`).toBe(200);
+    await ctx.close();
+  });
+
+  test('a finished session stops estimating', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('.ex');
+    await page.fill('#wt', '225');
+    await page.fill('#reps', '5');
+    await page.click('#logset');
+    await page.click('#close');
+    await expect(page.locator('#extime')).toContainText('min');
+
+    await page.click('#finish');
+    // the card underneath reports what it actually took; a forecast alongside
+    // it would just be noise
+    await expect(page.locator('#extime')).toHaveText('');
+    await expect(page.locator('#exlabeltext')).toContainText('finished');
+    await ctx.close();
+  });
+});
