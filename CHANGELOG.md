@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.11.1](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.11.0...logbook-v1.11.1) (2026-08-29)
+
+
+### Bug Fixes
+
+* stop an overscroll reading as a keyboard, and never paint a shut sheet ([2ce9c21](https://github.com/hype-armor/WorkoutLogBook/commit/2ce9c21278fe93cd330470f0ee9b180fb2f56859))
+* stop an overscroll reading as a keyboard, and never paint a shut sheet ([098eaf7](https://github.com/hype-armor/WorkoutLogBook/commit/098eaf778779ecbe0e81434bb955b9a6572f8171))
+
 ## [1.11.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.10.3...logbook-v1.11.0) (2026-08-29)
 
 
