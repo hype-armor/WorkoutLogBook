@@ -39,7 +39,7 @@ npx playwright install chromium
 npm test
 ```
 
-148 tests in `tests/`, run on every pull request and again before any deploy.
+159 tests in `tests/`, run on every pull request and again before any deploy.
 They cover the things that actually broke: that a logged set survives a reload
 and a service-worker update, that `Log set` and the RIR selector are never
 underneath the rest timer at phone sizes, that unit switching converts rather
@@ -101,6 +101,33 @@ Turning Pages on also offers to commit a starter workflow of its own,
 `static.yml`. Decline it, or delete it afterwards: it uploads and deploys with
 no test step, so a red build would publish anyway, and two workflows sharing
 the `pages` concurrency group only queue behind each other.
+
+## When the weight goes up
+
+A session earns the next weight by being completed at the one it used: every
+prescribed set, every prescribed rep, and nothing taken to failure. Fall short
+of any of those and the same weight comes back, with the sheet saying which —
+`repeating — 3 of 4 sets`, `short of 4 reps`, `a set went to failure`. RIR 0 is
+failure by definition, wherever in the session it happened.
+
+Adding load to a session you could not finish is how a lift stalls for a month.
+
+## How long it will take
+
+The exercise list carries an estimate of what is left of the day. It is not a
+rest-plus-guess model: the interval stored on every set is the whole gap from
+the previous set to it — the rest and the set itself together — so the lifting
+time is already inside the numbers the app has recorded. The estimate is the
+median of your own intervals for each exercise, times the sets you have left.
+
+An exercise with fewer than three recorded intervals falls back to its rest
+target plus the median amount by which your sets run over their rest, which is
+as close as the log comes to measuring setup and lifting on their own. With no
+history at all it is the rest target plus 45 seconds.
+
+Medians rather than means, over intervals clamped to between 15 seconds and 15
+minutes: a phone call in the middle of a session should not teach the app that
+your sets take two hours.
 
 ## Pain
 

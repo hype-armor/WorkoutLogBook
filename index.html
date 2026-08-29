@@ -275,7 +275,13 @@
     position:fixed;left:0;right:0;bottom:var(--kb, 0px);z-index:50;
     background:var(--surface);border-top:1px solid var(--line-2);
     border-radius:var(--r-xl) var(--r-xl) 0 0;
-    max-width:560px;margin:0 auto;transform:translateY(101%);
+    max-width:560px;margin:0 auto;
+    /* Parked below the viewport, not merely below itself. Once --kb lifts the
+       sheet clear of the keyboard, its own height is no longer far enough to
+       push it out of sight: a shut sheet reappeared in the lower half of the
+       screen, showing sections that had never been filled in because the thing
+       was never opened. */
+    transform:translateY(calc(101% + var(--kb, 0px)));
     transition:transform .26s cubic-bezier(.32,.72,0,1);
     /* 92dvh alone leaves only a few pixels above a tall sheet, which the status
        bar then eats into. Keep a real gap below the inset instead. */
@@ -514,6 +520,11 @@
      bars. One hue: the height already carries the magnitude. */
   .painstrip div{flex:1;border-radius:4px 4px 0 0;min-height:2px}
 
+  .exrow{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  /* The estimate is a number you glance at, not a section label, so it drops
+     the eyebrow's caps and tracking. */
+  #extime{text-transform:none;letter-spacing:-.01em;font-weight:560;color:var(--ink-3);
+    font-variant-numeric:tabular-nums;white-space:nowrap}
   .empty{color:var(--ink-3);font-size:14.5px;padding:22px 2px;line-height:1.55;letter-spacing:-.005em}
   .hint{color:var(--ink-3);font-size:13px;margin-top:10px;line-height:1.5;letter-spacing:-.005em}
 
@@ -655,7 +666,7 @@
   </div>
   <div class="days" id="days"></div>
 
-  <div class="eyebrow" id="exlabel">Exercises</div>
+  <div class="eyebrow exrow" id="exlabel"><span id="exlabeltext">Exercises</span><span id="extime"></span></div>
   <div id="exlist"></div>
   <div class="dayedit hide" id="dayedit">
     <label class="f"><span class="lab">Day name</span>
@@ -1334,6 +1345,35 @@ function roundLoadable(w, ex){
   return w <= bar ? bar : +(bar + Math.round((w - bar) / step) * step).toFixed(2);
 }
 
+// The prescription in force on the day those sets were logged, which is not
+// necessarily the day being looked at now.
+function targetOn(ex, dayId){
+  const row = program().find(d => d.id === dayId)?.ex.find(([n]) => n === ex);
+  return row ? row[1] : null;
+}
+
+// Whether the last session earned the next weight. It earns it by being
+// completed at the weight it used: every prescribed set, every prescribed rep,
+// and none of it taken to failure. Short of that the same weight comes back,
+// because adding load to a session you could not finish is how a lift stalls
+// for a month.
+//
+// Returns why it is being held, so the sheet can say so rather than silently
+// offering the same number twice.
+function heldAt(ex, date){
+  const sets = workingSets(db.sets.filter(s => s.e === ex && s.d === date));
+  if(!sets.length) return null;
+  // RIR 0 is failure by definition: that weight is already asking everything.
+  if(sets.some(s => s.rir === 0)) return 'a set went to failure';
+  const target = targetOn(ex, sets[0].dy);
+  const goalSets = targetSets(target), goalReps = targetReps(target);
+  if(goalSets && sets.length < goalSets)
+    return `${sets.length} of ${goalSets} sets`;
+  if(goalReps && sets.some(s => s.r < goalReps))
+    return `short of ${goalReps} reps`;
+  return null;
+}
+
 // What to put in the fields when the sheet opens.
 //   nothing logged     -> the bar, and the target's reps
 //   already going today-> repeat today's last set, because straight sets are
@@ -1344,10 +1384,15 @@ function seedFor(ex){
   const today = mine.filter(s => s.d === state.date).slice(-1)[0];
   const prior = mine.filter(s => s.d !== state.date).slice(-1)[0];
   const base = today || prior;
+  const held = prior ? heldAt(ex, prior.d) : null;
   const weight = !base ? startingWeight(ex)
     : today ? toDisplay(today)
+    // Rounded like any other suggestion: after a unit switch the weight being
+    // repeated is a converted decimal, and offering 102.06 kg is exactly the
+    // thing the plate calculator would then warn about.
+    : held ? roundLoadable(toDisplay(prior), ex)
     : roundLoadable(toDisplay(prior) + progressionFor(ex), ex);
-  return {weight, rir: base ? base.rir : 2, prior, base};
+  return {weight, rir: base ? base.rir : 2, prior, base, held};
 }
 
 // Round a target up to an even number of sets, leaving the rest of the string
@@ -1462,8 +1507,14 @@ const workingSets = list => list.filter(s => !isWarmup(s));
 
 function renderExercises(){
   const day = dayById(state.day);
-  $('#exlabel').textContent = day.name +
+  $('#exlabeltext').textContent = day.name +
     (db.days[state.date]?.done ? ' — finished' : ' — exercises');
+  const est = db.days[state.date]?.done ? null : sessionEstimate(state.date);
+  const label = est && est.sets ? estimateLabel(est.secs) : '';
+  // "left" only once some of it is behind you, so a fresh session reads as the
+  // length of the whole thing rather than of a remainder.
+  const anyDone = day.ex.some(([nm]) => workingSets(setsFor(state.date, nm)).length);
+  $('#extime').textContent = label ? `~${label}${anyDone ? ' left' : ''}` : '';
   $('#addex').classList.toggle('hide', !state.progEdit);
   $('#dayedit').classList.toggle('hide', !state.progEdit);
   if(state.progEdit){
@@ -1537,6 +1588,67 @@ function sessionStats(date){
     tonnage: all.reduce((a,s)=> a + (kindOf(s.e) === 'distance' ? 0 : loadOf(s) * s.r), 0),
     start: times.length ? Math.min(...times) : null
   };
+}
+
+/* ---------- how long a session takes ---------- */
+// The interval stored on a set is the whole gap between logging the set before
+// it and logging it — the rest and the set itself, inseparable. That is what
+// an estimate needs, so nothing has to be assumed about how long the lifting
+// part takes: it is already inside every interval the app has recorded.
+//
+// The problem is outliers rather than the model. A set logged after a phone
+// call, or after a warm-up, which starts no timer and so leaves the next
+// interval measuring from whenever the timer last ran. A median over intervals
+// clamped to what a gym can plausibly produce handles both.
+const INTERVAL_MIN = 15, INTERVAL_MAX = 15 * 60, PACE_SAMPLES = 3;
+
+function median(xs){
+  if(!xs.length) return null;
+  const a = [...xs].sort((x, y) => x - y), m = a.length >> 1;
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+}
+
+const usableIntervals = list => list
+  .filter(s => !isWarmup(s) && typeof s.rest === 'number'
+               && s.rest >= INTERVAL_MIN && s.rest <= INTERVAL_MAX);
+
+// How much longer a set actually takes than the rest it was given. This is the
+// closest the log comes to recording the lifting and setup, and it is only
+// needed for an exercise with no history of its own.
+function typicalOverhead(){
+  const over = usableIntervals(db.sets)
+    .map(s => s.rest - restTargetFor(s.e))
+    .filter(v => v >= 0);
+  return over.length >= 5 ? median(over) : null;
+}
+
+// Seconds one set of this exercise tends to cost, from the previous set to it.
+function paceFor(ex, overhead){
+  const own = usableIntervals(db.sets.filter(s => s.e === ex)).map(s => s.rest);
+  if(own.length >= PACE_SAMPLES) return median(own);
+  return restTargetFor(ex) + (overhead ?? 45);
+}
+
+// What is left of the day, in seconds. Sets already logged cost nothing.
+function sessionEstimate(date, dayId){
+  const day = dayById(dayId ?? state.day);
+  const overhead = typicalOverhead();
+  let secs = 0, sets = 0;
+  for(const [name, target] of day.ex){
+    const goal = targetSets(target);
+    if(!goal) continue;
+    const remaining = Math.max(0, goal - workingSets(setsFor(date, name)).length);
+    sets += remaining;
+    secs += remaining * paceFor(name, overhead);
+  }
+  return {secs, sets, fromHistory: overhead !== null};
+}
+
+// No false precision: past twenty minutes nobody can tell 47 from 45.
+function estimateLabel(secs){
+  const m = Math.round(secs / 60);
+  if(m < 1) return '';
+  return (m >= 20 ? Math.round(m / 5) * 5 : m) + ' min';
 }
 
 function sessionSummary(date){
@@ -2151,6 +2263,10 @@ function renderSheetSub(){
   bits.push(prev
     ? `last time ${fmtW(toDisplay(prev))} ${u.label} × ${prev.r} @ ${prev.rir} RIR`
     : (done ? 'first session on this' : 'first time logging this'));
+  // Only worth saying before the first set of the day: once you are logging,
+  // the weight in the field is whatever you decided it should be.
+  const held = prev && !done ? heldAt(ex, prev.d) : null;
+  if(held) bits.push(`repeating — ${held}`);
   $('#sheet-sub').textContent = bits.join(' · ');
 }
 

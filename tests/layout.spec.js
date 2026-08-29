@@ -309,6 +309,42 @@ test.describe('safe-area insets', () => {
     await ctx.close();
   });
 
+  test('a shut sheet stays off screen while the keyboard is up', async ({ browser }) => {
+    const ctx = await browser.newContext({ ...PHONE });
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('.ex');
+    await page.waitForFunction(() => document.querySelector('#view-exercise')
+      .getAnimations().every(a => a.playState === 'finished'));
+
+    // A shut sheet parks itself one height below its own bottom edge. Once --kb
+    // lifts that bottom edge clear of the keyboard, its own height no longer
+    // reaches past the viewport, and the sheet reappears in the lower half of
+    // the screen — showing sections that were never filled in, because it was
+    // never opened.
+    await page.evaluate(() => document.documentElement.style.setProperty('--kb', '400px'));
+    // transform is transitioned, so changing --kb animates: measuring straight
+    // away catches the sheets mid-slide
+    await page.waitForFunction(() => [...document.querySelectorAll('.sheet')]
+      .every(el => el.getAnimations().every(a => a.playState === 'finished')));
+
+    const vh = await page.evaluate(() => innerHeight);
+    const intruding = await page.evaluate(h => [...document.querySelectorAll('.sheet')]
+      .filter(el => !el.classList.contains('open'))
+      .map(el => ({ id: el.id, top: Math.round(el.getBoundingClientRect().top) }))
+      .filter(s => s.top < h), vh);
+    expect(intruding, 'a shut sheet is on screen').toEqual([]);
+
+    // and opening one still works while the keyboard is up
+    await page.evaluate(() => openSettings());
+    await page.waitForFunction(() => document.querySelector('#settings')
+      .getAnimations().every(a => a.playState === 'finished'));
+    const box = await page.locator('#settings').boundingBox();
+    expect(Math.round(box.y + box.height), 'open sheet not above the keyboard').toBe(vh - 400);
+    await ctx.close();
+  });
+
   test('the sheet footer sits on the bottom edge too', async ({ browser }) => {
     const ctx = await browser.newContext({ ...PHONE });
     const page = await ctx.newPage();
