@@ -282,13 +282,22 @@
        screen, showing sections that had never been filled in because the thing
        was never opened. */
     transform:translateY(calc(101% + var(--kb, 0px)));
-    transition:transform .26s cubic-bezier(.32,.72,0,1);
+    /* bottom jumps the moment --kb changes; the transform compensating for it
+       is transitioned, so for a quarter second the two disagree and a shut
+       sheet is briefly on screen. Position alone cannot be relied on to hide
+       something — visibility can, and it is held until the close finishes so
+       the slide out is still seen. */
+    visibility:hidden;
+    transition:transform .26s cubic-bezier(.32,.72,0,1), visibility 0s linear .26s;
     /* 92dvh alone leaves only a few pixels above a tall sheet, which the status
        bar then eats into. Keep a real gap below the inset instead. */
     max-height:min(92dvh, calc(100dvh - 12px - var(--safe-top) - var(--kb, 0px)));
     display:flex;flex-direction:column;
   }
-  .sheet.open{transform:translateY(0)}
+  .sheet.open{
+    transform:translateY(0);visibility:visible;
+    transition:transform .26s cubic-bezier(.32,.72,0,1), visibility 0s;
+  }
   .sheethead{
     flex:none;padding:14px 16px 10px;display:flex;align-items:flex-start;gap:12px;
     border-bottom:1px solid var(--line);
@@ -2142,16 +2151,29 @@ let lockedScrollY = 0;
 // page is scrolled to chase the caret, which is what makes the sheet jump and
 // its list stop scrolling. visualViewport is the only thing that reports where
 // the usable area actually is; without it nothing here changes.
+// No on-screen keyboard is shorter than this. Below it the viewport is moving
+// for some other reason — Safari's toolbar collapsing as you scroll, or the
+// rubber-band at the top of the page — and treating that as a keyboard makes
+// the whole layout twitch.
+const KB_MIN = 120;
+
+// Deliberately not subtracting visualViewport.offsetTop. It goes negative
+// during an overscroll, which inflated this into a few hundred pixels of
+// phantom keyboard: pulling down from the top made a shut sheet rise and
+// settle back. Height alone is what a keyboard actually changes.
+function keyboardInset(innerH, vvH){
+  const hidden = innerH - vvH;
+  if(!(hidden >= KB_MIN)) return 0;
+  // A bad reading mid-rotation should do nothing rather than park something
+  // off the screen.
+  return Math.min(hidden, innerH * 0.6);
+}
+
 function trackKeyboard(){
   const vv = window.visualViewport;
   if(!vv) return;
-  const sync = () => {
-    const hidden = window.innerHeight - vv.height - vv.offsetTop;
-    // Clamped: a bad reading mid-rotation should do nothing, not park the
-    // sheet somewhere off the screen.
-    const kb = Math.min(Math.max(hidden, 0), window.innerHeight * 0.6);
-    document.documentElement.style.setProperty('--kb', Math.round(kb) + 'px');
-  };
+  const sync = () => document.documentElement.style.setProperty(
+    '--kb', Math.round(keyboardInset(window.innerHeight, vv.height)) + 'px');
   vv.addEventListener('resize', sync);
   vv.addEventListener('scroll', sync);
   sync();
