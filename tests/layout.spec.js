@@ -345,6 +345,56 @@ test.describe('safe-area insets', () => {
     await ctx.close();
   });
 
+  test('only a keyboard counts as a keyboard', async ({ browser }) => {
+    const ctx = await browser.newContext({ ...PHONE });
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    // visualViewport.offsetTop goes negative during an overscroll, and Safari's
+    // toolbar collapses as you scroll. Both used to read as a few hundred
+    // pixels of keyboard and shove the layout around.
+    const read = h => page.evaluate(vh => keyboardInset(844, vh), h);
+    expect(await read(844), 'no change at all').toBe(0);
+    expect(await read(800), 'small jitter').toBe(0);
+    expect(await read(784), 'toolbar collapsing').toBe(0);
+    expect(await read(508), 'an actual keyboard').toBe(336);
+    expect(await read(40), 'nonsense mid-rotation').toBeLessThanOrEqual(844 * 0.6);
+    await ctx.close();
+  });
+
+  test('a shut sheet is never painted, whatever the inset does', async ({ browser }) => {
+    const ctx = await browser.newContext({ ...PHONE });
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    // bottom moves the instant --kb changes; the transform compensating for it
+    // is transitioned, so for a quarter second the two disagree and the box
+    // really is on screen. Pulling down from the top drove exactly this, and a
+    // sheet nobody opened rose and settled back.
+    const sample = () => page.evaluate(() => [...document.querySelectorAll('.sheet')]
+      .filter(el => !el.classList.contains('open'))
+      .map(el => {
+        const r = el.getBoundingClientRect();
+        return { id: el.id, onScreen: r.top < innerHeight && r.bottom > 0,
+                 visible: getComputedStyle(el).visibility !== 'hidden' };
+      }));
+
+    const seen = [];
+    for (const kb of ['380px', '0px']) {
+      await page.evaluate(v => document.documentElement.style.setProperty('--kb', v), kb);
+      for (let i = 0; i < 12; i++) { seen.push(...await sample()); await page.waitForTimeout(30); }
+    }
+    const painted = seen.filter(s => s.onScreen && s.visible);
+    expect(painted, 'a sheet nobody opened was on screen').toEqual([]);
+
+    // and it still shows when it is meant to
+    await page.evaluate(() => openSettings());
+    await expect(page.locator('#settings')).toBeVisible();
+    await ctx.close();
+  });
+
   test('the sheet footer sits on the bottom edge too', async ({ browser }) => {
     const ctx = await browser.newContext({ ...PHONE });
     const page = await ctx.newPage();
