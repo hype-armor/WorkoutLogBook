@@ -1070,3 +1070,131 @@ test('a program with no days falls back instead of taking the screen down', asyn
     JSON.parse(localStorage.getItem('logbook-v1')).program)).not.toEqual([]);
   await ctx.close();
 });
+
+/* ---------- issues #37, #38, #39 ---------- */
+
+test('bodyweight follows you across a unit switch (#37)', async ({ browser }) => {
+  const ctx = await phone(browser);
+  const page = await ctx.newPage();
+  await page.goto(FILE_URL);
+  await page.waitForSelector('.ex');
+
+  await page.click('#gear');
+  await page.fill('#bwinput', '180');
+  await page.evaluate(() =>
+    document.querySelector('#bwinput').dispatchEvent(new Event('change', { bubbles: true })));
+  await page.click('#unitsel [data-unit="kg"]');
+
+  // Plates are per unit because a kg rack holds different discs. Bodyweight is
+  // one fact with two spellings, and leaving the other slot at zero told the
+  // app the lifter weighed nothing.
+  await expect.poll(async () => page.evaluate(() =>
+    JSON.parse(localStorage.getItem('logbook-v1')).settings.bw.kg)).toBeCloseTo(81.6, 1);
+  await expect(page.locator('#bwinput')).toHaveValue('81.6');
+
+  // a number entered by hand is never overwritten
+  await page.fill('#bwinput', '80');
+  await page.evaluate(() =>
+    document.querySelector('#bwinput').dispatchEvent(new Event('change', { bubbles: true })));
+  await page.click('#unitsel [data-unit="lb"]');
+  await page.click('#unitsel [data-unit="kg"]');
+  await expect(page.locator('#bwinput')).toHaveValue('80');
+  await ctx.close();
+});
+
+test('a database that switched units before the fix is backfilled (#37)', async ({ browser }) => {
+  const ctx = await phone(browser);
+  const page = await ctx.newPage();
+  // already in kg, bodyweight only ever entered in lb: every bodyweight set
+  // has been scoring zero
+  await seed(page, blankDb({
+    settings: { units: 'kg', transition: 30, bw: { lb: 180, kg: 0 }, lastDay: 'A',
+                alert: 'both', painSites: ['lower-back'] }
+  }));
+  await page.goto(FILE_URL);
+  await page.waitForSelector('.ex');
+  await page.click('#gear');
+  await expect(page.locator('#bwinput')).toHaveValue('81.6');
+  await ctx.close();
+});
+
+test('a bodyweight set keeps its volume in either unit (#37)', async ({ browser }) => {
+  const ctx = await phone(browser);
+  const page = await ctx.newPage();
+  const t = Date.parse('2026-08-01');
+  await seed(page, blankDb({
+    sets: [{ id: 'p', t, d: '2026-08-01', e: 'Pull-up', dy: 'A', w: 0, r: 8, rir: 2, rest: 180, u: 'lb' }],
+    settings: { units: 'lb', transition: 30, bw: { lb: 180, kg: 81.6 }, lastDay: 'A',
+                alert: 'both', painSites: ['lower-back'] }
+  }));
+  await page.goto(FILE_URL);
+  await page.waitForSelector('.ex');
+  await page.click('#tab-history');
+  await expect(page.locator('#sessions')).toContainText('1,440 lb volume');
+
+  await page.click('#tab-train');
+  await page.click('#gear');
+  await page.click('#unitsel [data-unit="kg"]');
+  await page.click('#setdone');
+  await page.click('#tab-history');
+  // 180 lb of lifter, eight times over
+  await expect(page.locator('#sessions')).toContainText('653 kg volume');
+  await ctx.close();
+});
+
+test('a high-rep set does not outrank a heavy one (#38)', async ({ browser }, testInfo) => {
+  const ctx = await phone(browser, { acceptDownloads: true });
+  const page = await ctx.newPage();
+  const mk = (d, w, r) => ({ id: `${d}${w}${r}`, t: Date.parse(d), d, e: 'Deadlift',
+                             dy: 'A', w, r, rir: 2, rest: 180, u: 'lb' });
+  await seed(page, blankDb({ sets: [mk('2026-08-01', 315, 5), mk('2026-08-03', 225, 30)] }));
+  await page.goto(FILE_URL);
+  await page.waitForSelector('.ex');
+
+  await page.click('#gear');
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#export')]);
+  const out = testInfo.outputPath('e1rm.csv');
+  await dl.saveAs(out);
+  const rows = fs.readFileSync(out, 'utf8').trim().split('\n').slice(1)
+    .map(r => r.split(','));
+  const head = fs.readFileSync(out, 'utf8').split('\n')[0].split(',');
+  const col = head.indexOf('est_max'), reps = head.indexOf('reps_or_distance');
+  const heavy = +rows.find(r => r[reps] === '5')[col];
+  const light = +rows.find(r => r[reps] === '30')[col];
+
+  // Epley is unbounded: at 30 reps it made a back-off set worth 465 lb, more
+  // than a genuine 315x5 at 389, and that became the standing estimate.
+  expect(light, `a 225x30 estimated at ${light}`).toBeLessThan(heavy);
+  expect(light).toBeGreaterThan(0);          // still counted, not discarded
+  await ctx.close();
+});
+
+test('the suggested weight is one the rack can make (#39)', async ({ browser }) => {
+  const ctx = await phone(browser);
+  const page = await ctx.newPage();
+  // logged in lb, now working in kg: 225 lb converts to 102.06, and the old
+  // code added the progression straight onto that
+  await seed(page, blankDb({
+    sets: [{ id: 'a', t: Date.parse('2026-08-01'), d: '2026-08-01', e: 'Deadlift',
+             dy: 'A', w: 225, r: 5, rir: 2, rest: 180, u: 'lb' }],
+    settings: { units: 'kg', transition: 30, bw: { lb: 0, kg: 0 }, lastDay: 'A',
+                alert: 'both', painSites: ['lower-back'] }
+  }));
+  await page.goto(FILE_URL);
+  await page.waitForSelector('.ex');
+  await page.click('#logother');
+  await page.fill('#pickfilter', 'Deadlift');
+  await page.click('#picklist [data-pick="Deadlift"]');
+
+  const shown = parseFloat(await page.inputValue('#wt'));
+  const { bar, step } = await page.evaluate(() => ({
+    bar: +document.querySelector('#barsvg text:last-of-type')?.textContent || 20,
+    step: 2.5
+  }));
+  // whole plate pairs above the bar, nothing left over
+  const pairs = (shown - bar) / step;
+  expect(Number.isInteger(+pairs.toFixed(6)), `${shown} kg is ${pairs} plate pairs`).toBe(true);
+  // and the calculator no longer warns about the app's own proposal
+  await expect(page.locator('#pmwarn')).toBeHidden();
+  await ctx.close();
+});
