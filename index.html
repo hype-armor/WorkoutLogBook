@@ -1521,12 +1521,20 @@ function renderExercises(){
   const day = dayById(state.day);
   $('#exlabeltext').textContent = day.name +
     (db.days[state.date]?.done ? ' — finished' : ' — exercises');
-  const est = db.days[state.date]?.done ? null : sessionEstimate(state.date);
-  const label = est && est.sets ? estimateLabel(est.secs) : '';
-  // "left" only once some of it is behind you, so a fresh session reads as the
-  // length of the whole thing rather than of a remainder.
-  const anyDone = day.ex.some(([nm]) => workingSets(setsFor(state.date, nm)).length);
-  $('#extime').textContent = label ? `~${label}${anyDone ? ' left' : ''}` : '';
+  // Once it is finished the same spot reports what it actually took. Going
+  // blank there reads as the feature being missing, and the real number was
+  // only in History or under the pain card.
+  const ran = sessionMinutes(state.date);
+  if(ran){
+    $('#extime').textContent = `${ran} min`;
+  } else {
+    const est = db.days[state.date]?.done ? null : sessionEstimate(state.date);
+    const label = est && est.sets ? estimateLabel(est.secs) : '';
+    // "left" only once some of it is behind you, so a fresh session reads as
+    // the length of the whole thing rather than of a remainder.
+    const anyDone = day.ex.some(([nm]) => workingSets(setsFor(state.date, nm)).length);
+    $('#extime').textContent = label ? `~${label}${anyDone ? ' left' : ''}` : '';
+  }
   $('#addex').classList.toggle('hide', !state.progEdit);
   $('#dayedit').classList.toggle('hide', !state.progEdit);
   if(state.progEdit){
@@ -1654,6 +1662,14 @@ function sessionEstimate(date, dayId){
     secs += remaining * paceFor(name, overhead);
   }
   return {secs, sets, fromHistory: overhead !== null};
+}
+
+// How long the session actually ran, once it is finished. Null while it is
+// still going, or when the timestamps cannot say.
+function sessionMinutes(date){
+  const done = db.days[date]?.done, start = sessionStats(date).start;
+  if(!done || !start || done <= start) return null;
+  return Math.max(1, Math.round((done - start) / 60000));
 }
 
 // No false precision: past twenty minutes nobody can tell 47 from 45.
@@ -2556,8 +2572,8 @@ function renderSessions(){
       </button>
       <div class="sessmeta" style="margin-top:4px">${Math.round(tonnage).toLocaleString()} ${esc(u.label)} volume${
         pain ? ` · ${esc(pain)}` : ''}${
-        db.days[date]?.done ? ` · finished${(()=>{ const st=sessionStats(date).start, dn=db.days[date].done;
-          return st && dn > st ? ' in ' + Math.max(1, Math.round((dn-st)/60000)) + ' min' : ''; })()}` : ''}</div>
+        db.days[date]?.done
+          ? ` · finished${sessionMinutes(date) ? ` in ${sessionMinutes(date)} min` : ''}` : ''}</div>
       ${open ? `<div class="sessbody">${lines}${note?`<div class="sessnote">${esc(note)}</div>`:''}</div>` : ''}
     </div>`;
   }).join('') + (all.length > dates.length
