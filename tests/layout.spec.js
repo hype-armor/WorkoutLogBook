@@ -566,3 +566,24 @@ test('the day picker folds away once a session is chosen', async ({ browser }) =
   await expect(page.locator('.day')).toHaveCount(0);
   await ctx.close();
 });
+
+test('the estimate does not restyle the exercise rows it sits above', async ({ browser }) => {
+  const ctx = await browser.newContext({ ...PHONE });
+  const page = await ctx.newPage();
+  await page.goto(FILE_URL);
+  await page.waitForSelector('.ex');
+
+  // The header carrying the estimate is its own row. Sharing a class with the
+  // wrapper around every exercise re-styled all of those: in Edit mode the
+  // button stopped matching the height of its tools and the row grew by 19px.
+  await page.click('#editprog');
+  const row = await page.locator('#exlist .exrow').first();
+  const kids = await row.evaluate(el => [...el.children]
+    .map(c => Math.round(c.getBoundingClientRect().height)));
+  expect(kids.length, 'edit mode should put tools beside the button').toBeGreaterThan(1);
+  expect(Math.max(...kids) - Math.min(...kids), 'row children are different heights')
+    .toBeLessThanOrEqual(1);
+  const rowH = await row.evaluate(el => Math.round(el.getBoundingClientRect().height));
+  expect(rowH, 'the row is taller than what it holds').toBe(Math.max(...kids));
+  await ctx.close();
+});

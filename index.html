@@ -529,7 +529,10 @@
      bars. One hue: the height already carries the magnitude. */
   .painstrip div{flex:1;border-radius:4px 4px 0 0;min-height:2px}
 
-  .exrow{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  /* Named for what it is. .exrow was already the wrapper around every exercise
+     in the list, so borrowing it re-styled all of those too: in Edit mode the
+     button stopped matching its tools and the row grew from 62px to 81px. */
+  .exlabelrow{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
   /* The estimate is a number you glance at, not a section label, so it drops
      the eyebrow's caps and tracking. */
   #extime{text-transform:none;letter-spacing:-.01em;font-weight:560;color:var(--ink-3);
@@ -675,7 +678,7 @@
   </div>
   <div class="days" id="days"></div>
 
-  <div class="eyebrow exrow" id="exlabel"><span id="exlabeltext">Exercises</span><span id="extime"></span></div>
+  <div class="eyebrow exlabelrow" id="exlabel"><span id="exlabeltext">Exercises</span><span id="extime"></span></div>
   <div id="exlist"></div>
   <div class="dayedit hide" id="dayedit">
     <label class="f"><span class="lab">Day name</span>
