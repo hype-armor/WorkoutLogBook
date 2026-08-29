@@ -39,7 +39,7 @@ npx playwright install chromium
 npm test
 ```
 
-154 tests in `tests/`, run on every pull request and again before any deploy.
+159 tests in `tests/`, run on every pull request and again before any deploy.
 They cover the things that actually broke: that a logged set survives a reload
 and a service-worker update, that `Log set` and the RIR selector are never
 underneath the rest timer at phone sizes, that unit switching converts rather
@@ -101,6 +101,16 @@ Turning Pages on also offers to commit a starter workflow of its own,
 `static.yml`. Decline it, or delete it afterwards: it uploads and deploys with
 no test step, so a red build would publish anyway, and two workflows sharing
 the `pages` concurrency group only queue behind each other.
+
+## When the weight goes up
+
+A session earns the next weight by being completed at the one it used: every
+prescribed set, every prescribed rep, and nothing taken to failure. Fall short
+of any of those and the same weight comes back, with the sheet saying which —
+`repeating — 3 of 4 sets`, `short of 4 reps`, `a set went to failure`. RIR 0 is
+failure by definition, wherever in the session it happened.
+
+Adding load to a session you could not finish is how a lift stalls for a month.
 
 ## How long it will take
 

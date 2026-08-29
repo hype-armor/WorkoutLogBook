@@ -953,12 +953,14 @@ test.describe('what the fields start at', () => {
   test('a later session opens at last weight plus the progression', async ({ browser }) => {
     const ctx = await phone(browser);
     const page = await ctx.newPage();
-    // one working set of 225 on an earlier day
+    // a completed session of 225 on an earlier day
     await page.addInitScript(() => {
       if (localStorage.getItem('logbook-v1')) return;
       const t = Date.parse('2026-06-01');
+      // the full 4 x 4, so the session earned its next weight
       localStorage.setItem('logbook-v1', JSON.stringify({
-        v: 2, sets: [{ id: t + 'a', t, d: '2026-06-01', e: 'Deadlift', dy: 'A', w: 225, r: 4, rir: 2, rest: 180, u: 'lb' }],
+        v: 2, sets: [0, 1, 2, 3].map(i => ({ id: t + 'a' + i, t: t + i * 1000,
+          d: '2026-06-01', e: 'Deadlift', dy: 'A', w: 225, r: 4, rir: 2, rest: 180, u: 'lb' })),
         days: {}, pairs: {}, ex: {}, program: null,
         settings: { units: 'lb', transition: 30, bw: { lb: 0, kg: 0 }, lastDay: 'A', alert: 'both' }, rest: null
       }));
@@ -985,8 +987,10 @@ test.describe('what the fields start at', () => {
     await page.addInitScript(() => {
       if (localStorage.getItem('logbook-v1')) return;
       const t = Date.parse('2026-06-01');
+      // the full 4 x 4, so the session earned its next weight
       localStorage.setItem('logbook-v1', JSON.stringify({
-        v: 2, sets: [{ id: t + 'a', t, d: '2026-06-01', e: 'Deadlift', dy: 'A', w: 225, r: 4, rir: 2, rest: 180, u: 'lb' }],
+        v: 2, sets: [0, 1, 2, 3].map(i => ({ id: t + 'a' + i, t: t + i * 1000,
+          d: '2026-06-01', e: 'Deadlift', dy: 'A', w: 225, r: 4, rir: 2, rest: 180, u: 'lb' })),
         days: {}, pairs: {}, ex: {}, program: null,
         settings: { units: 'lb', transition: 30, bw: { lb: 0, kg: 0 }, lastDay: 'A', alert: 'both' }, rest: null
       }));
@@ -1317,6 +1321,86 @@ test.describe('how long the session will take', () => {
     // it would just be noise
     await expect(page.locator('#extime')).toHaveText('');
     await expect(page.locator('#exlabeltext')).toContainText('finished');
+    await ctx.close();
+  });
+});
+
+test.describe('the weight only goes up when the last session earned it', () => {
+  // Deadlift is prescribed 4 x 4 on day A
+  const lastSession = (page, made) => page.addInitScript(sets => {
+    localStorage.setItem('logbook-v1', JSON.stringify({ v: 4,
+      sets: sets.map((m, i) => ({ id: 's' + i, t: Date.parse('2026-07-01') + i * 1000,
+        d: '2026-07-01', e: 'Deadlift', dy: 'A', w: m.w, r: m.r, rir: m.rir,
+        rest: 180, u: 'lb' })),
+      days: {}, pairs: {}, ex: {}, program: null,
+      settings: { units: 'lb', transition: 30, bw: { lb: 0, kg: 0 }, lastDay: 'A',
+                  alert: 'both', painSites: ['lower-back'] }, rest: null }));
+  }, made);
+
+  const clean = w => [0, 1, 2, 3].map(() => ({ w, r: 4, rir: 2 }));
+
+  const offered = async (browser, made) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await lastSession(page, made);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.evaluate(() => { state.day = 'A'; renderDays(); renderExercises(); });
+    await page.click('.ex[data-ex="Deadlift"]');
+    const weight = parseFloat(await page.inputValue('#wt'));
+    const sub = await page.textContent('#sheet-sub');
+    await ctx.close();
+    return { weight, sub };
+  };
+
+  test('a session finished as prescribed moves the weight up', async ({ browser }) => {
+    const { weight, sub } = await offered(browser, clean(225));
+    expect(weight).toBeGreaterThan(225);
+    expect(sub).not.toContain('repeating');
+  });
+
+  test('sets left undone hold the weight, and it says which', async ({ browser }) => {
+    const { weight, sub } = await offered(browser, clean(225).slice(0, 3));
+    // adding load to a session you could not finish is how a lift stalls
+    expect(weight).toBe(225);
+    expect(sub).toContain('repeating — 3 of 4 sets');
+  });
+
+  test('a set short of its reps holds the weight', async ({ browser }) => {
+    const made = clean(225);
+    made[3] = { w: 225, r: 3, rir: 2 };
+    const { weight, sub } = await offered(browser, made);
+    expect(weight).toBe(225);
+    expect(sub).toContain('repeating — short of 4 reps');
+  });
+
+  test('a set taken to failure holds the weight, wherever it fell', async ({ browser }) => {
+    for (const at of [0, 3]) {
+      const made = clean(225);
+      made[at] = { w: 225, r: 4, rir: 0 };
+      const { weight, sub } = await offered(browser, made);
+      // RIR 0 is failure by definition: that weight is already asking everything
+      expect(weight, `failure on set ${at + 1}`).toBe(225);
+      expect(sub).toContain('repeating — a set went to failure');
+    }
+  });
+
+  test('once today is under way the note goes, and today\'s weight repeats', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await lastSession(page, clean(225).slice(0, 3));
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.evaluate(() => { state.day = 'A'; renderDays(); renderExercises(); });
+    await page.click('.ex[data-ex="Deadlift"]');
+    await expect(page.locator('#sheet-sub')).toContainText('repeating');
+
+    // whatever you decide to lift today is what the next set offers
+    await page.fill('#wt', '235');
+    await page.fill('#reps', '4');
+    await page.click('#logset');
+    await expect(page.locator('#sheet-sub')).not.toContainText('repeating');
+    expect(parseFloat(await page.inputValue('#wt'))).toBe(235);
     await ctx.close();
   });
 });

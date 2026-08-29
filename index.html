@@ -1345,6 +1345,35 @@ function roundLoadable(w, ex){
   return w <= bar ? bar : +(bar + Math.round((w - bar) / step) * step).toFixed(2);
 }
 
+// The prescription in force on the day those sets were logged, which is not
+// necessarily the day being looked at now.
+function targetOn(ex, dayId){
+  const row = program().find(d => d.id === dayId)?.ex.find(([n]) => n === ex);
+  return row ? row[1] : null;
+}
+
+// Whether the last session earned the next weight. It earns it by being
+// completed at the weight it used: every prescribed set, every prescribed rep,
+// and none of it taken to failure. Short of that the same weight comes back,
+// because adding load to a session you could not finish is how a lift stalls
+// for a month.
+//
+// Returns why it is being held, so the sheet can say so rather than silently
+// offering the same number twice.
+function heldAt(ex, date){
+  const sets = workingSets(db.sets.filter(s => s.e === ex && s.d === date));
+  if(!sets.length) return null;
+  // RIR 0 is failure by definition: that weight is already asking everything.
+  if(sets.some(s => s.rir === 0)) return 'a set went to failure';
+  const target = targetOn(ex, sets[0].dy);
+  const goalSets = targetSets(target), goalReps = targetReps(target);
+  if(goalSets && sets.length < goalSets)
+    return `${sets.length} of ${goalSets} sets`;
+  if(goalReps && sets.some(s => s.r < goalReps))
+    return `short of ${goalReps} reps`;
+  return null;
+}
+
 // What to put in the fields when the sheet opens.
 //   nothing logged     -> the bar, and the target's reps
 //   already going today-> repeat today's last set, because straight sets are
@@ -1355,10 +1384,15 @@ function seedFor(ex){
   const today = mine.filter(s => s.d === state.date).slice(-1)[0];
   const prior = mine.filter(s => s.d !== state.date).slice(-1)[0];
   const base = today || prior;
+  const held = prior ? heldAt(ex, prior.d) : null;
   const weight = !base ? startingWeight(ex)
     : today ? toDisplay(today)
+    // Rounded like any other suggestion: after a unit switch the weight being
+    // repeated is a converted decimal, and offering 102.06 kg is exactly the
+    // thing the plate calculator would then warn about.
+    : held ? roundLoadable(toDisplay(prior), ex)
     : roundLoadable(toDisplay(prior) + progressionFor(ex), ex);
-  return {weight, rir: base ? base.rir : 2, prior, base};
+  return {weight, rir: base ? base.rir : 2, prior, base, held};
 }
 
 // Round a target up to an even number of sets, leaving the rest of the string
@@ -2229,6 +2263,10 @@ function renderSheetSub(){
   bits.push(prev
     ? `last time ${fmtW(toDisplay(prev))} ${u.label} × ${prev.r} @ ${prev.rir} RIR`
     : (done ? 'first session on this' : 'first time logging this'));
+  // Only worth saying before the first set of the day: once you are logging,
+  // the weight in the field is whatever you decided it should be.
+  const held = prev && !done ? heldAt(ex, prev.d) : null;
+  if(held) bits.push(`repeating — ${held}`);
   $('#sheet-sub').textContent = bits.join(' · ');
 }
 
