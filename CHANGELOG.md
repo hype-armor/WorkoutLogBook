@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.11.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.10.3...logbook-v1.11.0) (2026-08-29)
+
+
+### Features
+
+* estimate how long the rest of the session will take ([d15c062](https://github.com/hype-armor/WorkoutLogBook/commit/d15c06294eece5b50d160c805bb63be7ac5e6d81))
+* hold the weight when the last session did not earn it ([48e3b50](https://github.com/hype-armor/WorkoutLogBook/commit/48e3b50d4574b6663f99435c5f82467607572fad))
+* session time estimate, and hold the weight when a session falls short ([1df0c48](https://github.com/hype-armor/WorkoutLogBook/commit/1df0c48384ff23eed46cf0f9cb0af89af904a61a))
+
 ## [1.10.3](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.10.2...logbook-v1.10.3) (2026-08-29)
 
 
