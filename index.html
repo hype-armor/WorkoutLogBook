@@ -275,7 +275,13 @@
     position:fixed;left:0;right:0;bottom:var(--kb, 0px);z-index:50;
     background:var(--surface);border-top:1px solid var(--line-2);
     border-radius:var(--r-xl) var(--r-xl) 0 0;
-    max-width:560px;margin:0 auto;transform:translateY(101%);
+    max-width:560px;margin:0 auto;
+    /* Parked below the viewport, not merely below itself. Once --kb lifts the
+       sheet clear of the keyboard, its own height is no longer far enough to
+       push it out of sight: a shut sheet reappeared in the lower half of the
+       screen, showing sections that had never been filled in because the thing
+       was never opened. */
+    transform:translateY(calc(101% + var(--kb, 0px)));
     transition:transform .26s cubic-bezier(.32,.72,0,1);
     /* 92dvh alone leaves only a few pixels above a tall sheet, which the status
        bar then eats into. Keep a real gap below the inset instead. */
