@@ -1304,7 +1304,7 @@ test.describe('how long the session will take', () => {
     await ctx.close();
   });
 
-  test('a finished session stops estimating', async ({ browser }) => {
+  test('a finished session reports what it actually took', async ({ browser }) => {
     const ctx = await phone(browser);
     const page = await ctx.newPage();
     await page.goto(FILE_URL);
@@ -1314,13 +1314,46 @@ test.describe('how long the session will take', () => {
     await page.fill('#reps', '5');
     await page.click('#logset');
     await page.click('#close');
-    await expect(page.locator('#extime')).toContainText('min');
+    await expect(page.locator('#extime')).toContainText('~');
 
     await page.click('#finish');
-    // the card underneath reports what it actually took; a forecast alongside
-    // it would just be noise
-    await expect(page.locator('#extime')).toHaveText('');
+    // Going blank here read as the feature being missing — the real number was
+    // only in History, or under the pain card. The forecast is replaced by the
+    // answer, in the same place.
     await expect(page.locator('#exlabeltext')).toContainText('finished');
+    await expect(page.locator('#extime')).toHaveText(/^\d+ min$/);
+    await expect(page.locator('#extime')).not.toContainText('~');
+    await ctx.close();
+  });
+
+  test('the header and History agree on how long it took', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
+      .toISOString().slice(0, 10);
+    // a session that ran 47 minutes from its first set
+    await page.addInitScript(t => {
+      const start = Date.now() - 47 * 60000, sets = []; let i = 0;
+      for (const [e, n] of [['Deadlift', 4], ['Leg press', 3]]) {
+        for (let k = 0; k < n; k++) {
+          sets.push({ id: 's' + (i++), t: start + i * 1000, d: t, e, dy: 'A',
+                      w: 225, r: 99, rir: 2, rest: 200, u: 'lb' });
+        }
+      }
+      localStorage.setItem('logbook-v1', JSON.stringify({ v: 4, sets,
+        days: { [t]: { done: start + 47 * 60000 } }, pairs: {}, ex: {}, program: null,
+        settings: { units: 'lb', transition: 30, bw: { lb: 0, kg: 0 }, lastDay: 'A',
+                    alert: 'both', painSites: ['lower-back'] }, rest: null }));
+    }, today);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    // both read the same helper; computing a session's length twice, two ways,
+    // is what let the finish card and History disagree once before
+    const header = (await page.textContent('#extime')).trim();
+    expect(header).toMatch(/^4[5-7] min$/);
+    await page.click('#tab-history');
+    await expect(page.locator('#sessions')).toContainText(`finished in ${header}`);
     await ctx.close();
   });
 });
