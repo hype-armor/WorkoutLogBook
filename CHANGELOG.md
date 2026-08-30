@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.12.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.11.2...logbook-v1.12.0) (2026-08-30)
+
+
+### Features
+
+* report what a finished session took, where the estimate was ([ac4aabe](https://github.com/hype-armor/WorkoutLogBook/commit/ac4aabe1f7a59c550fca4c3bc967ae1550df2206))
+* report what a finished session took, where the estimate was ([a0b7293](https://github.com/hype-armor/WorkoutLogBook/commit/a0b7293bed92224599adab54ebdfb3517bc76308))
+
 ## [1.11.2](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.11.1...logbook-v1.11.2) (2026-08-29)
 
 
