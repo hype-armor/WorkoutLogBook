@@ -359,6 +359,13 @@
   .plate[data-v="4"][aria-pressed="true"]{border-color:var(--ink-2);color:var(--ink)}
   .plate[aria-pressed="true"]{transform:scale(1.07);background:var(--bg);border-width:3px}
   .rirhint{color:var(--ink-3);font-size:12.5px;text-align:center;margin-top:6px;min-height:16px;letter-spacing:-.005em}
+  /* Left-aligned, unlike .rirhint, which is centred under the RIR discs. Two
+     lines are reserved for the same reason .rirhint reserves one: the sentence
+     changes as you dial the number, and the block must not jump. */
+  .repband{color:var(--ink-3);font-size:12.5px;margin-top:6px;min-height:34px;
+    line-height:1.35;letter-spacing:-.005em}
+  .repband .name{color:var(--ink-2);font-weight:620}
+  .repband .name:not(:empty)::after{content:' — '}
 
   /* plate math */
   .platemath{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
@@ -761,6 +768,9 @@
         <button type="button" id="rup" aria-label="Increase reps">+</button>
       </div>
     </label>
+    <div class="repband" id="repband">
+      <span class="name" id="repbandname"></span><span id="repbandsay"></span>
+    </div>
 
     <div class="hint hide" id="bwhint"></div>
 
@@ -906,6 +916,20 @@
     <button class="btn ghost small wide" id="testalert" style="margin-top:12px">Test alert</button>
     <div class="hint">Plays exactly what a finished timer plays, so you can find out
       whether it carries over the room before you are mid-set.</div>
+
+    <div class="eyebrow">Rep ranges</div>
+    <div class="hint">Under the reps field the app names what that count usually
+      trains: 1–5 strength, 6–15 size, 16–30 endurance, past 30 a very long set.
+      The edges are soft. Heavy low reps are the <em>best</em> way to raise a
+      one-rep max, not the only thing that builds strength. Muscle grows across
+      roughly 5 to 30 reps — anything above about 30% of your max — provided the
+      set is taken close to failure. Whether high reps are specifically better
+      for endurance is less settled than the charts suggest. And high reps are
+      not cardio: that is a different session, not a rep count.</div>
+    <div class="hint">How hard the set is matters more than which range it falls
+      in — a hard set of 20 beats an easy set of 8. But one or two reps in
+      reserve is close enough; going to failure every set is not required, and
+      the edge it gives is small once total sets are equal.</div>
 
     <div class="eyebrow">Data</div>
     <button class="btn ghost small wide" id="backup">Download backup (JSON)</button>
@@ -1077,6 +1101,31 @@ const RIR_HINT = {
   3:'Three more. Fine for accessories.',
   4:'Four or more. Below the useful range for a hard set.'
 };
+
+// What a rep count is usually training. The edges are softer than any gym chart
+// admits, and the copy says so on purpose:
+//
+//  - Heavy load is the best way to raise a one-rep max, not the only way that
+//    builds strength (ES ~0.58 favouring >60% 1RM).
+//  - Muscle grows across a wide span — anything above roughly 30% 1RM, which is
+//    a rep count past 50 — provided the set is taken near failure. The familiar
+//    "5 to 30" is the practical translation of that, not the finding itself.
+//  - Whether high reps are specifically better for endurance is the weakest
+//    claim on the chart; the review that re-examined the continuum calls it
+//    equivocal. Hence "probably".
+//
+// Cut points follow load: 5 reps is ~87% 1RM, 15 is ~65%, 30 is ~50%. The
+// endurance band starts at 16 because that is where the >=15 rep findings sit.
+// Keep every rendered line under 92 characters — that is where it wraps to a
+// third row at 375px and the block starts jumping under your thumb.
+const REP_BANDS = [
+  {max:5,        name:'Strength',      say:'Heaviest end. Best for a one-rep max — size comes too, just slower.'},
+  {max:15,       name:'Hypertrophy',   say:'The classic size range, though 5 to 30 all grow muscle near failure.'},
+  {max:30,       name:'Endurance',     say:'Probably better for endurance. Still grows muscle taken near failure.'},
+  {max:Infinity, name:'Very long set', say:'Past 30 it is usually discomfort, not the muscle, that ends the set.'}
+];
+// Blank, zero, a stray minus: not a rep count, so no band.
+const repBand = r => Number.isFinite(r) && r >= 1 ? REP_BANDS.find(b => r <= b.max) : null;
 
 /* ---------- state ---------- */
 let db = blank();
@@ -1771,6 +1820,19 @@ function renderSiteList(){
 
 function openSites(){ renderSiteList(); openPanel($('#sitesheet'), $('#sitesheet-title')); }
 
+function renderRepBand(){
+  const box = $('#repband');
+  // A ramp-up set is not training a quality, and "reps" on a carry is metres.
+  const off = state.warmup || kindOf(state.ex) === 'distance';
+  box.classList.toggle('hide', off);
+  if(off) return;
+  const b = repBand(parseFloat($('#reps').value));
+  // Blanked rather than hidden: the field is empty for a moment every time you
+  // clear it to retype, and the block must not collapse under your thumb.
+  $('#repbandname').textContent = b ? b.name : '';
+  $('#repbandsay').textContent  = b ? b.say  : '';
+}
+
 function renderSetKind(){
   $('#setkind').innerHTML = [['work','Working'],['warm','Warm-up']].map(([v,label]) =>
     `<button data-kind="${v}" aria-pressed="${(state.warmup ? 'warm' : 'work') === v}">${label}</button>`).join('');
@@ -1778,6 +1840,7 @@ function renderSetKind(){
   // meaningful answer, so it is not asked.
   $('#rirblock').classList.toggle('hide', state.warmup);
   if(!state.editing) $('#logset').textContent = state.warmup ? 'Log warm-up' : 'Log set';
+  renderRepBand();
 }
 
 $('#setkind').addEventListener('click', e=>{
@@ -2606,6 +2669,7 @@ function nudgeReps(dir){
   const cur = parseFloat($('#reps').value);
   const step = kindOf(state.ex) === 'distance' ? 5 : 1;
   $('#reps').value = Math.max(step, (isNaN(cur) ? 0 : cur) + dir*step);
+  renderRepBand();
 }
 
 function refreshStepperLabels(){
@@ -2737,6 +2801,7 @@ $('#delday').addEventListener('click', ()=>{
 
 /* ---------- events: log sheet ---------- */
 $('#wt').addEventListener('input', renderPlateMath);
+$('#reps').addEventListener('input', renderRepBand);
 
 $('#plates').addEventListener('click', e=>{
   const b = e.target.closest('[data-v]'); if(!b) return;
@@ -3016,6 +3081,7 @@ $('#exsave').addEventListener('click', ()=>{
     const reps = targetReps(target);
     if(reps != null && !state.editing) $('#reps').value = reps;
     renderSheetSub(); renderPlateMath(); refreshStepperLabels(); renderSetList();
+    renderRepBand();
   }
   toast(rounded ? `Rounded to ${targetSets(target)} sets — one side each` : (old ? 'Saved' : 'Added'));
 });

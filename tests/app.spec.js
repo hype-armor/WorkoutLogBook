@@ -128,6 +128,8 @@ test.describe('logging a session', () => {
     await page.click('.ex[data-ex="Suitcase carry"]');
     await expect(page.locator('#repslab')).toContainText(/distance/i);
     await expect(page.locator('#platemath')).toBeHidden();
+    // 40 metres is not "Endurance"; the field is not counting reps at all
+    await expect(page.locator('#repband')).toBeHidden();
     await page.fill('#wt', '70');
     await page.fill('#reps', '40');
     await page.click('#logset');
@@ -1435,5 +1437,136 @@ test.describe('the weight only goes up when the last session earned it', () => {
     await expect(page.locator('#sheet-sub')).not.toContainText('repeating');
     expect(parseFloat(await page.inputValue('#wt'))).toBe(235);
     await ctx.close();
+  });
+});
+
+test.describe('what the rep count is training', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('.ex[data-ex="Deadlift"]');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  const band = () => page.locator('#repbandname');
+
+  test('it opens on the band the target lands in', async () => {
+    // Deadlift is prescribed 4 × 4
+    await expect(page.locator('#repband')).toBeVisible();
+    await expect(band()).toHaveText('Strength');
+  });
+
+  test('the boundaries land where the loads do', async () => {
+    // 5 reps is ~87% 1RM, 15 is ~65%, 30 is ~50%; the endurance band starts at
+    // 16 because that is where the >=15 rep findings sit
+    for (const [reps, name] of [
+      ['1', 'Strength'], ['5', 'Strength'],
+      ['6', 'Hypertrophy'], ['15', 'Hypertrophy'],
+      ['16', 'Endurance'], ['30', 'Endurance'],
+      ['31', 'Very long set'], ['100', 'Very long set']
+    ]) {
+      await page.fill('#reps', reps);
+      await expect(band(), `${reps} reps`).toHaveText(name);
+    }
+  });
+
+  test('the steppers move it, not just typing', async () => {
+    // nudgeReps used to change the value and re-render nothing, unlike
+    // nudgeWeight, so the band went stale the moment you used + or −
+    await page.fill('#reps', '5');
+    await expect(band()).toHaveText('Strength');
+    await page.click('#rup');
+    await expect(page.locator('#reps')).toHaveValue('6');
+    await expect(band(), 'the stepper left the band behind').toHaveText('Hypertrophy');
+    await page.click('#rdown');
+    await expect(band()).toHaveText('Strength');
+  });
+
+  test('an empty field blanks the line without collapsing the block', async () => {
+    await page.fill('#reps', '10');
+    const before = (await page.locator('#repband').boundingBox()).height;
+    await page.fill('#reps', '');
+    // the field is empty for a moment every time you clear it to retype, and
+    // the block must not jump under your thumb
+    await expect(band()).toHaveText('');
+    await expect(page.locator('#repband')).toBeVisible();
+    expect((await page.locator('#repband').boundingBox()).height).toBe(before);
+    await page.fill('#reps', '0');
+    await expect(band()).toHaveText('');
+  });
+
+  test('the block is the same height whatever it says', async () => {
+    // guards future copy from wrapping to a third line: measured, the wrap
+    // point is 92 characters at 375px and the longest line is 84
+    const heights = await page.evaluate(async () => {
+      const el = document.querySelector('#reps'), box = document.querySelector('#repband');
+      const out = [];
+      for (const v of ['3', '10', '20', '40', '']) {
+        el.value = v;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        out.push(Math.round(box.getBoundingClientRect().height));
+      }
+      return out;
+    });
+    expect(new Set(heights).size, `heights were ${heights.join(', ')}`).toBe(1);
+  });
+
+  test('a warm-up is not training a quality', async () => {
+    await page.fill('#reps', '10');
+    await page.click('#setkind [data-kind="warm"]');
+    // same reasoning as the reps-in-reserve block, which hides here too
+    await expect(page.locator('#repband')).toBeHidden();
+    await page.click('#setkind [data-kind="work"]');
+    await expect(page.locator('#repband')).toBeVisible();
+    await expect(band()).toHaveText('Hypertrophy');
+  });
+
+  test('editing a logged set shows the band that set is in', async () => {
+    await page.fill('#wt', '225');
+    await page.fill('#reps', '12');
+    await page.click('#logset');
+    await page.fill('#reps', '3');
+    await expect(band()).toHaveText('Strength');
+    await page.click('.setrow .tap');
+    await expect(page.locator('#reps')).toHaveValue('12');
+    await expect(band(), 'editing did not refresh the band').toHaveText('Hypertrophy');
+  });
+
+  test('changing the target from the editor moves the band with it', async () => {
+    // The editor save rewrites #reps straight from the new target and never
+    // calls renderSetKind, so it needs its own call. Nothing else covers it.
+    await page.click('#close');
+    await page.click('.ex[data-ex="Leg press"]');
+    await expect(page.locator('#reps')).toHaveValue('10');
+    await expect(band()).toHaveText('Hypertrophy');
+
+    await page.click('#exsettings');
+    await page.fill('#extarget', '4 × 3');
+    await page.click('#exsave');
+    await expect(page.locator('#reps')).toHaveValue('3');
+    await expect(band(), 'the band kept the old target\'s reps').toHaveText('Strength');
+  });
+
+  test('Settings carries the part a one-liner cannot', async () => {
+    await page.click('#close');
+    await page.click('#gear');
+    const set = page.locator('#settings');
+    await expect(set).toContainText(/rep ranges/i);
+    // the two claims worth being unambiguous about
+    await expect(set, 'the cardio correction is the useful part').toContainText(/not cardio/i);
+    await expect(set, 'the hedge on effort').toContainText(/close to failure/i);
+    await page.click('#setdone');
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
   });
 });

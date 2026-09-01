@@ -39,7 +39,7 @@ npx playwright install chromium
 npm test
 ```
 
-163 tests in `tests/`, run on every pull request and again before any deploy.
+173 tests in `tests/`, run on every pull request and again before any deploy.
 They cover the things that actually broke: that a logged set survives a reload
 and a service-worker update, that `Log set` and the RIR selector are never
 underneath the rest timer at phone sizes, that unit switching converts rather
@@ -101,6 +101,26 @@ Turning Pages on also offers to commit a starter workflow of its own,
 `static.yml`. Decline it, or delete it afterwards: it uploads and deploys with
 no test step, so a red build would publish anyway, and two workflows sharing
 the `pages` concurrency group only queue behind each other.
+
+## Rep ranges
+
+Under the reps field the app names what that count usually trains: 1–5 strength,
+6–15 size, 16–30 endurance, past 30 a very long set. The cut points follow load —
+5 reps is about 87% of a one-rep max, 15 about 65%, 30 about 50%.
+
+The copy is deliberately hedged, because the evidence is softer than the usual
+chart. Heavy low reps are the *best* way to raise a one-rep max, not the only
+thing that builds strength. Muscle grows anywhere above roughly 30% of your max —
+a rep count past 50 — provided the set is taken near failure, so "5 to 30" is a
+practical convention rather than a finding. Whether high reps are specifically
+better for endurance is the weakest claim on the chart; the review that
+re-examined the repetition continuum calls it equivocal, hence "probably".
+
+High reps are not cardio. That is a different session, not a rep count.
+
+Every rendered line must stay under 92 characters: that is where it wraps to a
+third row at 375px and the block starts jumping under your thumb. A test asserts
+the height is identical across all four bands and the blank state.
 
 ## When the weight goes up
 
