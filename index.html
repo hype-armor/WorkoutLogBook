@@ -1820,6 +1820,19 @@ function renderSiteList(){
 
 function openSites(){ renderSiteList(); openPanel($('#sitesheet'), $('#sitesheet-title')); }
 
+// Both field labels depend on the exercise kind and on the current units, and
+// both were only ever written when the screen opened. Change either behind an
+// open screen and they went stale: a carry still labelled "Reps" after its kind
+// changed, or a field asking for kilos while it still said lb. One function,
+// called from everywhere that can change what they ought to say.
+function renderFieldLabels(){
+  const ex = state.ex;
+  if(!ex) return;
+  const k = kindOf(ex), u = U();
+  $('#wtlab').textContent = k === 'bodyweight' ? `Added weight (${u.label})` : `Weight (${u.label})`;
+  $('#repslab').textContent = k === 'distance' ? `Distance (${u.dist})` : 'Reps';
+}
+
 function renderRepBand(){
   const box = $('#repband');
   // A ramp-up set is not training a quality, and "reps" on a carry is metres.
@@ -2387,8 +2400,7 @@ function openSheet(ex){
 
   const seed = seedFor(ex);
   const wantReps = targetReps(target);
-  $('#wtlab').textContent = k === 'bodyweight' ? `Added weight (${u.label})` : `Weight (${u.label})`;
-  $('#repslab').textContent = k === 'distance' ? `Distance (${u.dist})` : 'Reps';
+  renderFieldLabels();
   $('#wt').value = fmtW(seed.weight);
   // Remembered so a settings change can refresh an untouched suggestion
   // without overwriting a number you typed.
@@ -2472,6 +2484,26 @@ function e1rm(s){
   return loadOf(s) * (1 + (Math.min(s.r, E1RM_REP_CAP) + Math.min(s.rir, 4))/30);
 }
 
+// Only sets taken near failure say anything about a maximum. Reps in reserve is
+// added to reps in the formula, so a set left further from failure scores
+// higher — which meant the same weight for the same reps read as a smaller max
+// once you reported working harder, and an easy set inflated the number most.
+// 4 is worst of all, because it means "four or more": the least precise input
+// on the scale producing the highest estimate.
+const E1RM_MAX_RIR = 2;
+const countsForMax = s => !isWarmup(s) && s.rir <= E1RM_MAX_RIR;
+
+// The estimate is only ever as fine as the plates can make it. Rounding to the
+// smallest jump the rack allows stops a change of one reported rep in reserve
+// from reading as progress.
+function stepFor(ex){
+  return isLoadable(ex) ? smallestPlate() * 2 : U().otherStep;
+}
+function roundToStep(v, ex){
+  const step = stepFor(ex);
+  return step > 0 ? Math.round(v / step) * step : Math.round(v);
+}
+
 function sparkline(vals){
   if(vals.length < 2) return '';
   const w=280,h=38,min=Math.min(...vals),max=Math.max(...vals),rng=(max-min)||1;
@@ -2496,14 +2528,23 @@ function renderHistory(){
   const byEx = {};
   db.sets.forEach(s=>{
     if(isWarmup(s)) return; // a ramp-up rep is not evidence of a max
-    const val = kindOf(s.e) === 'distance' ? s.r : e1rm(s);
+    // Distance keeps every set: a carry has no proximity to failure to judge.
+    const dist = kindOf(s.e) === 'distance';
+    if(!dist && !countsForMax(s)) return;
+    const val = dist ? s.r : e1rm(s);
     if(!val) return;
     (byEx[s.e] ||= {})[s.d] = Math.max(byEx[s.e][s.d] || 0, val);
   });
   const cards = Object.entries(byEx)
     .map(([ex,days])=>{
       const dates = Object.keys(days).sort();
-      return {ex, dates, vals: dates.map(d=>days[d])};
+      // Rounded here, once, so the number on the card, the percentage beside it
+      // and the line under it are all describing the same series. Rounding only
+      // the display would have the card read 55 to 60 while the badge worked
+      // out the change from 57 to 60.2.
+      const round = kindOf(ex) === 'distance'
+        ? (v => Math.round(v)) : (v => roundToStep(v, ex));
+      return {ex, dates, vals: dates.map(d=>round(days[d]))};
     })
     .sort((a,b)=> b.dates.at(-1).localeCompare(a.dates.at(-1)))
     .map(c=>{
@@ -2519,12 +2560,12 @@ function renderHistory(){
       return `<button class="card trendcard" data-ex="${esc(c.ex)}"
           aria-label="History for ${esc(c.ex)}">
         <h3>${esc(c.ex)}</h3>
-        <div class="metric"><b>${Math.round(now)}</b><small>${esc(what)}</small>
+        <div class="metric"><b>${now}</b><small>${esc(what)}</small>
           <small class="delta ${cls}" style="margin-left:auto">${esc(label)}</small></div>
         ${sparkline(vals)}</button>`;
     });
   $('#trends').innerHTML = cards.length ? cards.join('')
-    : `<div class="empty">Nothing logged yet. Estimated max comes from weight, reps and RIR together, so a set of 8 at 3 RIR still tells you something — you never have to test a true max to see the trend.</div>`;
+    : `<div class="empty">Nothing to estimate from yet. A max is only estimated from sets taken to ${E1RM_MAX_RIR} reps in reserve or harder — further from failure the number moves on how you rated the set rather than on what you lifted. You still never have to test a true max.</div>`;
 
   // One series per site. Charting them together would put a knee and a lower
   // back on the same strip and imply a relationship the data does not carry.
@@ -2649,10 +2690,8 @@ function renderSessions(){
 // Smallest real-world jump: two of the smallest plate you own.
 // Non-barbell work (dumbbells, stacks) moves in bigger increments.
 function weightStep(){
-  const u = U();
-  if(!isLoadable(state.ex)) return u.otherStep;
   // The smallest real-world jump is one plate on each side.
-  return smallestPlate() * 2;
+  return stepFor(state.ex);
 }
 
 function nudgeWeight(dir){
@@ -3081,7 +3120,7 @@ $('#exsave').addEventListener('click', ()=>{
     const reps = targetReps(target);
     if(reps != null && !state.editing) $('#reps').value = reps;
     renderSheetSub(); renderPlateMath(); refreshStepperLabels(); renderSetList();
-    renderRepBand();
+    renderRepBand(); renderFieldLabels();
   }
   toast(rounded ? `Rounded to ${targetSets(target)} sets — one side each` : (old ? 'Saved' : 'Added'));
 });
@@ -3358,10 +3397,12 @@ function openExHistory(ex){
 
   $('#exhist-title').textContent = ex;
   const sessions = dates.length;
-  const best = Math.max(0, ...mine.filter(s => !isWarmup(s)).map(s => k === 'distance' ? s.r : e1rm(s)));
-  $('#exhist-sub').textContent = sessions
-    ? `${sessions} session${sessions===1?'':'s'} · best ${Math.round(best)} ${k==='distance'?u.dist:u.label}`
-    : 'Nothing logged yet';
+  const forMax = mine.filter(s => k === 'distance' ? !isWarmup(s) : countsForMax(s));
+  const best = Math.max(0, ...forMax.map(s => k === 'distance' ? s.r : e1rm(s)));
+  $('#exhist-sub').textContent = !sessions ? 'Nothing logged yet'
+    : `${sessions} session${sessions===1?'':'s'}` + (best
+      ? ` · best ${k==='distance' ? Math.round(best) : roundToStep(best, ex)} ${k==='distance'?u.dist:u.label}`
+      : ` · nothing at ${E1RM_MAX_RIR} RIR or harder yet`);
 
   $('#exhist-body').innerHTML = dates.length ? dates.map(d=>{
     const list = byDate[d];
@@ -3371,9 +3412,10 @@ function openExHistory(ex){
         : `${fmtW(toDisplay(s))}×${s.r}`;
       return isWarmup(s) ? `<em>${esc(load)}</em>` : esc(load);
     }).join('  ');
-    const work = workingSets(list);
+    const work = list.filter(s => k === 'distance' ? !isWarmup(s) : countsForMax(s));
     const top = work.length
-      ? Math.round(Math.max(...work.map(s => k === 'distance' ? s.r : e1rm(s)))) : null;
+      ? (k === 'distance' ? Math.round(Math.max(...work.map(s => s.r)))
+                          : roundToStep(Math.max(...work.map(e1rm)), ex)) : null;
     return `<div class="exhistday">
       <b>${esc(prettyDate(d))}</b>
       <span>${detail}</span>
@@ -3412,6 +3454,8 @@ $('#sessions').addEventListener('click', e=>{
 
 function rerenderAll(){
   renderDate(); renderBanners(); renderDays(); renderExercises(); renderPain(); renderPlates();
+  // Units are changed from Settings, which can be open over the log screen.
+  renderFieldLabels();
   if(state.tab === 'history') renderHistory();
 }
 

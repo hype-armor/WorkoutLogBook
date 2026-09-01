@@ -39,7 +39,7 @@ npx playwright install chromium
 npm test
 ```
 
-173 tests in `tests/`, run on every pull request and again before any deploy.
+183 tests in `tests/`, run on every pull request and again before any deploy.
 They cover the things that actually broke: that a logged set survives a reload
 and a service-worker update, that `Log set` and the RIR selector are never
 underneath the rest timer at phone sizes, that unit switching converts rather
@@ -101,6 +101,23 @@ Turning Pages on also offers to commit a starter workflow of its own,
 `static.yml`. Decline it, or delete it afterwards: it uploads and deploys with
 no test step, so a red build would publish anyway, and two workflows sharing
 the `pages` concurrency group only queue behind each other.
+
+## Estimated max
+
+Built only from sets taken to 2 reps in reserve or harder, and shown rounded to
+the smallest jump your plates allow.
+
+Both rules exist for the same reason. Reps in reserve is added to reps in the
+Epley formula, so a set left further from failure scores *higher* — the same
+weight for the same reps read as a smaller max once you reported working
+harder, and `4+`, the least precise point on the scale, produced the highest
+number of all. Past 2 RIR the estimate was moving on how you rated the set
+rather than on what you lifted.
+
+Rounding follows the rack because that is the real resolution: with 2.5s the
+step is 5, with 1.25s it is 2.5. The rounding happens once, where the series is
+built, so the number on the card, the percentage beside it and the line under it
+all describe the same values.
 
 ## Rep ranges
 

@@ -1570,3 +1570,61 @@ test.describe('what the rep count is training', () => {
     expect(errs).toEqual([]);
   });
 });
+
+test.describe('the field labels keep up with the screen behind them', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('.ex[data-ex="Deadlift"]');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('changing the kind to distance relabels the field (#50)', async () => {
+    await expect(page.locator('#repslab')).toHaveText('Reps');
+
+    await page.click('#exsettings');
+    await page.selectOption('#exkind', 'distance');
+    await page.click('#exsave');
+
+    // the field is asking for metres; it used to keep saying Reps until the
+    // screen was closed and reopened
+    await expect(page.locator('#repslab')).toContainText(/distance/i);
+    await expect(page.locator('#platemath')).toBeHidden();
+    await expect(page.locator('#repband')).toBeHidden();
+  });
+
+  test('changing units relabels the weight field', async () => {
+    await page.click('#exsettings');
+    await page.selectOption('#exkind', 'weight');
+    await page.click('#exsave');
+    await expect(page.locator('#wtlab')).toContainText('lb');
+
+    // Settings opens over the log screen, so the screen behind it has to catch
+    // up. This one mislabels the units of the number you are about to type.
+    await page.evaluate(() => { db.settings.units = 'kg'; save(); rerenderAll(); });
+    await expect(page.locator('#wtlab')).toContainText('kg');
+    await expect(page.locator('#repslab')).toHaveText('Reps');
+  });
+
+  test('a bodyweight exercise says what the number means', async () => {
+    await page.evaluate(() => { db.settings.units = 'lb'; save(); rerenderAll(); });
+    await page.click('#exsettings');
+    await page.selectOption('#exkind', 'bodyweight');
+    await page.click('#exsave');
+    // the field is added weight, not the load
+    await expect(page.locator('#wtlab')).toContainText(/added weight/i);
+    await expect(page.locator('#repslab')).toHaveText('Reps');
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});

@@ -1198,3 +1198,103 @@ test('the suggested weight is one the rack can make (#39)', async ({ browser }) 
   await expect(page.locator('#pmwarn')).toBeHidden();
   await ctx.close();
 });
+
+/* ---------- what the estimated max is allowed to be built from ---------- */
+
+test.describe('estimated max', () => {
+  const mk = (d, w, r, rir, i) => ({ id: `${d}-${i}`, t: Date.parse(d) + i * 1000, d,
+    e: 'Overhead press', dy: 'B', w, r, rir, rest: 180, u: 'lb' });
+
+  const open = async (browser, sets, plates) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seed(page, blankDb({ sets, settings: { units: 'lb', transition: 30,
+      bw: { lb: 0, kg: 0 }, lastDay: 'A', alert: 'both', painSites: ['lower-back'],
+      ...(plates ? { plates: { lb: plates, kg: [25, 20, 15, 10, 5, 2.5, 1.25] } } : {}) } }));
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('#tab-history');
+    return { page, ctx };
+  };
+
+  test('sets left further from failure do not count', async ({ browser }) => {
+    // Reps in reserve is added to reps in the formula, so an easier set scores
+    // higher: 45x6 at 4 RIR estimated 60 while the same weight and reps at
+    // 3 RIR estimated 58.5. Training harder read as going backwards.
+    const { page, ctx } = await open(browser, [
+      mk('2026-08-20', 45, 6, 4, 1), mk('2026-09-01', 45, 6, 3, 2)]);
+    await expect(page.locator('#trends')).toContainText(/only estimated from sets taken to 2 reps in reserve/i);
+    await expect(page.locator('#trends [data-ex]')).toHaveCount(0);
+    await ctx.close();
+  });
+
+  test('sets taken near failure do', async ({ browser }) => {
+    const { page, ctx } = await open(browser, [
+      mk('2026-08-20', 45, 6, 2, 1), mk('2026-09-01', 45, 6, 2, 2)]);
+    await expect(page.locator('#trends [data-ex]')).toHaveCount(1);
+    await expect(page.locator('#trends')).toContainText('est. max');
+    await ctx.close();
+  });
+
+  test('the estimate is only as fine as the rack', async ({ browser }) => {
+    // 45x6 @2 is 57 exactly; 47.5x7 @1 is 60.2
+    const sets = [mk('2026-08-20', 45, 6, 2, 1), mk('2026-09-01', 47.5, 7, 1, 2)];
+
+    // default rack, smallest plate 2.5, so the smallest jump is 5
+    const a = await open(browser, sets);
+    await a.page.click('#trends [data-ex]');
+    await expect(a.page.locator('#exhist-body')).toContainText('55');
+    await expect(a.page.locator('#exhist-body')).toContainText('60');
+    await a.ctx.close();
+
+    // owning 1.25s halves the jump, so the same lifting resolves finer
+    const b = await open(browser, sets, [45, 35, 25, 10, 5, 2.5, 1.25]);
+    await b.page.click('#trends [data-ex]');
+    await expect(b.page.locator('#exhist-body')).toContainText('57.5');
+    await b.ctx.close();
+  });
+
+  test('the percentage describes the numbers on the card', async ({ browser }) => {
+    // rounding only the display would show 55 to 60 while working the change
+    // out from 57 to 60.2, which is the sort of disagreement that started this
+    const { page, ctx } = await open(browser, [
+      mk('2026-08-20', 45, 6, 2, 1), mk('2026-09-01', 47.5, 7, 1, 2)]);
+    const card = (await page.textContent('#trends')).replace(/\s+/g, ' ');
+    expect(card).toContain('60');
+    // 55 -> 60 is 9.1%, not the 5.6% the unrounded values give
+    expect(card, `card read: ${card}`).toContain('9.1%');
+    await ctx.close();
+  });
+
+  test('an exercise with nothing hard enough says so', async ({ browser }) => {
+    const { page, ctx } = await open(browser, [
+      mk('2026-08-20', 45, 6, 4, 1), mk('2026-09-01', 45, 6, 3, 2)]);
+    // reachable from the Train tab even with no trend card
+    await page.click('#tab-train');
+    await page.evaluate(() => { state.day = 'B'; renderDays(); renderExercises(); });
+    await page.click('.ex[data-ex="Overhead press"]');
+    await page.click('#exsettings');
+    await page.click('#exclose');
+    await page.click('#close');
+    await page.evaluate(() => openExHistory('Overhead press'));
+    await expect(page.locator('#exhist-sub')).toContainText(/nothing at 2 RIR or harder/i);
+    // the sessions are still listed, just without a number against them
+    await expect(page.locator('#exhist-body')).toContainText('45×6');
+    await ctx.close();
+  });
+
+  test('a carry is judged on distance, whatever its RIR', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seed(page, blankDb({ sets: [
+      { id: 'c1', t: Date.parse('2026-08-20'), d: '2026-08-20', e: 'Suitcase carry',
+        dy: 'A', w: 70, r: 40, rir: 4, rest: 180, u: 'lb' }] }));
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('#tab-history');
+    // there is no proximity to failure to judge on a carry
+    await expect(page.locator('#trends')).toContainText('Suitcase carry');
+    await expect(page.locator('#trends')).toContainText(/best distance/i);
+    await ctx.close();
+  });
+});
