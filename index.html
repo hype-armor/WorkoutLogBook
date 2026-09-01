@@ -1820,6 +1820,19 @@ function renderSiteList(){
 
 function openSites(){ renderSiteList(); openPanel($('#sitesheet'), $('#sitesheet-title')); }
 
+// Both field labels depend on the exercise kind and on the current units, and
+// both were only ever written when the screen opened. Change either behind an
+// open screen and they went stale: a carry still labelled "Reps" after its kind
+// changed, or a field asking for kilos while it still said lb. One function,
+// called from everywhere that can change what they ought to say.
+function renderFieldLabels(){
+  const ex = state.ex;
+  if(!ex) return;
+  const k = kindOf(ex), u = U();
+  $('#wtlab').textContent = k === 'bodyweight' ? `Added weight (${u.label})` : `Weight (${u.label})`;
+  $('#repslab').textContent = k === 'distance' ? `Distance (${u.dist})` : 'Reps';
+}
+
 function renderRepBand(){
   const box = $('#repband');
   // A ramp-up set is not training a quality, and "reps" on a carry is metres.
@@ -2387,8 +2400,7 @@ function openSheet(ex){
 
   const seed = seedFor(ex);
   const wantReps = targetReps(target);
-  $('#wtlab').textContent = k === 'bodyweight' ? `Added weight (${u.label})` : `Weight (${u.label})`;
-  $('#repslab').textContent = k === 'distance' ? `Distance (${u.dist})` : 'Reps';
+  renderFieldLabels();
   $('#wt').value = fmtW(seed.weight);
   // Remembered so a settings change can refresh an untouched suggestion
   // without overwriting a number you typed.
@@ -3081,7 +3093,7 @@ $('#exsave').addEventListener('click', ()=>{
     const reps = targetReps(target);
     if(reps != null && !state.editing) $('#reps').value = reps;
     renderSheetSub(); renderPlateMath(); refreshStepperLabels(); renderSetList();
-    renderRepBand();
+    renderRepBand(); renderFieldLabels();
   }
   toast(rounded ? `Rounded to ${targetSets(target)} sets — one side each` : (old ? 'Saved' : 'Added'));
 });
@@ -3412,6 +3424,8 @@ $('#sessions').addEventListener('click', e=>{
 
 function rerenderAll(){
   renderDate(); renderBanners(); renderDays(); renderExercises(); renderPain(); renderPlates();
+  // Units are changed from Settings, which can be open over the log screen.
+  renderFieldLabels();
   if(state.tab === 'history') renderHistory();
 }
 
