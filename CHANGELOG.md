@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.13.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.12.0...logbook-v1.13.0) (2026-09-01)
+
+
+### Features
+
+* name what the rep count is training ([7ef96bf](https://github.com/hype-armor/WorkoutLogBook/commit/7ef96bf3e001cc390e04322072d38b5aaa59db1a))
+* name what the rep count is training ([2e19b0c](https://github.com/hype-armor/WorkoutLogBook/commit/2e19b0c0f7ca17700f2dd7f99230470ec22bda47))
+
 ## [1.12.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.11.2...logbook-v1.12.0) (2026-08-30)
 
 
