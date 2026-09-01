@@ -46,7 +46,17 @@ for (const size of SIZES) {
     });
 
     test('the rest timer covers none of the controls', async () => {
+      // rects() returns null for anything clipped out of a scrolling ancestor
+      // and overlaps() reads null as "no collision", so an element that has
+      // scrolled away passes this vacuously. #plates had done exactly that at
+      // both sizes ever since the preceding test started logging five sets:
+      // the assertion below was measuring nothing at all.
+      // scrolled directly rather than through scrollIntoViewIfNeeded, whose
+      // actionability wait never settles on an element this far below the fold
+      await page.evaluate(() =>
+        document.querySelector('#plates').scrollIntoView({ block: 'center' }));
       const r = await rects(page);
+      expect(r.plates, 'RIR selector was not on screen to be measured').not.toBeNull();
       expect(overlaps(r.rest, r.logset), 'rest timer over Log set').toBe(false);
       expect(overlaps(r.rest, r.plates), 'rest timer over RIR selector').toBe(false);
       expect(overlaps(r.rest, r.toast), 'rest timer over toast').toBe(false);
