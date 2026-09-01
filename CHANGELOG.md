@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.13.1](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.13.0...logbook-v1.13.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* build estimated max only from sets that can support it ([635dd9f](https://github.com/hype-armor/WorkoutLogBook/commit/635dd9f3ffb99ead10a6a652ddacdab4a213aa6b))
+* build estimated max only from sets that can support it ([497de4f](https://github.com/hype-armor/WorkoutLogBook/commit/497de4f3fb3789507b4a025824e33e4ad45bb0b9))
+* keep the field labels in step with the screen behind them ([5f2a741](https://github.com/hype-armor/WorkoutLogBook/commit/5f2a741d6764f14e6badc01264b93233ec646462))
+
 ## [1.13.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.12.0...logbook-v1.13.0) (2026-09-01)
 
 
