@@ -1708,3 +1708,69 @@ test.describe('finishing an exercise', () => {
     expect(errs).toEqual([]);
   });
 });
+
+test.describe('the exercise guide', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await chooseDay(page, 'A');
+    await page.click('.ex[data-ex="Deadlift"]');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('opens from the exercise screen with both photos', async () => {
+    await expect(page.locator('#exinfobtn')).toBeVisible();
+    await page.click('#exinfobtn');
+    await expect(page.locator('#exinfo')).toHaveClass(/open/);
+    await expect(page.locator('#exinfo-title')).toHaveText('Deadlift');
+
+    // a broken path would render as an empty box, not an error, so check the
+    // bytes actually arrived
+    await expect(page.locator('#exinfo img')).toHaveCount(2);
+    await expect.poll(async () => page.$$eval('#exinfo img',
+      els => els.every(i => i.complete && i.naturalWidth > 0))).toBe(true);
+    await expect(page.locator('.guidepics figcaption').first()).toHaveText('Start');
+    await expect(page.locator('.guidepics figcaption').last()).toHaveText('Finish');
+  });
+
+  test('names what it works and how', async () => {
+    await expect(page.locator('.guidemuscles .primary').first()).toHaveText('lower back');
+    expect(await page.locator('.guidesteps li').count()).toBeGreaterThan(2);
+    await expect(page.locator('.guidesrc')).toContainText(/public domain/i);
+    await page.click('#exinfodone');
+    await expect(page.locator('#exinfo')).not.toHaveClass(/open/);
+  });
+
+  test('says when the photos are the nearest match rather than the same lift', async () => {
+    await page.click('#close');
+    await page.click('#logother');
+    await page.fill('#pickfilter', 'Suitcase');
+    await page.click('#picklist [data-pick="Suitcase carry"]');
+    await page.click('#exinfobtn');
+    // a suitcase carry is one-handed; the source has no such photo, so the
+    // two-handed farmer's walk stands in and the sheet says so
+    await expect(page.locator('.guidesrc')).toContainText(/Farmer's Walk/);
+    await expect(page.locator('.guidesrc')).toContainText(/nearest match/i);
+    await page.click('#exinfodone');
+  });
+
+  test('is not offered for an exercise it knows nothing about', async () => {
+    await page.evaluate(() => openSheet('My made-up lift'));
+    // a button that opens an empty sheet is worse than no button
+    await expect(page.locator('#exinfobtn')).toBeHidden();
+    await page.evaluate(() => openSheet('Deadlift'));
+    await expect(page.locator('#exinfobtn')).toBeVisible();
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
