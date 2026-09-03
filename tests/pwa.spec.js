@@ -74,11 +74,19 @@ test.describe('installable and offline', () => {
 
     const cached = await page.evaluate(async () => {
       const keys = await caches.keys();
-      const c = await caches.open(keys[0]);
-      return { keys, urls: (await c.keys()).map(r => new URL(r.url).pathname) };
+      // by name, not keys[0]: with two caches the order is not guaranteed
+      const app = await caches.open(keys.find(k => /^logbook-\d/.test(k)));
+      const media = await caches.open('logbook-media-v1');
+      return { keys, urls: (await app.keys()).map(r => new URL(r.url).pathname),
+               photos: (await media.keys()).map(r => new URL(r.url).pathname) };
     });
-    expect(cached.keys).toHaveLength(1);
-    expect(cached.keys[0]).toMatch(/^logbook-/);
+    // two caches by design: the app shell, and the exercise photos in their own
+    // so an app release does not re-download them
+    expect(cached.keys.filter(k => /^logbook-\d/.test(k))).toHaveLength(1);
+    expect(cached.keys).toContain('logbook-media-v1');
+    // every photo the guide can show is on disk before the gym has no signal
+    expect(cached.photos).toHaveLength(44);
+    expect(cached.photos.every(u => u.endsWith('.webp'))).toBe(true);
     expect(cached.urls).toEqual(expect.arrayContaining(
       ['/index.html', '/manifest.webmanifest', '/icon-512.png']));
   });
@@ -162,7 +170,12 @@ test.describe('installable and offline', () => {
       }, { timeout: 20000 }).toContain('logbook-99.0.0');
 
       const keys = await page.evaluate(() => caches.keys());
-      expect(keys).toHaveLength(1); // the previous cache is purged
+      // The previous app cache is purged, but the photo cache is not: it is
+      // versioned on its own, so a release does not re-download 830KB of
+      // exercise photos that did not change.
+      expect(keys).toEqual(expect.arrayContaining(['logbook-99.0.0', 'logbook-media-v1']));
+      expect(keys.filter(k => k.startsWith('logbook-') && !k.startsWith('logbook-media')))
+        .toEqual(['logbook-99.0.0']);
 
       await page.waitForSelector('.ex');
       await expect(page.locator('#rest')).toHaveClass(/show/);

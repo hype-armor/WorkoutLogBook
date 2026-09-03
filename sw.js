@@ -15,6 +15,60 @@
 const VERSION = '1.13.1'; // x-release-please-version
 const CACHE = `logbook-${VERSION}`;
 
+// The exercise photos are 44 files and ~830KB, and they do not change when the
+// app does. Keeping them in the app cache would re-download all of it on every
+// release, because activate purges the previous version's cache. They live in
+// their own cache instead, versioned by hand, and survive app updates.
+const MEDIA_VERSION = 1;
+const MEDIA_CACHE = `logbook-media-v${MEDIA_VERSION}`;
+// Mirrors EXERCISE_INFO in index.html: <img>-0 is the start, <img>-1 the finish.
+const MEDIA = [
+  './img/barbell-curl-0.webp',
+  './img/barbell-curl-1.webp',
+  './img/barbell-deadlift-0.webp',
+  './img/barbell-deadlift-1.webp',
+  './img/dead-bug-0.webp',
+  './img/dead-bug-1.webp',
+  './img/dumbbell-incline-row-0.webp',
+  './img/dumbbell-incline-row-1.webp',
+  './img/face-pull-0.webp',
+  './img/face-pull-1.webp',
+  './img/farmers-walk-0.webp',
+  './img/farmers-walk-1.webp',
+  './img/front-squat-clean-grip-0.webp',
+  './img/front-squat-clean-grip-1.webp',
+  './img/incline-dumbbell-press-0.webp',
+  './img/incline-dumbbell-press-1.webp',
+  './img/leg-press-0.webp',
+  './img/leg-press-1.webp',
+  './img/lying-leg-curls-0.webp',
+  './img/lying-leg-curls-1.webp',
+  './img/parallel-bar-dip-0.webp',
+  './img/parallel-bar-dip-1.webp',
+  './img/pullups-0.webp',
+  './img/pullups-1.webp',
+  './img/romanian-deadlift-0.webp',
+  './img/romanian-deadlift-1.webp',
+  './img/seated-cable-rows-0.webp',
+  './img/seated-cable-rows-1.webp',
+  './img/seated-dumbbell-press-0.webp',
+  './img/seated-dumbbell-press-1.webp',
+  './img/side-lateral-raise-0.webp',
+  './img/side-lateral-raise-1.webp',
+  './img/split-squat-with-dumbbells-0.webp',
+  './img/split-squat-with-dumbbells-1.webp',
+  './img/standing-calf-raises-0.webp',
+  './img/standing-calf-raises-1.webp',
+  './img/standing-military-press-0.webp',
+  './img/standing-military-press-1.webp',
+  './img/trap-bar-deadlift-0.webp',
+  './img/trap-bar-deadlift-1.webp',
+  './img/triceps-pushdown-0.webp',
+  './img/triceps-pushdown-1.webp',
+  './img/wide-grip-lat-pulldown-0.webp',
+  './img/wide-grip-lat-pulldown-1.webp'
+];
+
 // Relative so the app works from a subdirectory (e.g. GitHub Pages projects).
 const SHELL = [
   './',
@@ -34,6 +88,13 @@ self.addEventListener('install', event => {
     // app with no offline copy at all.
     await Promise.all(SHELL.map(url =>
       cache.add(new Request(url, {cache: 'reload'})).catch(() => {})));
+    // Photos only if this media version is not already on disk: a plain
+    // cache.add here would refetch 830KB on every app update.
+    const media = await caches.open(MEDIA_CACHE);
+    await Promise.all(MEDIA.map(async url => {
+      if(await media.match(url)) return;
+      await media.add(url).catch(() => {});
+    }));
   })());
 });
 
@@ -41,7 +102,7 @@ self.addEventListener('activate', event => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
     await Promise.all(keys
-      .filter(k => k.startsWith('logbook-') && k !== CACHE)
+      .filter(k => k.startsWith('logbook-') && k !== CACHE && k !== MEDIA_CACHE)
       .map(k => caches.delete(k)));
     await self.clients.claim();
   })());
@@ -56,10 +117,14 @@ self.addEventListener('fetch', event => {
 
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
-    const cached = await cache.match(req, {ignoreSearch: true});
+    // Across every cache, so a photo in the media cache is found too.
+    const cached = await caches.match(req, {ignoreSearch: true});
 
-    const fromNetwork = fetch(req).then(res => {
-      if(res && res.ok && res.type === 'basic') cache.put(req, res.clone());
+    const fromNetwork = fetch(req).then(async res => {
+      if(res && res.ok && res.type === 'basic'){
+        const dest = url.pathname.endsWith('.webp') ? await caches.open(MEDIA_CACHE) : cache;
+        dest.put(req, res.clone());
+      }
       return res;
     }).catch(() => null);
 

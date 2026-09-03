@@ -72,7 +72,8 @@ const rects = page => page.evaluate(() => {
     }
     return { top: b.top, bottom: b.bottom, left: b.left, right: b.right, height: b.height, width: b.width };
   };
-  return { logset: r('#logset'), rest: r('#rest'), toast: r('#toast'), plates: r('#plates'), vh: innerHeight };
+  return { logset: r('#logset'), rest: r('#rest'), toast: r('#toast'), plates: r('#plates'),
+           nextup: r('#nextup'), vh: innerHeight };
 });
 
 /**

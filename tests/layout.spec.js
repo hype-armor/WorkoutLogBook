@@ -597,3 +597,39 @@ test('the estimate does not restyle the exercise rows it sits above', async ({ b
   expect(rowH, 'the row is taller than what it holds').toBe(Math.max(...kids));
   await ctx.close();
 });
+
+test('the move-on panel docks like the timer it replaces', async ({ browser }) => {
+  const ctx = await browser.newContext({ ...PHONE });
+  const page = await ctx.newPage();
+  await page.goto(FILE_URL);
+  await page.waitForSelector('.ex');
+  await page.evaluate(() => { state.day = 'A'; renderDays(); renderExercises(); });
+  await page.click('.ex[data-ex="Leg press"]');       // 3 × 10
+  await page.fill('#wt', '100');
+  await page.fill('#reps', '10');
+  for (let i = 0; i < 3; i++) { await page.click('#logset'); await page.waitForTimeout(120); }
+  await expect(page.locator('#nextup')).toHaveClass(/show/);
+
+  // The timer becomes position:static inside the footer when docked. Without
+  // that rule the panel stayed fixed and floated over the body, covering the
+  // RIR selector — which only showed up as an unrelated test timing out.
+  const laidOut = await page.evaluate(() => {
+    const el = document.querySelector('#nextup');
+    return { pos: getComputedStyle(el).position,
+             inFoot: !!el.closest('.exfoot') };
+  });
+  expect(laidOut.inFoot, 'panel is not docked in the footer').toBe(true);
+  expect(laidOut.pos, 'docked panel is still floating').toBe('static');
+
+  // and it covers none of the controls, same as the rest timer. rects() clips
+  // to scrolling ancestors: a raw box for something scrolled out of .exbody
+  // still lands under the footer and reads as a collision that is not there.
+  await page.evaluate(() =>
+    document.querySelector('#plates').scrollIntoView({ block: 'center' }));
+  const r = await rects(page);
+  expect(r.plates, 'RIR selector was not on screen to be measured').not.toBeNull();
+  expect(r.nextup, 'panel was not on screen to be measured').not.toBeNull();
+  expect(overlaps(r.nextup, r.plates), 'panel over the RIR selector').toBe(false);
+  expect(overlaps(r.nextup, r.logset), 'panel over Log set').toBe(false);
+  await ctx.close();
+});

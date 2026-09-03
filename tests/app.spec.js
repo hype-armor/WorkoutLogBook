@@ -1628,3 +1628,149 @@ test.describe('the field labels keep up with the screen behind them', () => {
     expect(errs).toEqual([]);
   });
 });
+
+test.describe('finishing an exercise', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await chooseDay(page, 'A');
+    await page.click('.ex[data-ex="Leg press"]');   // 3 × 10
+    await page.fill('#wt', '100');
+    await page.fill('#reps', '10');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('the timer runs between sets', async () => {
+    await page.click('#logset');
+    await expect(page.locator('#rest')).toHaveClass(/show/);
+    await expect(page.locator('#nextup')).not.toHaveClass(/show/);
+    await page.click('#logset');
+    await expect(page.locator('#rest')).toHaveClass(/show/);
+  });
+
+  test('the last set says what is next instead of counting down', async () => {
+    await page.click('#logset');
+    // a rest timer after the set that finishes an exercise is timing a rest
+    // before nothing
+    await expect(page.locator('#rest')).not.toHaveClass(/show/);
+    await expect(page.locator('#nextup')).toHaveClass(/show/);
+    await expect(page.locator('#nextupex')).toContainText('Leg press done');
+    await expect(page.locator('#nextupex')).toContainText('3 of 3');
+    // the next one down the list, not back to the top of it
+    await expect(page.locator('#nextupname')).toHaveText('Romanian deadlift');
+    // and it rides inside the screen, like the timer it replaced
+    expect(await page.evaluate(() => document.querySelector('#view-exercise')
+      .contains(document.querySelector('#nextup')))).toBe(true);
+  });
+
+  test('the button takes you there', async () => {
+    await page.click('#nextupgo');
+    await expect(page.locator('#sheet-title')).toHaveText('Romanian deadlift');
+    await expect(page.locator('#nextup')).not.toHaveClass(/show/);
+  });
+
+  test('nothing left offers the way out instead', async () => {
+    const today = await page.evaluate(() =>
+      new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10));
+    // fill in everything except the row we are about to finish
+    await page.evaluate(t => {
+      let i = 0;
+      for (const [e, n] of [['Deadlift', 4], ['Romanian deadlift', 3],
+                            ['Leg curl', 3], ['Suitcase carry', 4]]) {
+        for (let k = 0; k < n; k++) {
+          db.sets.push({ id: 'f' + (i++), t: Date.now() + i, d: t, e, dy: 'A',
+                         w: 100, r: 10, rir: 2, rest: 180, u: 'lb' });
+        }
+      }
+      save(); renderExercises();
+    }, today);
+    await page.click('#close');
+    await page.click('.ex[data-ex="Leg press"]');
+    await page.fill('#wt', '100');
+    await page.fill('#reps', '10');
+    await page.click('#logset');
+
+    await expect(page.locator('#nextupname')).toHaveText(/nothing left/i);
+    await expect(page.locator('#nextupgo')).toHaveText('Close');
+    await page.click('#nextupgo');
+    await expect(page.locator('#view-exercise')).toBeHidden();
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
+
+test.describe('the exercise guide', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await chooseDay(page, 'A');
+    await page.click('.ex[data-ex="Deadlift"]');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('opens from the exercise screen with both photos', async () => {
+    await expect(page.locator('#exinfobtn')).toBeVisible();
+    await page.click('#exinfobtn');
+    await expect(page.locator('#exinfo')).toHaveClass(/open/);
+    await expect(page.locator('#exinfo-title')).toHaveText('Deadlift');
+
+    // a broken path would render as an empty box, not an error, so check the
+    // bytes actually arrived
+    await expect(page.locator('#exinfo img')).toHaveCount(2);
+    await expect.poll(async () => page.$$eval('#exinfo img',
+      els => els.every(i => i.complete && i.naturalWidth > 0))).toBe(true);
+    await expect(page.locator('.guidepics figcaption').first()).toHaveText('Start');
+    await expect(page.locator('.guidepics figcaption').last()).toHaveText('Finish');
+  });
+
+  test('names what it works and how', async () => {
+    await expect(page.locator('.guidemuscles .primary').first()).toHaveText('lower back');
+    expect(await page.locator('.guidesteps li').count()).toBeGreaterThan(2);
+    await expect(page.locator('.guidesrc')).toContainText(/public domain/i);
+    await page.click('#exinfodone');
+    await expect(page.locator('#exinfo')).not.toHaveClass(/open/);
+  });
+
+  test('says when the photos are the nearest match rather than the same lift', async () => {
+    await page.click('#close');
+    await page.click('#logother');
+    await page.fill('#pickfilter', 'Suitcase');
+    await page.click('#picklist [data-pick="Suitcase carry"]');
+    await page.click('#exinfobtn');
+    // a suitcase carry is one-handed; the source has no such photo, so the
+    // two-handed farmer's walk stands in and the sheet says so
+    await expect(page.locator('.guidesrc')).toContainText(/Farmer's Walk/);
+    await expect(page.locator('.guidesrc')).toContainText(/nearest match/i);
+    await page.click('#exinfodone');
+  });
+
+  test('is not offered for an exercise it knows nothing about', async () => {
+    await page.evaluate(() => openSheet('My made-up lift'));
+    // a button that opens an empty sheet is worse than no button
+    await expect(page.locator('#exinfobtn')).toBeHidden();
+    await page.evaluate(() => openSheet('Deadlift'));
+    await expect(page.locator('#exinfobtn')).toBeVisible();
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
