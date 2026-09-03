@@ -540,10 +540,16 @@
   .guidepics img{display:block;width:100%;height:auto;aspect-ratio:3/2;object-fit:cover}
   .guidepics figcaption{color:var(--ink-3);font-size:11px;font-weight:620;letter-spacing:.06em;
     text-transform:uppercase;padding:6px 9px 7px}
-  .guidemuscles{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 14px}
-  .guidemuscles span{font-size:12.5px;padding:5px 10px;border-radius:999px;border:1px solid var(--line-2);
+  .guidemuscles{margin:4px 0 14px}
+  /* Label in its own column, so chips that wrap line up under the first chip
+     rather than under the word. */
+  .guidegroup{display:grid;grid-template-columns:56px 1fr;align-items:start;gap:6px;margin-bottom:8px}
+  .guidegroup .lbl{color:var(--ink-3);font-size:11.5px;font-weight:620;letter-spacing:.05em;
+    text-transform:uppercase;padding-top:7px}
+  .guidegroup .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .guidegroup .chips span{font-size:12.5px;padding:5px 10px;border-radius:999px;border:1px solid var(--line-2);
     color:var(--ink-2);background:var(--surface-2);text-transform:capitalize}
-  .guidemuscles span.primary{border-color:var(--accent);color:var(--accent-ink);background:var(--accent-soft)}
+  .guidegroup .chips span.primary{border-color:var(--accent);color:var(--accent-ink);background:var(--accent-soft)}
   .guidesteps{margin:0;padding:0 0 0 20px;color:var(--ink-2);font-size:14.5px;line-height:1.5;letter-spacing:-.005em}
   .guidesteps li{margin:0 0 8px}
   .guidesteps li::marker{color:var(--ink-3);font-weight:640}
@@ -3546,8 +3552,14 @@ function openExInfo(ex){
   const g = guideFor(ex); if(!g) return;
   $('#exinfo-title').textContent = ex;
   $('#exinfo-sub').textContent = [g.gear, g.level].filter(Boolean).join(' · ');
-  const chips = [...g.primary.map(m => `<span class="primary">${esc(m)}</span>`),
-                 ...g.secondary.map(m => `<span>${esc(m)}</span>`)].join('');
+  // Two named groups, not one row with a highlight. The highlight alone read
+  // as "this one is worked, the rest maybe not" — colour was the only thing
+  // carrying the distinction, and it did not say what it meant.
+  const group = (label, list, cls) => list.length ? `<div class="guidegroup">
+      <span class="lbl">${label}</span><div class="chips">${
+        list.map(m => `<span class="${cls}">${esc(m)}</span>`).join('')}</div>
+    </div>` : '';
+  const chips = group('Mainly', g.primary, 'primary') + group('Also', g.secondary, '');
   $('#exinfo-body').innerHTML = `
     <div class="guidepics">
       <figure><img src="img/${g.img}-0.webp" alt="${esc(ex)}, starting position" loading="eager"><figcaption>Start</figcaption></figure>
