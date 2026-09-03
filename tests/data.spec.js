@@ -1283,6 +1283,43 @@ test.describe('estimated max', () => {
     await ctx.close();
   });
 
+  test('a card says how much of the history it drew on', async ({ browser }) => {
+    // Two sessions listed with only one feeding the number used to read
+    // "first session", which contradicted the rows underneath it.
+    const { page, ctx } = await open(browser, [
+      mk('2026-08-22', 45, 8, 2, 1), mk('2026-09-03', 55, 8, 3, 2)]);
+    await expect(page.locator('#trends')).toContainText('1 of 2 sessions counted');
+    await expect(page.locator('#trends')).not.toContainText('first session');
+    await ctx.close();
+  });
+
+  test('a genuine first session still says so', async ({ browser }) => {
+    const { page, ctx } = await open(browser, [mk('2026-08-22', 45, 8, 2, 1)]);
+    await expect(page.locator('#trends')).toContainText('first session');
+    await ctx.close();
+  });
+
+  test('a bodyweight max is what you could add, not you plus it', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    // unweighted dips at 155 lb bodyweight: the whole load estimated near 195,
+    // which read as a barbell number with nothing on the belt
+    await seed(page, blankDb({
+      sets: [{ id: 'd1', t: Date.parse('2026-08-26'), d: '2026-08-26', e: 'Weighted dip',
+               dy: 'B', w: 0, r: 7, rir: 1, rest: 180, u: 'lb' }],
+      settings: { units: 'lb', transition: 30, bw: { lb: 155, kg: 70.3 }, lastDay: 'A',
+                  alert: 'both', painSites: ['lower-back'] } }));
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('#tab-history');
+
+    await expect(page.locator('#trends')).toContainText('est. max added');
+    await expect(page.locator('#trends')).not.toContainText('195');
+    await page.click('#trends [data-ex]');
+    await expect(page.locator('#exhist-sub')).toContainText('best +40 lb');
+    await ctx.close();
+  });
+
   test('a carry is judged on distance, whatever its RIR', async ({ browser }) => {
     const ctx = await phone(browser);
     const page = await ctx.newPage();

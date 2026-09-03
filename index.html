@@ -430,7 +430,7 @@
   .rest.transition.ready .fill{background:var(--p35)}
 
   /* rest timer */
-  .rest{
+  .rest, .nextup{
     position:fixed;left:50%;transform:translateX(-50%) translateY(8px);
     bottom:calc(70px + var(--safe-bottom));z-index:60;
     width:min(528px,calc(100% - 32px));
@@ -438,15 +438,40 @@
     padding:11px 14px 12px;display:flex;align-items:center;gap:13px;
     opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;
   }
-  .rest.show{opacity:1;pointer-events:auto;transform:translateX(-50%) translateY(0)}
+  .rest.show, .nextup.show{opacity:1;pointer-events:auto;transform:translateX(-50%) translateY(0)}
+  /* The set that finishes an exercise should not start a countdown for a set
+     you are not going to do. This takes the timer's place and says what is
+     next instead. */
+  /* The tint is an image over an opaque fill, not a background on its own —
+     as a bare gradient its translucent top let the RIR labels read through it. */
+  .nextup{
+    border-color:var(--good);background-color:var(--surface-2);
+    background-image:linear-gradient(180deg,rgba(41,170,99,.16),rgba(41,170,99,0) 70%);
+  }
+  .nextup .mid{flex:1;min-width:0;display:flex;align-items:center;gap:12px}
+  .nextup .lbl{flex:1;min-width:0}
+  /* The destination is the useful half, so it gets the width and the weight;
+     the button stays short. Naming the exercise on the button itself truncated
+     it to "Next: Romanian ..." at phone widths. */
+  .nextup .was{display:block;color:var(--ink-3);font-size:11.5px;font-weight:600;
+    letter-spacing:.03em;text-transform:uppercase;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .nextup .to{display:block;font-size:15px;font-weight:660;letter-spacing:-.02em;
+    margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .nextbtn{
+    flex:none;background:var(--good);color:var(--on-light);border:0;border-radius:999px;
+    font-family:inherit;font-size:14px;font-weight:700;letter-spacing:-.01em;
+    padding:10px 18px;min-height:44px;cursor:pointer;white-space:nowrap;
+  }
+  .nextbtn:active{opacity:.85}
   /* While a sheet is open the timer moves inside it, directly above the action
      button. Floating it anywhere on top of an open sheet covers something. */
   .restdock{flex:none;padding:0 18px}
-  .rest.docked{
+  .rest.docked, .nextup.docked{
     position:static;transform:none;width:auto;left:auto;right:auto;bottom:auto;
     opacity:1;pointer-events:auto;margin-bottom:12px;
   }
-  .rest.docked:not(.show){display:none}
+  .rest.docked:not(.show), .nextup.docked:not(.show){display:none}
   .rest.ready{border-color:var(--good)}
   .rest .clock{
     font-size:29px;font-weight:700;line-height:1;letter-spacing:-.04em;min-width:72px;
@@ -957,6 +982,17 @@
     <div class="track"><div class="fill" id="restfill"></div></div>
   </div>
   <button class="x" id="restclose" aria-label="Dismiss rest timer">&#215;</button>
+</div>
+
+<div class="nextup" id="nextup" role="status">
+  <div class="mid">
+    <div class="lbl">
+      <span class="was" id="nextupex">Done</span>
+      <span class="to" id="nextupname"></span>
+    </div>
+    <button class="nextbtn" id="nextupgo">Go</button>
+  </div>
+  <button class="x" id="nextupclose" aria-label="Dismiss">&#215;</button>
 </div>
 
 <nav role="tablist" aria-label="Views">
@@ -1499,6 +1535,12 @@ function carryBodyweight(from, to){
 }
 const toDisplay = s => conv(s.w, s.u || 'lb', units());
 // Effective load: bodyweight work is only meaningful with the lifter on it.
+// A bodyweight max is only interesting as what you could add to yourself. The
+// estimate is computed on the whole load, because that is what the lifter moves,
+// but reporting it whole reads as a barbell number: a set of unweighted dips
+// came back as "195 lb" when nothing was hanging off the belt at all.
+const shownMax = (ex, v) => kindOf(ex) === 'bodyweight' ? Math.max(0, v - bw()) : v;
+
 function loadOf(s){
   const base = toDisplay(s);
   return kindOf(s.e) === 'bodyweight' ? base + bw() : base;
@@ -2165,6 +2207,7 @@ function chime(times){
 // After a set: if this exercise is paired and its partner is a set behind,
 // the round isn't finished — give a short transition, not full rest.
 function startRest(ex){
+  hideNextUp();   // a live countdown supersedes it
   const partner = partnerOf(ex);
   const mine = setsFor(state.date, ex).length;
   const theirs = partner ? setsFor(state.date, partner).length : 0;
@@ -2294,16 +2337,57 @@ const topSheet = () => sheetStack[sheetStack.length - 1] || null;
 // The timer lives inside whichever sheet is on top, so it can never sit over
 // the action button or the header. With nothing open it floats above the nav.
 function dockRest(){
-  const el = $('#rest');
   const slot = topSheet()?.querySelector('.restdock')
     || (exerciseScreenOpen() ? $('#view-exercise .restdock') : null);
-  if(slot){
-    if(el.parentElement !== slot) slot.appendChild(el);
-    el.classList.add('docked');
-  } else {
-    if(el.parentElement !== document.body) document.body.appendChild(el);
-    el.classList.remove('docked');
+  // Both floaters ride in the same slot: whichever is showing needs to sit
+  // inside the front-most surface rather than behind it.
+  for(const el of [$('#rest'), $('#nextup')]){
+    if(slot){
+      if(el.parentElement !== slot) slot.appendChild(el);
+      el.classList.add('docked');
+    } else {
+      if(el.parentElement !== document.body) document.body.appendChild(el);
+      el.classList.remove('docked');
+    }
   }
+}
+
+// The next unfinished exercise below the one just finished, wrapping to the top
+// only once nothing is left underneath. Searching from the top instead would
+// send you back up the list to something you had deliberately skipped past,
+// which is not what "move on" means.
+function nextExercise(date, after){
+  const list = dayById(state.day).ex;
+  const from = list.findIndex(([nm]) => nm === after);
+  const unfinished = ([nm, tg]) => {
+    if(nm === after) return false;
+    const goal = targetSets(tg);
+    return !goal || workingSets(setsFor(date, nm)).length < goal;
+  };
+  for(let i = 1; i <= list.length; i++){
+    const row = list[(Math.max(from, 0) + i) % list.length];
+    if(unfinished(row)) return row[0];
+  }
+  return null;
+}
+
+let nextUpFor = null;
+function showNextUp(ex){
+  const goal = targetSets(state.target);
+  const next = nextExercise(state.date, ex);
+  nextUpFor = next;
+  $('#nextupex').textContent = `${ex} done${goal ? ` · ${goal} of ${goal}` : ''}`;
+  $('#nextupname').textContent = next || 'Nothing left today';
+  $('#nextupgo').textContent = next ? 'Go' : 'Close';
+  $('#nextupgo').setAttribute('aria-label',
+    next ? `Go to ${next}` : 'Back to the exercise list');
+  $('#nextup').classList.add('show');
+  dockRest();
+  announce(`${ex} finished.` + (next ? ` Next up, ${next}.` : ' Last exercise of the day.'));
+}
+function hideNextUp(){
+  $('#nextup').classList.remove('show');
+  nextUpFor = null;
 }
 
 function openPanel(el, focusEl){
@@ -2388,6 +2472,7 @@ function renderSheetSub(){
 }
 
 function openSheet(ex){
+  hideNextUp();
   const day = dayById(state.day);
   const row = day.ex.find(([n]) => n === ex);
   const target = row ? row[1] : '';
@@ -2449,6 +2534,7 @@ function hideExerciseScreen(){
 }
 
 function closeSheet(){
+  hideNextUp();
   const ex = state.ex;
   state.editing = null;
   hideExerciseScreen();
@@ -2525,6 +2611,11 @@ function renderHistory(){
     ? 'Estimated max — every session' : `Estimated max — last ${span} sessions`;
   $('#trendspan').innerHTML = TREND_SPANS.map(([v,label]) =>
     `<button data-span="${v}" aria-pressed="${String(v)===String(span)}">${label}</button>`).join('');
+  // Sessions that hold any working set, qualifying or not, so a card can say
+  // how much of the history it is actually drawing.
+  const logged = {};
+  db.sets.forEach(s => { if(!isWarmup(s)) (logged[s.e] ||= new Set()).add(s.d); });
+
   const byEx = {};
   db.sets.forEach(s=>{
     if(isWarmup(s)) return; // a ramp-up rep is not evidence of a max
@@ -2543,8 +2634,9 @@ function renderHistory(){
       // the display would have the card read 55 to 60 while the badge worked
       // out the change from 57 to 60.2.
       const round = kindOf(ex) === 'distance'
-        ? (v => Math.round(v)) : (v => roundToStep(v, ex));
-      return {ex, dates, vals: dates.map(d=>round(days[d]))};
+        ? (v => Math.round(v)) : (v => roundToStep(shownMax(ex, v), ex));
+      return {ex, dates, vals: dates.map(d=>round(days[d])),
+              logged: logged[ex] ? logged[ex].size : dates.length};
     })
     .sort((a,b)=> b.dates.at(-1).localeCompare(a.dates.at(-1)))
     .map(c=>{
@@ -2553,10 +2645,16 @@ function renderHistory(){
       const now = vals.at(-1), first = vals[0];
       const pct = first ? ((now-first)/first*100) : 0;
       const cls = vals.length<2 ? 'flat' : pct > 1.5 ? 'up' : pct < -1.5 ? 'down' : 'flat';
-      const label = vals.length<2 ? 'first session'
+      // "first session" was a lie once sets could fail to qualify: two sessions
+      // could be listed underneath while only one of them fed the number.
+      const label = vals.length<2
+        ? (c.logged > c.dates.length
+            ? `${c.dates.length} of ${c.logged} sessions counted` : 'first session')
         : cls==='flat' ? 'no clear change' : (pct>0?'+':'') + pct.toFixed(1) + '% over ' + vals.length + ' sessions';
-      const unit = kindOf(c.ex) === 'distance' ? u.dist : u.label;
-      const what = kindOf(c.ex) === 'distance' ? 'best distance' : 'est. max ' + unit;
+      const k = kindOf(c.ex);
+      const unit = k === 'distance' ? u.dist : u.label;
+      const what = k === 'distance' ? 'best distance'
+        : k === 'bodyweight' ? 'est. max added ' + unit : 'est. max ' + unit;
       return `<button class="card trendcard" data-ex="${esc(c.ex)}"
           aria-label="History for ${esc(c.ex)}">
         <h3>${esc(c.ex)}</h3>
@@ -2859,6 +2957,13 @@ $('#pairsel').addEventListener('change', e=>{
   toast(e.target.value ? 'Paired' : 'Unpaired');
 });
 
+$('#nextupclose').addEventListener('click', hideNextUp);
+$('#nextupgo').addEventListener('click', ()=>{
+  const next = nextUpFor;
+  hideNextUp();
+  if(next) openSheet(next); else closeSheet();
+});
+
 $('#logset').addEventListener('click', ()=>{
   const k = kindOf(state.ex);
   const w = parseFloat($('#wt').value || (k === 'bodyweight' ? '0' : ''));
@@ -2899,7 +3004,10 @@ $('#logset').addEventListener('click', ()=>{
     const done = workingSets(setsFor(state.date, state.ex)).length;
     const goal = targetSets(state.target);
     toast(goal && done <= goal ? `Set ${done} of ${goal}` : `Set ${done} logged`);
-    startRest(state.ex);
+    // A rest timer after the set that finishes an exercise is timing a rest
+    // before nothing. Say what is next instead.
+    if(goal && done >= goal){ stopRest(); showNextUp(state.ex); }
+    else startRest(state.ex);
   }
   // Deliberately no focus() here: it opens the numeric keyboard over the
   // rest timer you just started.
@@ -3399,9 +3507,10 @@ function openExHistory(ex){
   const sessions = dates.length;
   const forMax = mine.filter(s => k === 'distance' ? !isWarmup(s) : countsForMax(s));
   const best = Math.max(0, ...forMax.map(s => k === 'distance' ? s.r : e1rm(s)));
+  const bestShown = k === 'distance' ? Math.round(best) : roundToStep(shownMax(ex, best), ex);
   $('#exhist-sub').textContent = !sessions ? 'Nothing logged yet'
     : `${sessions} session${sessions===1?'':'s'}` + (best
-      ? ` · best ${k==='distance' ? Math.round(best) : roundToStep(best, ex)} ${k==='distance'?u.dist:u.label}`
+      ? ` · best ${k==='bodyweight' ? '+' : ''}${bestShown} ${k==='distance'?u.dist:u.label}`
       : ` · nothing at ${E1RM_MAX_RIR} RIR or harder yet`);
 
   $('#exhist-body').innerHTML = dates.length ? dates.map(d=>{
@@ -3415,7 +3524,7 @@ function openExHistory(ex){
     const work = list.filter(s => k === 'distance' ? !isWarmup(s) : countsForMax(s));
     const top = work.length
       ? (k === 'distance' ? Math.round(Math.max(...work.map(s => s.r)))
-                          : roundToStep(Math.max(...work.map(e1rm)), ex)) : null;
+                          : roundToStep(shownMax(ex, Math.max(...work.map(e1rm))), ex)) : null;
     return `<div class="exhistday">
       <b>${esc(prettyDate(d))}</b>
       <span>${detail}</span>

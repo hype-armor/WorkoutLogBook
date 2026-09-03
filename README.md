@@ -39,7 +39,7 @@ npx playwright install chromium
 npm test
 ```
 
-183 tests in `tests/`, run on every pull request and again before any deploy.
+192 tests in `tests/`, run on every pull request and again before any deploy.
 They cover the things that actually broke: that a logged set survives a reload
 and a service-worker update, that `Log set` and the RIR selector are never
 underneath the rest timer at phone sizes, that unit switching converts rather
@@ -118,6 +118,21 @@ Rounding follows the rack because that is the real resolution: with 2.5s the
 step is 5, with 1.25s it is 2.5. The rounding happens once, where the series is
 built, so the number on the card, the percentage beside it and the line under it
 all describe the same values.
+
+For a bodyweight lift the figure is what you could **add**, not you plus it — a
+set of unweighted dips reporting "195 lb" read as a barbell number with nothing
+on the belt.
+
+A card whose sessions did not all qualify says so: `1 of 2 sessions counted`
+rather than `first session`, which contradicted the rows listed underneath it.
+
+## Finishing an exercise
+
+The set that completes a target does not start a rest timer — there is no next
+set to rest for. In the timer's place a panel names what you just finished and
+what comes next, with a button that takes you there: the next unfinished
+exercise below this one, wrapping to the top only once nothing is left
+underneath. On the last one it offers the way back to the list instead.
 
 ## Rep ranges
 
