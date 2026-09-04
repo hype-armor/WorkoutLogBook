@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.14.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.13.1...logbook-v1.14.0) (2026-09-04)
+
+
+### Features
+
+* an exercise guide with start and finish photos ([605deb6](https://github.com/hype-armor/WorkoutLogBook/commit/605deb6f45ca905a5e72f12f14608b10dc3188db))
+* say what is next instead of resting after the last set ([cef7de0](https://github.com/hype-armor/WorkoutLogBook/commit/cef7de066fdc2c0b0c982367ce2f01f485f7b539))
+
+
+### Bug Fixes
+
+* name the muscle groups in the guide instead of implying them ([2300602](https://github.com/hype-armor/WorkoutLogBook/commit/23006022bb9bcc05084b40e549f2c36d1f888ec5))
+
 ## [1.13.1](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.13.0...logbook-v1.13.1) (2026-09-01)
 
 

@@ -12,7 +12,7 @@
  * background refresh) without ever offering them the prompt. The version bump
  * does both, and purges the previous cache on activate.
  */
-const VERSION = '1.13.1'; // x-release-please-version
+const VERSION = '1.14.0'; // x-release-please-version
 const CACHE = `logbook-${VERSION}`;
 
 // The exercise photos are 44 files and ~830KB, and they do not change when the
