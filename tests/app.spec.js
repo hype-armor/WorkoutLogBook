@@ -1742,7 +1742,12 @@ test.describe('the exercise guide', () => {
   });
 
   test('names what it works and how', async () => {
-    await expect(page.locator('.guidemuscles .primary').first()).toHaveText('lower back');
+    // the two groups are named, so a chip's status is stated rather than
+    // implied by its colour
+    await expect(page.locator('.guidegroup .lbl').nth(0)).toHaveText('Mainly');
+    await expect(page.locator('.guidegroup .lbl').nth(1)).toHaveText('Also');
+    await expect(page.locator('.guidegroup').nth(0).locator('.primary').first()).toHaveText('lower back');
+    await expect(page.locator('.guidegroup').nth(1)).toContainText('hamstrings');
     expect(await page.locator('.guidesteps li').count()).toBeGreaterThan(2);
     await expect(page.locator('.guidesrc')).toContainText(/public domain/i);
     await page.click('#exinfodone');
