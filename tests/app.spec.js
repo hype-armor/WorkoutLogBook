@@ -1779,3 +1779,131 @@ test.describe('the exercise guide', () => {
     expect(errs).toEqual([]);
   });
 });
+
+test.describe('a machine that takes weight off', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('#gear');
+    await page.fill('#bwinput', '180');
+    await page.dispatchEvent('#bwinput', 'change');
+    await page.click('#setdone');
+    await chooseDay(page, 'D');
+    await page.click('.ex[data-ex="Pull-up"]');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('is off until an exercise asks for it', async () => {
+    // a minus sign in the weight field is a typo on everything else, so the
+    // field refuses one and the stepper will not go there either
+    await page.fill('#wt', '0');
+    await page.click('#wdown');
+    expect(await page.inputValue('#wt')).toBe('0');
+    await page.fill('#wt', '-40');
+    await page.fill('#reps', '8');
+    await page.click('#logset');
+    await expect(page.locator('#toast')).toContainText(/enter weight and reps/i);
+    await expect(page.locator('.setrow')).toHaveCount(0);
+  });
+
+  test('turning it on says which way the sign goes', async () => {
+    await page.click('#exsettings');
+    await page.check('#exassist');
+    await page.click('#exsave');
+    await expect(page.locator('#bwhint')).toContainText(/assistance/i);
+    // and it survives a reopen of the editor rather than reading back as off
+    await page.click('#exsettings');
+    expect(await page.isChecked('#exassist')).toBe(true);
+    await page.click('#exclose');
+  });
+
+  test('logs assistance as help taken off, not weight added', async () => {
+    await page.fill('#wt', '-40');
+    await page.fill('#reps', '8');
+    await page.click('#logset');
+    // "BW+-40" was the shape this took before the label knew about signs
+    await expect(page.locator('.setrow .load')).toHaveText('BW−40 × 8');
+    // 180 lb of lifter with 40 taken off is 140 of work, not 220 and not −40
+    const vol = await page.evaluate(() => Math.round(sessionStats(state.date).tonnage));
+    expect(vol).toBe(140 * 8);
+
+    // Bodyweight is editable after the fact, so more help than lifter is
+    // reachable in the record. Left signed it would eat into the volume of the
+    // session it appears in.
+    const under = await page.evaluate(() => {
+      const real = db.settings.bw.lb;
+      db.settings.bw.lb = 30;
+      const v = sessionStats(state.date).tonnage;
+      db.settings.bw.lb = real; save();
+      return v;
+    });
+    expect(under).toBe(0);
+  });
+
+  test('the stepper reaches a negative the iOS keypad cannot type', async () => {
+    // there is no minus key on a decimal keypad, so the − button is the only
+    // way to get below zero on the phone this is written for
+    await page.fill('#wt', '5');
+    await page.click('#wdown');
+    expect(await page.inputValue('#wt')).toBe('0');
+    await page.click('#wdown');
+    expect(await page.inputValue('#wt')).toBe('-5');
+    await page.click('#wup');
+    expect(await page.inputValue('#wt')).toBe('0');
+  });
+
+  test('stops at the bodyweight it is assisting', async () => {
+    // being helped with more than you weigh is not a set
+    await page.fill('#wt', '-175');
+    for (let i = 0; i < 4; i++) await page.click('#wdown');
+    expect(+(await page.inputValue('#wt'))).toBe(-180);
+    await expect(page.locator('#platemath')).toBeHidden();
+  });
+
+  test('shedding assistance reads as progress, not decline', async () => {
+    // the percentage divided by a negative starting point, so getting stronger
+    // came out red
+    await page.evaluate(() => {
+      db.sets = [];
+      const mk = (d, w) => ({ id: 'a' + d, t: Date.now(), d, e: 'Pull-up', dy: 'D',
+        w, r: 3, rir: 0, u: 'lb' });
+      db.sets.push(mk('2024-01-01', -60), mk('2024-01-08', -40));
+      save(); rerenderAll();
+    });
+    await page.click('#close');
+    await page.click('#tab-history');
+    const card = page.locator('#trends .trendcard[data-ex="Pull-up"]');
+    await expect(card.locator('.delta')).toHaveClass(/up/);
+    await expect(card.locator('.delta')).toContainText('+');
+    // the number it reports is the help still needed, which is climbing to zero
+    expect(+(await card.locator('.metric b').textContent())).toBeLessThan(0);
+    await expect(card.locator('.metric small').first()).toContainText(/added/);
+  });
+
+  test('turning it back off offers a weight the field will take', async () => {
+    await page.click('#tab-train');
+    await page.click('.ex[data-ex="Pull-up"]');
+    await page.click('#exsettings');
+    await page.uncheck('#exassist');
+    await page.click('#exsave');
+    await page.click('#close');
+    await page.click('.ex[data-ex="Pull-up"]');
+    // seeded from a −40 set, which this exercise no longer accepts
+    expect(+(await page.inputValue('#wt'))).toBeGreaterThanOrEqual(0);
+    await page.fill('#reps', '8');
+    await page.click('#logset');
+    await expect(page.locator('#toast')).not.toContainText(/enter weight/i);
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});

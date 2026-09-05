@@ -40,7 +40,7 @@ npx playwright install chromium
 npm test
 ```
 
-197 tests in `tests/`, run on every pull request and again before any deploy.
+205 tests in `tests/`, run on every pull request and again before any deploy.
 They cover the things that actually broke: that a logged set survives a reload
 and a service-worker update, that `Log set` and the RIR selector are never
 underneath the rest timer at phone sizes, that unit switching converts rather
@@ -126,6 +126,30 @@ on the belt.
 
 A card whose sessions did not all qualify says so: `1 of 2 sessions counted`
 rather than `first session`, which contradicted the rows listed underneath it.
+
+## Machines that take weight off
+
+An assisted pull-up or dip machine does not add load, it removes it, so its
+weight is a negative number: `−40` is forty pounds of help, and the set reads
+`BW−40 × 8`. Turn it on per exercise, under **The machine can assist** in that
+exercise's settings. Everywhere else the field still refuses a minus sign,
+because on a squat that is a typo worth catching.
+
+The sign is the only thing that changes; the rest already pointed the right way.
+Progression still adds, so `−40` becomes `−35` — less help next time. The
+estimated max is still what you could add to yourself, which for an assisted
+lift is a negative number climbing towards zero, and the trend reads that as
+progress rather than decline. Volume counts the load you actually moved:
+180 lb of lifter with 40 taken off is 140, not 220 and not −40.
+
+Two floors keep it honest. The field stops at your bodyweight, because being
+helped with more than you weigh is not a set; and a load that still comes out
+below zero — bodyweight is editable after the fact — counts as no work rather
+than as work subtracted.
+
+The iOS number pad has no minus key, so on a phone the `−` stepper is the only
+way below zero. It crosses zero rather than stopping at it, and holding it
+repeats, so `−40` is a second's press rather than eight taps.
 
 ## The exercise guide
 
