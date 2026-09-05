@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.15.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.14.0...logbook-v1.15.0) (2026-09-05)
+
+
+### Features
+
+* let a machine take weight off, for assisted pull-ups and dips ([3ee9827](https://github.com/hype-armor/WorkoutLogBook/commit/3ee9827b976585150ee3b499b1ed7ed1fb5bcfab))
+
+
+### Bug Fixes
+
+* offer to move a session logged against the wrong day ([b6d8033](https://github.com/hype-armor/WorkoutLogBook/commit/b6d80334bdc00a8375f4f14ed20ff88dd592c9ee))
+
 ## [1.14.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.13.1...logbook-v1.14.0) (2026-09-04)
 
 
