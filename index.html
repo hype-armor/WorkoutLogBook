@@ -161,6 +161,9 @@
     letter-spacing:-.01em;padding:9px 13px;cursor:pointer;
   }
   .banner.bad{border-color:var(--danger)}
+  /* Sits inside the exercise list rather than above it, so it lines up with the
+     rows it is about. */
+  .banner.misday{margin:2px 0 10px}
   .banner button.later{margin-left:0;background:none;color:var(--ink-3);border:1px solid var(--line)}
 
   /* session picker */
@@ -868,6 +871,12 @@
       <span>One side at a time
         <span class="sub">Keeps the target even, so both sides get the same work.</span></span>
     </label>
+    <label class="toggle" style="margin-top:10px">
+      <input type="checkbox" id="exassist">
+      <span>The machine can assist
+        <span class="sub">Lets the weight go below zero. On an assisted pull-up machine,
+          &minus;40 means it takes 40 off you.</span></span>
+    </label>
 
     <label class="f" style="margin-top:14px"><span class="lab">Bar / plate math</span>
       <select id="exbar"></select></label>
@@ -1454,6 +1463,20 @@ const meta = ex => db.ex?.[ex] || {};
 const kindOf = ex => meta(ex).kind || DEFAULT_KIND[ex] || 'weight';
 const isUnilateral = ex => meta(ex).uni ?? !!DEFAULT_UNILATERAL[ex];
 
+// An assisted pull-up or dip machine takes weight off instead of adding it, so
+// its load is a negative number: −40 is forty pounds of help. Off by default,
+// because everywhere else a minus sign in the weight field is a typo worth
+// catching, and a carry has no sense in which it could be assisted at all.
+const allowsAssist = ex => kindOf(ex) !== 'distance' && !!meta(ex).assist;
+
+// How far down the field is allowed to go. Assistance can cancel a bodyweight
+// movement but not overshoot it: being helped with more than you weigh is not
+// a set. Nothing else has a floor to hit, so nothing else gets one.
+function minWeight(ex){
+  if(!allowsAssist(ex)) return 0;
+  return kindOf(ex) === 'bodyweight' && bw() ? -bw() : -Infinity;
+}
+
 // How much to add next time. Defaults to the smallest jump the rack allows,
 // which for a barbell is one plate a side.
 function progressionFor(ex){
@@ -1477,7 +1500,14 @@ function startingWeight(ex){
 // calculator warns about the app's own proposal — offering to change your
 // plates to reach a number you never asked for.
 function roundLoadable(w, ex){
-  if(!(w > 0) || kindOf(ex) === 'distance') return w;
+  if(kindOf(ex) === 'distance') return w;
+  // Assistance comes off a stack rather than a bar, and it rounds by size, not
+  // by sign: −41 is forty-odd pounds of help rounded to the stack, not −45.
+  if(w < 0){
+    const step = U().otherStep || 1;
+    return -+(Math.round(-w / step) * step).toFixed(2);
+  }
+  if(!(w > 0)) return w;
   if(!isLoadable(ex)){
     const step = U().otherStep || 1;
     return +(Math.round(w / step) * step).toFixed(2);
@@ -1535,7 +1565,9 @@ function seedFor(ex){
     // thing the plate calculator would then warn about.
     : held ? roundLoadable(toDisplay(prior), ex)
     : roundLoadable(toDisplay(prior) + progressionFor(ex), ex);
-  return {weight, rir: base ? base.rir : 2, prior, base, held};
+  // Turning assistance back off leaves negative sets in the record. Repeating
+  // one into a field that will not accept it offers a weight you cannot log.
+  return {weight: Math.max(minWeight(ex), weight), rir: base ? base.rir : 2, prior, base, held};
 }
 
 // Round a target up to an even number of sets, leaving the rest of the string
@@ -1585,13 +1617,25 @@ const toDisplay = s => conv(s.w, s.u || 'lb', units());
 // estimate is computed on the whole load, because that is what the lifter moves,
 // but reporting it whole reads as a barbell number: a set of unweighted dips
 // came back as "195 lb" when nothing was hanging off the belt at all.
-const shownMax = (ex, v) => kindOf(ex) === 'bodyweight' ? Math.max(0, v - bw()) : v;
+// Clamped at nothing-added, unless the machine is allowed to take weight off:
+// then below zero is the honest answer, and how much help it still needs is
+// exactly the number that ought to be climbing.
+const shownMax = (ex, v) => kindOf(ex) !== 'bodyweight' ? v
+  : allowsAssist(ex) ? v - bw() : Math.max(0, v - bw());
 
 function loadOf(s){
   const base = toDisplay(s);
-  return kindOf(s.e) === 'bodyweight' ? base + bw() : base;
+  const load = kindOf(s.e) === 'bodyweight' ? base + bw() : base;
+  // More assistance than the thing being assisted is not negative work. Left
+  // signed it would subtract from a session's volume and from the estimate.
+  return Math.max(0, load);
 }
 const fmtW = w => (Math.round(w * 100) / 100).toString();
+// "BW", "BW+25", "BW−40" — the last being the assisted machine, which is the
+// same sentence with the sign the other way round.
+const bwLabel = d => d > 0 ? `BW+${fmtW(d)}` : d < 0 ? `BW−${fmtW(-d)}` : 'BW';
+// A number that has to carry its own sign, with the minus that matches it.
+const signed = v => v < 0 ? `−${fmtW(-v)}` : `+${fmtW(v)}`;
 
 /* ---------- rendering ---------- */
 function renderBanners(){
@@ -1646,6 +1690,41 @@ function renderDays(){
   el.innerHTML = program().map(d =>
     `<button class="day" data-day="${esc(d.id)}" aria-pressed="${d.id===state.day}">
        <b>${esc(d.name)}</b><span>${esc(d.tag||'')}</span></button>`).join('');
+}
+
+// Which day of the program a session actually looks like. The day on screen is
+// a guess about a rotation — the one after whatever was logged last — and a
+// lifter who skips one, or does them out of order, lands on a screen listing
+// none of what they came to do. Logging it anyway files the whole session under
+// the wrong day as "not in" rows with no targets to work against.
+// Only answered when another day covers strictly more of the work than the one
+// on screen does, so a single substitution stays a substitution.
+function looksLikeDay(date){
+  const done = [...new Set(db.sets.filter(s => s.d === date).map(s => s.e))];
+  if(!done.length) return null;
+  const score = d => done.filter(e => d.ex.some(([n]) => n === e)).length;
+  const here = score(dayById(state.day));
+  let best = null, bestN = here;
+  for(const d of program()){
+    if(d.id === state.day) continue;
+    const n = score(d);
+    if(n > bestN){ best = d; bestN = n; }
+  }
+  return best;
+}
+
+// Moves the session, and the work already logged in it, to the day that work
+// belongs to. The restamp is the point: a set carries the day it was logged
+// under, and the target it is judged against is read back out of it, so sets
+// left stamped with the wrong day never earn their next weight.
+function switchSessionDay(id){
+  const d = program().find(x => x.id === id);
+  if(!d) return;
+  state.day = id;
+  db.settings.lastDay = id;
+  db.sets.forEach(s => { if(s.d === state.date) s.dy = id; });
+  save(); renderDays(); renderExercises();
+  toast(`Moved to ${d.name}`);
 }
 
 const setsFor = (date, ex) => db.sets.filter(s => s.d === date && s.e === ex);
@@ -1715,6 +1794,13 @@ function renderExercises(){
       <span class="name">${esc(name)}<span class="pairline">Not in ${esc(day.name)}</span></span>
       <span class="count">${n}</span></button></div>`;
   });
+  // Offered where the evidence is, immediately above the rows that are the
+  // evidence, rather than at the top of a screen you have already scrolled past.
+  const other = state.progEdit ? null : looksLikeDay(state.date);
+  if(other) extraRows.unshift(`<div class="banner misday">
+      <span>This looks like ${esc(other.name)}, not ${esc(day.name)}.</span>
+      <button data-switchday="${esc(other.id)}">Switch</button>
+    </div>`);
 
   $('#exlist').innerHTML = rows.concat(extraRows).join('') ||
     `<div class="empty">No exercises in this day yet. Tap Edit, then Add exercise.</div>`;
@@ -1921,6 +2007,23 @@ function renderFieldLabels(){
   $('#repslab').textContent = k === 'distance' ? `Distance (${u.dist})` : 'Reps';
 }
 
+// The one line under the fields that says what the number in them means. The
+// iOS number pad has no minus key, so on a phone the stepper is the only way
+// below zero, and the line has to say that below zero is a place to go.
+// The bodyweight warning wins when both apply: a trend pinned at zero is a
+// worse problem than not knowing which way the sign goes.
+function renderLoadHint(){
+  const ex = state.ex;
+  if(!ex) return;
+  const say = kindOf(ex) === 'bodyweight' && !bw()
+    ? 'Set your bodyweight in settings, or this exercise scores as zero and its trend stays flat.'
+    : allowsAssist(ex)
+      ? 'A minus number is machine assistance — that much weight taken off you, not added to you.'
+      : '';
+  $('#bwhint').classList.toggle('hide', !say);
+  $('#bwhint').textContent = say;
+}
+
 function renderRepBand(){
   const box = $('#repband');
   // A ramp-up set is not training a quality, and "reps" on a carry is metres.
@@ -1966,7 +2069,7 @@ function renderSetList(){
     const idx = warm ? 'W' : ++n;
     let load;
     if(k === 'distance') load = `${fmtW(s.r)} ${U().dist}${toDisplay(s) > 0 ? ` @ ${fmtW(toDisplay(s))}` : ''}`;
-    else if(k === 'bodyweight') load = `${toDisplay(s) > 0 ? `BW+${fmtW(toDisplay(s))}` : 'BW'} × ${s.r}`;
+    else if(k === 'bodyweight') load = `${bwLabel(toDisplay(s))} × ${s.r}`;
     else load = `${fmtW(toDisplay(s))} × ${s.r}`;
     return `<div class="setrow ${warm?'warm':''} ${state.editing===s.id?'editing':''} ${
       state.justLogged === s.id ? 'new' : ''}">
@@ -2024,7 +2127,10 @@ function solvePlates(perSide){
 
 function renderPlateMath(){
   const box = $('#platemath');
-  if(!isLoadable(state.ex) || kindOf(state.ex) === 'distance'){ box.classList.add('hide'); return; }
+  // Plates cannot make a negative, so the diagram has nothing to say about one.
+  if(!isLoadable(state.ex) || kindOf(state.ex) === 'distance' || parseFloat($('#wt').value) < 0){
+    box.classList.add('hide'); return;
+  }
   box.classList.remove('hide');
 
   const u = U(), bar = barFor(state.ex);
@@ -2508,7 +2614,9 @@ function renderSheetSub(){
   if(goal) bits.push(`${done}/${goal} done`);
   else if(done) bits.push(`${done} logged`);
   bits.push(prev
-    ? `last time ${fmtW(toDisplay(prev))} ${u.label} × ${prev.r} @ ${prev.rir} RIR`
+    ? `last time ${kindOf(ex) === 'bodyweight'
+        ? bwLabel(toDisplay(prev)) : `${fmtW(toDisplay(prev))} ${u.label}`
+      } × ${prev.r} @ ${prev.rir} RIR`
     : (done ? 'first session on this' : 'first time logging this'));
   // Only worth saying before the first set of the day: once you are logging,
   // the weight in the field is whatever you decided it should be.
@@ -2523,7 +2631,6 @@ function openSheet(ex){
   const row = day.ex.find(([n]) => n === ex);
   const target = row ? row[1] : '';
   state.ex = ex; state.editing = null; state.warmup = false; state.justLogged = null;
-  const k = kindOf(ex), u = U();
   $('#sheet-title').textContent = ex;
   $('#exinfobtn').classList.toggle('hide', !guideFor(ex));
 
@@ -2542,15 +2649,10 @@ function openSheet(ex){
   $('#reps').value = wantReps ?? (seed.base ? seed.base.r : '');
   state.rir = seed.rir;
 
-  const needsBw = k === 'bodyweight' && !bw();
-  $('#bwhint').classList.toggle('hide', !needsBw);
-  if(needsBw) $('#bwhint').innerHTML =
-    `Set your bodyweight in settings, or this exercise scores as zero and its trend stays flat.`;
-
   $('#canceledit').classList.add('hide');
   $('#logset').textContent = 'Log set';
   renderSetKind(); renderPlates(); renderSetList(); renderPlateMath();
-  refreshStepperLabels(); renderPairSelect();
+  refreshStepperLabels(); renderPairSelect(); renderLoadHint();
   showExerciseScreen();
 }
 
@@ -2690,7 +2792,10 @@ function renderHistory(){
       const span = state.trendSpan || 8;
       const vals = span === 'all' ? c.vals : c.vals.slice(-span);
       const now = vals.at(-1), first = vals[0];
-      const pct = first ? ((now-first)/first*100) : 0;
+      // Assisted work counts up through negative numbers. The size of the
+      // starting point sets the scale; its sign must not flip which way better
+      // points, or shedding help would read as losing ground.
+      const pct = first ? ((now-first)/Math.abs(first)*100) : 0;
       const cls = vals.length<2 ? 'flat' : pct > 1.5 ? 'up' : pct < -1.5 ? 'down' : 'flat';
       // "first session" was a lie once sets could fail to qualify: two sessions
       // could be listed underneath while only one of them fed the number.
@@ -2844,7 +2949,7 @@ function nudgeWeight(dir){
   const cur = parseFloat($('#wt').value);
   const bar = isLoadable(state.ex) ? barFor(state.ex) : 0;
   const base = isNaN(cur) ? (kindOf(state.ex) === 'bodyweight' ? 0 : bar) : cur;
-  const next = Math.max(0, +(Math.round((base + dir*step)/step)*step).toFixed(2));
+  const next = Math.max(minWeight(state.ex), +(Math.round((base + dir*step)/step)*step).toFixed(2));
   $('#wt').value = next;
   renderPlateMath();
 }
@@ -2928,6 +3033,8 @@ $('#exlist').addEventListener('click', e=>{
     save(); renderExercises();
     return;
   }
+  const sw = e.target.closest('[data-switchday]');
+  if(sw){ switchSessionDay(sw.dataset.switchday); return; }
   const ed = e.target.closest('[data-edit]');
   if(ed){ openExEditor(ed.dataset.edit); return; }
   const b = e.target.closest('[data-ex]'); if(!b) return;
@@ -3015,7 +3122,8 @@ $('#logset').addEventListener('click', ()=>{
   const k = kindOf(state.ex);
   const w = parseFloat($('#wt').value || (k === 'bodyweight' ? '0' : ''));
   const r = parseFloat($('#reps').value);
-  if(!(w >= 0) || !(r > 0)){
+  // Below zero is a typo everywhere except a machine that is set up to assist.
+  if(!(w >= minWeight(state.ex)) || !(r > 0)){
     toast(k === 'distance' ? 'Enter a distance' : 'Enter weight and reps');
     return;
   }
@@ -3202,6 +3310,7 @@ function openExEditor(name){
   $('#extarget').value = row ? row[1] : '3 × 10';
   $('#exkind').value = name ? kindOf(name) : 'weight';
   $('#exuni').checked = name ? isUnilateral(name) : false;
+  $('#exassist').checked = name ? allowsAssist(name) : false;
   $('#exbar').innerHTML = [`<option value="">No plate math</option>`]
     .concat(u.bars.map(b => `<option value="${b}">${esc(u.barLabel[b])}</option>`)).join('');
   $('#exbar').value = name && isLoadable(name) ? String(barFor(name)) : '';
@@ -3254,6 +3363,7 @@ $('#exsave').addEventListener('click', ()=>{
   const m = (db.ex[name] ||= {});
   m.kind = $('#exkind').value;
   m.uni = uni;
+  if($('#exassist').checked) m.assist = true; else delete m.assist;
   m.rest = +$('#exrest').value;
   const barVal = $('#exbar').value;
   if(barVal === '') delete m.bar;
@@ -3275,7 +3385,7 @@ $('#exsave').addEventListener('click', ()=>{
     const reps = targetReps(target);
     if(reps != null && !state.editing) $('#reps').value = reps;
     renderSheetSub(); renderPlateMath(); refreshStepperLabels(); renderSetList();
-    renderRepBand(); renderFieldLabels();
+    renderRepBand(); renderFieldLabels(); renderLoadHint();
   }
   toast(rounded ? `Rounded to ${targetSets(target)} sets — one side each` : (old ? 'Saved' : 'Added'));
 });
@@ -3510,12 +3620,16 @@ function allKnownExercises(){
 
 function renderPickList(){
   const q = $('#pickfilter').value.trim().toLowerCase();
-  const day = dayById(state.day);
-  const listed = new Set(day.ex.map(([n]) => n));
+  // Every exercise says which day it belongs to, not just the ones on the day
+  // you happen to be on. Saying it only for this day left the rest looking like
+  // they belonged nowhere, so picking one read as the only way to log it — and
+  // a whole session went in as extras against a day it was not.
+  const home = {};
+  program().forEach(d => d.ex.forEach(([n]) => { if(!(n in home)) home[n] = d.name; }));
   const hits = allKnownExercises().filter(n => !q || n.toLowerCase().includes(q));
   $('#picklist').innerHTML = hits.length ? hits.map(n =>
     `<div class="exrow"><button class="ex" data-pick="${esc(n)}">
-      <span class="name">${esc(n)}${listed.has(n) ? `<span class="pairline">In ${esc(day.name)}</span>` : ''}</span>
+      <span class="name">${esc(n)}${home[n] ? `<span class="pairline">In ${esc(home[n])}</span>` : ''}</span>
     </button></div>`).join('')
     : `<div class="empty">Nothing matches. Add it to a day from Edit if it is new.</div>`;
 }
@@ -3590,14 +3704,14 @@ function openExHistory(ex){
   const bestShown = k === 'distance' ? Math.round(best) : roundToStep(shownMax(ex, best), ex);
   $('#exhist-sub').textContent = !sessions ? 'Nothing logged yet'
     : `${sessions} session${sessions===1?'':'s'}` + (best
-      ? ` · best ${k==='bodyweight' ? '+' : ''}${bestShown} ${k==='distance'?u.dist:u.label}`
+      ? ` · best ${k==='bodyweight' ? signed(bestShown) : bestShown} ${k==='distance'?u.dist:u.label}`
       : ` · nothing at ${E1RM_MAX_RIR} RIR or harder yet`);
 
   $('#exhist-body').innerHTML = dates.length ? dates.map(d=>{
     const list = byDate[d];
     const detail = list.map(s => {
       const load = k === 'distance' ? `${fmtW(s.r)}${u.dist}`
-        : k === 'bodyweight' ? `${toDisplay(s) > 0 ? `BW+${fmtW(toDisplay(s))}` : 'BW'}×${s.r}`
+        : k === 'bodyweight' ? `${bwLabel(toDisplay(s))}×${s.r}`
         : `${fmtW(toDisplay(s))}×${s.r}`;
       return isWarmup(s) ? `<em>${esc(load)}</em>` : esc(load);
     }).join('  ');
@@ -3644,7 +3758,7 @@ $('#sessions').addEventListener('click', e=>{
 function rerenderAll(){
   renderDate(); renderBanners(); renderDays(); renderExercises(); renderPain(); renderPlates();
   // Units are changed from Settings, which can be open over the log screen.
-  renderFieldLabels();
+  renderFieldLabels(); renderLoadHint();
   if(state.tab === 'history') renderHistory();
 }
 

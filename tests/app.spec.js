@@ -1779,3 +1779,221 @@ test.describe('the exercise guide', () => {
     expect(errs).toEqual([]);
   });
 });
+
+test.describe('a machine that takes weight off', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('#gear');
+    await page.fill('#bwinput', '180');
+    await page.dispatchEvent('#bwinput', 'change');
+    await page.click('#setdone');
+    await chooseDay(page, 'D');
+    await page.click('.ex[data-ex="Pull-up"]');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('is off until an exercise asks for it', async () => {
+    // a minus sign in the weight field is a typo on everything else, so the
+    // field refuses one and the stepper will not go there either
+    await page.fill('#wt', '0');
+    await page.click('#wdown');
+    expect(await page.inputValue('#wt')).toBe('0');
+    await page.fill('#wt', '-40');
+    await page.fill('#reps', '8');
+    await page.click('#logset');
+    await expect(page.locator('#toast')).toContainText(/enter weight and reps/i);
+    await expect(page.locator('.setrow')).toHaveCount(0);
+  });
+
+  test('turning it on says which way the sign goes', async () => {
+    await page.click('#exsettings');
+    await page.check('#exassist');
+    await page.click('#exsave');
+    await expect(page.locator('#bwhint')).toContainText(/assistance/i);
+    // and it survives a reopen of the editor rather than reading back as off
+    await page.click('#exsettings');
+    expect(await page.isChecked('#exassist')).toBe(true);
+    await page.click('#exclose');
+  });
+
+  test('logs assistance as help taken off, not weight added', async () => {
+    await page.fill('#wt', '-40');
+    await page.fill('#reps', '8');
+    await page.click('#logset');
+    // "BW+-40" was the shape this took before the label knew about signs
+    await expect(page.locator('.setrow .load')).toHaveText('BW−40 × 8');
+    // 180 lb of lifter with 40 taken off is 140 of work, not 220 and not −40
+    const vol = await page.evaluate(() => Math.round(sessionStats(state.date).tonnage));
+    expect(vol).toBe(140 * 8);
+
+    // Bodyweight is editable after the fact, so more help than lifter is
+    // reachable in the record. Left signed it would eat into the volume of the
+    // session it appears in.
+    const under = await page.evaluate(() => {
+      const real = db.settings.bw.lb;
+      db.settings.bw.lb = 30;
+      const v = sessionStats(state.date).tonnage;
+      db.settings.bw.lb = real; save();
+      return v;
+    });
+    expect(under).toBe(0);
+  });
+
+  test('the stepper reaches a negative the iOS keypad cannot type', async () => {
+    // there is no minus key on a decimal keypad, so the − button is the only
+    // way to get below zero on the phone this is written for
+    await page.fill('#wt', '5');
+    await page.click('#wdown');
+    expect(await page.inputValue('#wt')).toBe('0');
+    await page.click('#wdown');
+    expect(await page.inputValue('#wt')).toBe('-5');
+    await page.click('#wup');
+    expect(await page.inputValue('#wt')).toBe('0');
+  });
+
+  test('stops at the bodyweight it is assisting', async () => {
+    // being helped with more than you weigh is not a set
+    await page.fill('#wt', '-175');
+    for (let i = 0; i < 4; i++) await page.click('#wdown');
+    expect(+(await page.inputValue('#wt'))).toBe(-180);
+    await expect(page.locator('#platemath')).toBeHidden();
+  });
+
+  test('shedding assistance reads as progress, not decline', async () => {
+    // the percentage divided by a negative starting point, so getting stronger
+    // came out red
+    await page.evaluate(() => {
+      db.sets = [];
+      const mk = (d, w) => ({ id: 'a' + d, t: Date.now(), d, e: 'Pull-up', dy: 'D',
+        w, r: 3, rir: 0, u: 'lb' });
+      db.sets.push(mk('2024-01-01', -60), mk('2024-01-08', -40));
+      save(); rerenderAll();
+    });
+    await page.click('#close');
+    await page.click('#tab-history');
+    const card = page.locator('#trends .trendcard[data-ex="Pull-up"]');
+    await expect(card.locator('.delta')).toHaveClass(/up/);
+    await expect(card.locator('.delta')).toContainText('+');
+    // the number it reports is the help still needed, which is climbing to zero
+    expect(+(await card.locator('.metric b').textContent())).toBeLessThan(0);
+    await expect(card.locator('.metric small').first()).toContainText(/added/);
+  });
+
+  test('turning it back off offers a weight the field will take', async () => {
+    await page.click('#tab-train');
+    await page.click('.ex[data-ex="Pull-up"]');
+    await page.click('#exsettings');
+    await page.uncheck('#exassist');
+    await page.click('#exsave');
+    await page.click('#close');
+    await page.click('.ex[data-ex="Pull-up"]');
+    // seeded from a −40 set, which this exercise no longer accepts
+    expect(+(await page.inputValue('#wt'))).toBeGreaterThanOrEqual(0);
+    await page.fill('#reps', '8');
+    await page.click('#logset');
+    await expect(page.locator('#toast')).not.toContainText(/enter weight/i);
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
+
+test.describe('a session logged against the wrong day', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  const log = async (name, sets) => {
+    await page.click('#logother');
+    await page.fill('#pickfilter', name);
+    await page.click(`[data-pick="${name}"]`);
+    for (let i = 0; i < sets; i++) {
+      await page.fill('#wt', '50');
+      await page.fill('#reps', '8');
+      await page.click('#logset');
+    }
+    await page.click('#close');
+  };
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await chooseDay(page, 'A');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('the picker says which day an exercise belongs to', async () => {
+    await page.click('#logother');
+    await page.fill('#pickfilter', 'Weighted dip');
+    // it used to name only the day you were already on, so everything else read
+    // as belonging nowhere and picking it looked like the way to log it
+    await expect(page.locator('[data-pick="Weighted dip"]')).toContainText('In Upper B');
+    await page.fill('#pickfilter', 'Deadlift');
+    await expect(page.locator('[data-pick="Deadlift"]')).toContainText('In Lower A');
+    await page.click('#pickercancel');
+  });
+
+  test('one substitution is still a substitution', async () => {
+    // the day's own work, plus one lift borrowed because the rack was taken.
+    // That is a substitution, not a session in the wrong place.
+    await page.click('.ex[data-ex="Deadlift"]');
+    for (let i = 0; i < 4; i++) {
+      await page.fill('#wt', '135');
+      await page.fill('#reps', '5');
+      await page.click('#logset');
+    }
+    await page.click('#close');
+    await log('Cable row', 3);
+    await expect(page.locator('.misday')).toHaveCount(0);
+  });
+
+  test('a whole session in the wrong place offers to move', async () => {
+    await log('Weighted dip', 4);
+    await log('Pull-up', 4);
+    await expect(page.locator('.misday')).toContainText('This looks like Upper B, not Lower A.');
+    // and it sits with the rows that are the evidence, not off the top of a
+    // screen already scrolled past
+    const order = await page.$$eval('#exlist > *', els => els.map(e =>
+      e.classList.contains('misday') ? 'OFFER' : e.querySelector('.ex.extra') ? 'EXTRA' : 'ROW'));
+    expect(order.indexOf('OFFER')).toBe(order.indexOf('EXTRA') - 1);
+  });
+
+  test('moving it re-stamps the work, not just the screen', async () => {
+    await page.click('[data-switchday]');
+    await expect(page.locator('#exlabeltext')).toContainText('Upper B');
+    await expect(page.locator('.misday')).toHaveCount(0);
+    // the targets are met now, because the sets are finally being counted
+    // against the day that prescribes them
+    await expect(page.locator('.ex[data-ex="Weighted dip"] .count')).toHaveText('4/4');
+    await expect(page.locator('.ex[data-ex="Cable row"] .count')).toHaveText('3/3');
+    // a set carries the day it was logged under, and the target it is judged
+    // against is read back out of it — left stamped 'A' it earns nothing
+    expect(await page.evaluate(() => [...new Set(db.sets.map(s => s.dy))])).toEqual(['D']);
+    expect(await page.evaluate(() => db.settings.lastDay)).toBe('D');
+  });
+
+  test('and it stays moved across a reload', async () => {
+    await page.reload();
+    await page.waitForSelector('.ex');
+    await expect(page.locator('#exlabeltext')).toContainText('Upper B');
+    await expect(page.locator('.misday')).toHaveCount(0);
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
