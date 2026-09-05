@@ -1907,3 +1907,93 @@ test.describe('a machine that takes weight off', () => {
     expect(errs).toEqual([]);
   });
 });
+
+test.describe('a session logged against the wrong day', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  const log = async (name, sets) => {
+    await page.click('#logother');
+    await page.fill('#pickfilter', name);
+    await page.click(`[data-pick="${name}"]`);
+    for (let i = 0; i < sets; i++) {
+      await page.fill('#wt', '50');
+      await page.fill('#reps', '8');
+      await page.click('#logset');
+    }
+    await page.click('#close');
+  };
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await chooseDay(page, 'A');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('the picker says which day an exercise belongs to', async () => {
+    await page.click('#logother');
+    await page.fill('#pickfilter', 'Weighted dip');
+    // it used to name only the day you were already on, so everything else read
+    // as belonging nowhere and picking it looked like the way to log it
+    await expect(page.locator('[data-pick="Weighted dip"]')).toContainText('In Upper B');
+    await page.fill('#pickfilter', 'Deadlift');
+    await expect(page.locator('[data-pick="Deadlift"]')).toContainText('In Lower A');
+    await page.click('#pickercancel');
+  });
+
+  test('one substitution is still a substitution', async () => {
+    // the day's own work, plus one lift borrowed because the rack was taken.
+    // That is a substitution, not a session in the wrong place.
+    await page.click('.ex[data-ex="Deadlift"]');
+    for (let i = 0; i < 4; i++) {
+      await page.fill('#wt', '135');
+      await page.fill('#reps', '5');
+      await page.click('#logset');
+    }
+    await page.click('#close');
+    await log('Cable row', 3);
+    await expect(page.locator('.misday')).toHaveCount(0);
+  });
+
+  test('a whole session in the wrong place offers to move', async () => {
+    await log('Weighted dip', 4);
+    await log('Pull-up', 4);
+    await expect(page.locator('.misday')).toContainText('This looks like Upper B, not Lower A.');
+    // and it sits with the rows that are the evidence, not off the top of a
+    // screen already scrolled past
+    const order = await page.$$eval('#exlist > *', els => els.map(e =>
+      e.classList.contains('misday') ? 'OFFER' : e.querySelector('.ex.extra') ? 'EXTRA' : 'ROW'));
+    expect(order.indexOf('OFFER')).toBe(order.indexOf('EXTRA') - 1);
+  });
+
+  test('moving it re-stamps the work, not just the screen', async () => {
+    await page.click('[data-switchday]');
+    await expect(page.locator('#exlabeltext')).toContainText('Upper B');
+    await expect(page.locator('.misday')).toHaveCount(0);
+    // the targets are met now, because the sets are finally being counted
+    // against the day that prescribes them
+    await expect(page.locator('.ex[data-ex="Weighted dip"] .count')).toHaveText('4/4');
+    await expect(page.locator('.ex[data-ex="Cable row"] .count')).toHaveText('3/3');
+    // a set carries the day it was logged under, and the target it is judged
+    // against is read back out of it — left stamped 'A' it earns nothing
+    expect(await page.evaluate(() => [...new Set(db.sets.map(s => s.dy))])).toEqual(['D']);
+    expect(await page.evaluate(() => db.settings.lastDay)).toBe('D');
+  });
+
+  test('and it stays moved across a reload', async () => {
+    await page.reload();
+    await page.waitForSelector('.ex');
+    await expect(page.locator('#exlabeltext')).toContainText('Upper B');
+    await expect(page.locator('.misday')).toHaveCount(0);
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});

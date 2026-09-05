@@ -40,7 +40,7 @@ npx playwright install chromium
 npm test
 ```
 
-205 tests in `tests/`, run on every pull request and again before any deploy.
+211 tests in `tests/`, run on every pull request and again before any deploy.
 They cover the things that actually broke: that a logged set survives a reload
 and a service-worker update, that `Log set` and the RIR selector are never
 underneath the rest timer at phone sizes, that unit switching converts rather
@@ -126,6 +126,27 @@ on the belt.
 
 A card whose sessions did not all qualify says so: `1 of 2 sessions counted`
 rather than `first session`, which contradicted the rows listed underneath it.
+
+## When the day on screen is not the day you did
+
+The day the app opens on is a guess: the one after whatever you logged last. It
+is wrong whenever you skip one or take them out of order, and the cost of that
+is not cosmetic. Every set is stamped with the day it was logged under, and the
+target it is judged against — for the count badge, for whether the weight goes
+up next time — is read back out of that stamp. A session logged under the wrong
+day sits in a list of `Not in Upper A` rows with no targets at all.
+
+Two things now catch it. The exercise picker names the day each exercise belongs
+to, not only the ones on the day you are already on — saying it just for this
+day left everything else looking like it belonged nowhere, so picking it read as
+the way to log it. And once another day of your program covers more of the
+session than the day on screen does, an offer appears directly above the rows
+that are the evidence: *This looks like Upper B, not Lower A* — **Switch**.
+
+Switching moves the session and re-stamps the work, so the targets fill in and
+the weights progress from the right prescription. One lift borrowed from another
+day stays a substitution: the offer needs the other day to cover strictly more
+of the session than this one does.
 
 ## Machines that take weight off
 

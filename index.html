@@ -161,6 +161,9 @@
     letter-spacing:-.01em;padding:9px 13px;cursor:pointer;
   }
   .banner.bad{border-color:var(--danger)}
+  /* Sits inside the exercise list rather than above it, so it lines up with the
+     rows it is about. */
+  .banner.misday{margin:2px 0 10px}
   .banner button.later{margin-left:0;background:none;color:var(--ink-3);border:1px solid var(--line)}
 
   /* session picker */
@@ -1689,6 +1692,41 @@ function renderDays(){
        <b>${esc(d.name)}</b><span>${esc(d.tag||'')}</span></button>`).join('');
 }
 
+// Which day of the program a session actually looks like. The day on screen is
+// a guess about a rotation — the one after whatever was logged last — and a
+// lifter who skips one, or does them out of order, lands on a screen listing
+// none of what they came to do. Logging it anyway files the whole session under
+// the wrong day as "not in" rows with no targets to work against.
+// Only answered when another day covers strictly more of the work than the one
+// on screen does, so a single substitution stays a substitution.
+function looksLikeDay(date){
+  const done = [...new Set(db.sets.filter(s => s.d === date).map(s => s.e))];
+  if(!done.length) return null;
+  const score = d => done.filter(e => d.ex.some(([n]) => n === e)).length;
+  const here = score(dayById(state.day));
+  let best = null, bestN = here;
+  for(const d of program()){
+    if(d.id === state.day) continue;
+    const n = score(d);
+    if(n > bestN){ best = d; bestN = n; }
+  }
+  return best;
+}
+
+// Moves the session, and the work already logged in it, to the day that work
+// belongs to. The restamp is the point: a set carries the day it was logged
+// under, and the target it is judged against is read back out of it, so sets
+// left stamped with the wrong day never earn their next weight.
+function switchSessionDay(id){
+  const d = program().find(x => x.id === id);
+  if(!d) return;
+  state.day = id;
+  db.settings.lastDay = id;
+  db.sets.forEach(s => { if(s.d === state.date) s.dy = id; });
+  save(); renderDays(); renderExercises();
+  toast(`Moved to ${d.name}`);
+}
+
 const setsFor = (date, ex) => db.sets.filter(s => s.d === date && s.e === ex);
 // Warm-ups are logged, but they are not the work. Targets, trends and the
 // session summary all mean working sets.
@@ -1756,6 +1794,13 @@ function renderExercises(){
       <span class="name">${esc(name)}<span class="pairline">Not in ${esc(day.name)}</span></span>
       <span class="count">${n}</span></button></div>`;
   });
+  // Offered where the evidence is, immediately above the rows that are the
+  // evidence, rather than at the top of a screen you have already scrolled past.
+  const other = state.progEdit ? null : looksLikeDay(state.date);
+  if(other) extraRows.unshift(`<div class="banner misday">
+      <span>This looks like ${esc(other.name)}, not ${esc(day.name)}.</span>
+      <button data-switchday="${esc(other.id)}">Switch</button>
+    </div>`);
 
   $('#exlist').innerHTML = rows.concat(extraRows).join('') ||
     `<div class="empty">No exercises in this day yet. Tap Edit, then Add exercise.</div>`;
@@ -2988,6 +3033,8 @@ $('#exlist').addEventListener('click', e=>{
     save(); renderExercises();
     return;
   }
+  const sw = e.target.closest('[data-switchday]');
+  if(sw){ switchSessionDay(sw.dataset.switchday); return; }
   const ed = e.target.closest('[data-edit]');
   if(ed){ openExEditor(ed.dataset.edit); return; }
   const b = e.target.closest('[data-ex]'); if(!b) return;
@@ -3573,12 +3620,16 @@ function allKnownExercises(){
 
 function renderPickList(){
   const q = $('#pickfilter').value.trim().toLowerCase();
-  const day = dayById(state.day);
-  const listed = new Set(day.ex.map(([n]) => n));
+  // Every exercise says which day it belongs to, not just the ones on the day
+  // you happen to be on. Saying it only for this day left the rest looking like
+  // they belonged nowhere, so picking one read as the only way to log it — and
+  // a whole session went in as extras against a day it was not.
+  const home = {};
+  program().forEach(d => d.ex.forEach(([n]) => { if(!(n in home)) home[n] = d.name; }));
   const hits = allKnownExercises().filter(n => !q || n.toLowerCase().includes(q));
   $('#picklist').innerHTML = hits.length ? hits.map(n =>
     `<div class="exrow"><button class="ex" data-pick="${esc(n)}">
-      <span class="name">${esc(n)}${listed.has(n) ? `<span class="pairline">In ${esc(day.name)}</span>` : ''}</span>
+      <span class="name">${esc(n)}${home[n] ? `<span class="pairline">In ${esc(home[n])}</span>` : ''}</span>
     </button></div>`).join('')
     : `<div class="empty">Nothing matches. Add it to a day from Edit if it is new.</div>`;
 }
