@@ -89,7 +89,7 @@ the Settings header, so confirming an update landed is one tap.
 `main`, but only after the test workflow it calls has passed. Live at
 <https://hype-armor.github.io/WorkoutLogBook/>.
 
-Two repository settings have to be set once, by hand:
+Three repository settings have to be set once, by hand:
 
 - **Settings → Pages → Build and deployment → Source: GitHub Actions.** Until
   this is set the deploy fails with "Pages site not found".
@@ -97,6 +97,38 @@ Two repository settings have to be set once, by hand:
   to create and approve pull requests.** Without it Release Please fails with
   `GitHub Actions is not permitted to create or approve pull requests`, and no
   release PR is ever opened.
+- **Settings → Branches → Add branch protection rule** on `main`, with **Require
+  status checks to pass before merging** ticked and `playwright` — the job name
+  in `ci.yml`, which is what the check is called — added as the required check.
+  This is the only thing that stops a red pull request being merged. See below.
+
+## Gating merges on the tests
+
+`pages.yml` already refuses to publish a build the suite rejects, so a red merge
+cannot reach anyone's phone. What it cannot do is keep `main` green: the deploy
+fails, the app stays on the last good version, and the broken commit is still in
+the history. Requiring the check on `main` is what closes that.
+
+Set the required check to exactly **`playwright`**. Status checks are matched by
+name, and that is the job id in `ci.yml`, not the workflow's name (`Tests`).
+
+Do **not** also require approving reviews. GitHub does not let you approve your
+own pull request, so on a repository with one maintainer that setting makes
+every pull request unmergeable.
+
+"Require branches to be up to date before merging" is a separate tick and is not
+needed here: it forces a rebase of the release pull request every time anything
+else lands, and with changes going in one at a time there is nothing for it to
+catch. Leave it off unless two branches are ever in flight at once.
+
+Leaving **Do not allow bypassing the above settings** unticked keeps an admin
+override, which is worth having: `ci.yml` runs on `pull_request`, and a run that
+fails to start leaves a pull request with no check at all rather than a failed
+one — which a required check treats as "not passed" forever. That happened to
+the 1.13.1 release pull request, though not to any release since. The override
+is one way out; the other, which does not weaken the rule, is that `ci.yml` also
+has `workflow_dispatch`, so **Actions → Tests → Run workflow** against the stuck
+branch puts a real `playwright` check on its head commit.
 
 Turning Pages on also offers to commit a starter workflow of its own,
 `static.yml`. Decline it, or delete it afterwards: it uploads and deploys with
