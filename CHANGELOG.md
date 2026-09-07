@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.15.0...logbook-v1.16.0) (2026-09-07)
+
+
+### Features
+
+* say which session is next instead of leaving it to be inferred ([9ca9dbc](https://github.com/hype-armor/WorkoutLogBook/commit/9ca9dbc0f4afbc3161f55732328e62624af14588))
+
 ## [1.15.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.14.0...logbook-v1.15.0) (2026-09-05)
 
 
