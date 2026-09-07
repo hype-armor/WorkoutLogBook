@@ -1997,3 +1997,79 @@ test.describe('a session logged against the wrong day', () => {
     expect(errs).toEqual([]);
   });
 });
+
+test.describe('which workout is next', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    // a rotation part-way through: Lower A, Upper A and Lower B are behind us
+    await page.evaluate(() => {
+      const iso = n => { const t = new Date(); t.setDate(t.getDate() - n);
+        return new Date(t.getTime() - t.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+      const mk = (d, dy, e) => ({ id: e + d, t: Date.now(), d, e, dy, w: 100, r: 8, rir: 2, u: 'lb' });
+      db.sets = [mk(iso(9), 'A', 'Deadlift'), mk(iso(6), 'B', 'Overhead press'),
+                 mk(iso(2), 'C', 'Front squat')];
+      save(); state.day = suggestDay(); rerenderAll();
+    });
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('the session on screen says whether it is the one that is up', async () => {
+    await expect(page.locator('#daytoggle')).toContainText('Upper B');
+    await expect(page.locator('#daytoggle .pill')).toHaveText('Next');
+    // and how long since you last did it, which is the evidence for the claim
+    await expect(page.locator('#daytoggle')).toContainText('not done yet');
+  });
+
+  test('every session says how long since you did it', async () => {
+    await page.click('#daytoggle');
+    const cards = page.locator('.day');
+    await expect(cards.nth(0)).toContainText('9 days ago');
+    await expect(cards.nth(1)).toContainText('6 days ago');
+    await expect(cards.nth(2)).toContainText('2 days ago');
+    await expect(cards.nth(3)).toContainText('not done yet');
+    // exactly one of them is up, and it is not merely the selected one
+    await expect(page.locator('.day .pill')).toHaveCount(1);
+    await expect(page.locator('.day[data-day="D"] .pill')).toHaveText('Next');
+  });
+
+  test('looking at another session says which one is still next', async () => {
+    await page.click('[data-day="A"]');
+    await expect(page.locator('#exlabeltext')).toContainText('Lower A');
+    // the day's own tag matters less than not losing your place in the rotation
+    await expect(page.locator('#daytoggle')).toContainText('Upper B is next');
+    await expect(page.locator('#daytoggle .pill')).toHaveCount(0);
+  });
+
+  test('a session under way is the one that is up, not the one after', async () => {
+    await page.click('.ex[data-ex="Deadlift"]');
+    await page.fill('#wt', '135');
+    await page.fill('#reps', '5');
+    await page.click('#logset');
+    await page.click('#close');
+    // mid-session the rotation must not step out from under you
+    await expect(page.locator('#daytoggle')).toContainText('Lower A');
+    await expect(page.locator('#daytoggle .pill')).toHaveText('Next');
+    await expect(page.locator('#daytoggle')).toContainText('today');
+  });
+
+  test('finishing hands the rotation on', async () => {
+    await page.click('#finish');
+    await expect(page.locator('#exlabeltext')).toContainText('finished');
+    // the screen stays on what you just did; the chip says what comes after it
+    await expect(page.locator('#daytoggle')).toContainText('Lower A');
+    await expect(page.locator('#daytoggle')).toContainText('Upper A is next');
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
