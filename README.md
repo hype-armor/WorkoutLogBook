@@ -40,7 +40,7 @@ npx playwright install chromium
 npm test
 ```
 
-211 tests in `tests/`, run on every pull request and again before any deploy.
+217 tests in `tests/`, run on every pull request and again before any deploy.
 They cover the things that actually broke: that a logged set survives a reload
 and a service-worker update, that `Log set` and the RIR selector are never
 underneath the rest timer at phone sizes, that unit switching converts rather
@@ -126,6 +126,23 @@ on the belt.
 
 A card whose sessions did not all qualify says so: `1 of 2 sessions counted`
 rather than `first session`, which contradicted the rows listed underneath it.
+
+## Which session is next
+
+The app opens on one session out of four, and which one it opens on used to be
+left to be inferred. It says it now: the one that is up carries a **Next** pill,
+and every day in the picker says how long since you last did it — `9 days ago`,
+`2 days ago`, `not done yet` — which is the evidence for the claim and the thing
+that shows when the rotation on screen has stopped matching the week you had.
+
+Collapsed, the chip is the whole answer to "what am I doing today", so when the
+session it is showing is *not* the one that is up — you went to look at another,
+or stayed on one you have finished — it says which one is instead of repeating
+the day's tag: `Upper B is next`.
+
+A session under way is itself the one that is up; the rotation must not step out
+from under you mid-workout. Finishing hands it on, and the chip says so while the
+screen stays on what you just did.
 
 ## When the day on screen is not the day you did
 

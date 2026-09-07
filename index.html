@@ -180,13 +180,25 @@
   .daynow b{display:block;font-size:17px;font-weight:680;letter-spacing:-.02em}
   .daynow span{color:var(--ink-2);font-size:13px;letter-spacing:-.005em}
   .daynow .chev{color:var(--accent-ink);font-size:15px;flex:none;line-height:1}
+  /* Which session is up, said in a word rather than left to be worked out from
+     the order of the cards. */
+  .daynow .hd, .day .hd{
+    display:flex;align-items:center;gap:8px;color:inherit;font-size:inherit;letter-spacing:inherit}
+  .daynow .hd b, .day .hd b{margin-bottom:0}
+  .daynow .pill, .day .pill{
+    flex:none;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+    padding:3px 7px;border-radius:999px;background:var(--accent-fill);color:var(--on-accent);
+  }
   .day{
     background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
     padding:14px;text-align:left;color:var(--ink);font-family:inherit;
     font-size:14px;cursor:pointer;transition:background .15s,border-color .15s;
   }
   .day b{display:block;font-size:17px;font-weight:680;letter-spacing:-.02em;margin-bottom:2px}
-  .day span{color:var(--ink-3);font-size:13px;letter-spacing:-.005em}
+  .day span{color:var(--ink-2);font-size:13px;letter-spacing:-.005em}
+  /* Its own line under the tag: how long ago is the thing that says whether the
+     rotation on screen still matches the week you actually had. */
+  .day .when{display:block;margin-top:6px;color:var(--ink-3);font-size:12px}
   .day[aria-pressed="true"]{
     border-color:var(--accent);
     background:linear-gradient(155deg,rgba(124,107,255,.26),rgba(124,107,255,.07));
@@ -1459,6 +1471,44 @@ function ownProgram(){
   if(!db.program) db.program = JSON.parse(JSON.stringify(DEFAULT_PROGRAM));
   return db.program;
 }
+// Which session is up. The rotation says the one after whatever was trained
+// last; a session still open today is itself the one up, and one already
+// finished hands over to the next.
+function upNext(){
+  const p = program();
+  const last = db.sets.slice(-1)[0];
+  if(last?.dy){
+    const i = p.findIndex(d => d.id === last.dy);
+    if(i >= 0){
+      const openToday = last.d === todayISO() && !db.days[last.d]?.done;
+      return openToday ? p[i].id : p[(i+1) % p.length].id;
+    }
+  }
+  return db.settings.lastDay || p[0].id;
+}
+
+// The last date this day was actually trained, by the stamp every set carries.
+function lastDoneOn(id){
+  let best = null;
+  for(const s of db.sets){
+    if(s.dy === id && !isWarmup(s) && (!best || s.d > best)) best = s.d;
+  }
+  return best;
+}
+
+const dayDiff = (a, b) => Math.round((Date.parse(b + 'T00:00') - Date.parse(a + 'T00:00')) / 86400000);
+
+// "yesterday" beats "1 day ago", and past a fortnight the exact count has
+// stopped being the thing you want to know.
+function agoLabel(iso){
+  const n = dayDiff(iso, todayISO());
+  if(n <= 0) return 'today';
+  if(n === 1) return 'yesterday';
+  if(n < 14) return `${n} days ago`;
+  const w = Math.round(n / 7);
+  return w < 9 ? `${w} weeks ago` : 'months ago';
+}
+
 const meta = ex => db.ex?.[ex] || {};
 const kindOf = ex => meta(ex).kind || DEFAULT_KIND[ex] || 'weight';
 const isUnilateral = ex => meta(ex).uni ?? !!DEFAULT_UNILATERAL[ex];
@@ -1676,11 +1726,21 @@ function renderDays(){
   const el = $('#days');
   const open = state.dayPickerOpen || state.progEdit;
   el.classList.toggle('open', open);
+  const next = upNext();
+  const when = id => { const d = lastDoneOn(id); return d ? agoLabel(d) : 'not done yet'; };
 
   if(!open){
     const d = dayById(state.day);
+    // Collapsed, this is the whole answer to "what am I doing today", so it has
+    // to say whether what it is showing is the one that is up. When it is not —
+    // you went looking at another day, or stayed on one you have finished —
+    // naming the one that is beats repeating the day's own tag.
+    const sub = d.id === next
+      ? [d.tag, when(d.id)].filter(Boolean).join(' · ')
+      : `${dayById(next).name} is next`;
     el.innerHTML = `<button class="daynow" id="daytoggle" aria-expanded="false">
-      <span class="txt"><b>${esc(d.name)}</b>${d.tag ? `<span>${esc(d.tag)}</span>` : ''}</span>
+      <span class="txt"><span class="hd"><b>${esc(d.name)}</b>${
+        d.id === next ? '<span class="pill">Next</span>' : ''}</span><span>${esc(sub)}</span></span>
       <span class="chev" aria-hidden="true">&#8964;</span>
       <span class="sr-only">Change session</span>
     </button>`;
@@ -1689,7 +1749,10 @@ function renderDays(){
 
   el.innerHTML = program().map(d =>
     `<button class="day" data-day="${esc(d.id)}" aria-pressed="${d.id===state.day}">
-       <b>${esc(d.name)}</b><span>${esc(d.tag||'')}</span></button>`).join('');
+       <span class="hd"><b>${esc(d.name)}</b>${
+         d.id === next ? '<span class="pill">Next</span>' : ''}</span>
+       <span>${esc(d.tag||'')}</span>
+       <span class="when">${esc(when(d.id))}</span></button>`).join('');
 }
 
 // Which day of the program a session actually looks like. The day on screen is
@@ -1933,7 +1996,8 @@ function finishSession(){
   (db.days[state.date] ||= {}).done = Date.now();
   stopRest(); // you are not resting between sets any more
   save();
-  renderExercises();
+  // Finishing hands the rotation on, so the chip stops calling this one next.
+  renderDays(); renderExercises();
   if(hasPain(state.date)){
     toast('Session finished');
   } else {
@@ -2687,7 +2751,9 @@ function closeSheet(){
   const ex = state.ex;
   state.editing = null;
   hideExerciseScreen();
-  renderExercises();
+  // The first set of a session changes which one is up, and the chip behind
+  // this screen is where that is said.
+  renderDays(); renderExercises();
   exButton(ex)?.focus();
   // Leaving by the back button should also unwind the history entry, so the
   // phone's back gesture does not have to be pressed twice.
@@ -3766,15 +3832,13 @@ function rerenderAll(){
 // Which day comes next: the one after whatever was logged last.
 function suggestDay(){
   const last = db.sets.slice(-1)[0];
-  const p = program();
-  if(last?.dy){
-    const i = p.findIndex(d => d.id === last.dy);
-    // Stay on today's workout for the rest of the day, finished or not —
-    // advancing the moment you tap Finish leaves the Train tab showing one
-    // day while the summary below it describes another.
-    if(i >= 0) return last.d === todayISO() ? p[i].id : p[(i+1) % p.length].id;
-  }
-  return db.settings.lastDay || p[0].id;
+  // Stay on today's workout for the rest of the day, finished or not —
+  // advancing the moment you tap Finish leaves the Train tab showing one day
+  // while the summary below it describes another. Which one is *up* still
+  // advances; that is upNext's job, and it is said in words rather than by
+  // moving the screen out from under a session you are looking at.
+  if(last?.dy && last.d === todayISO() && program().some(d => d.id === last.dy)) return last.dy;
+  return upNext();
 }
 
 let persistentStorage = null;
