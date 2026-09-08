@@ -2073,3 +2073,81 @@ test.describe('which workout is next', () => {
     expect(errs).toEqual([]);
   });
 });
+
+test.describe('taking back work logged against the wrong day', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  // a whole Lower A session logged while the app sat on Lower B
+  const seedStrays = () => page.evaluate(() => {
+    const d = todayISO();
+    const mk = (e, n, wu) => Array.from({ length: n }, (_, i) => ({
+      id: e + i, t: Date.now() + i, d, e, dy: 'C', w: 100, r: 8, rir: 2, u: 'lb',
+      ...(wu && i === 0 ? { wu: true } : {}) }));
+    db.sets = [...mk('Leg press', 3), ...mk('Deadlift', 5, true), ...mk('Leg curl', 3)];
+    db.settings.lastDay = 'C'; save(); state.day = 'C'; rerenderAll();
+  });
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await seedStrays();
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('no remove control under your thumb mid-session', async () => {
+    // these rows are legitimately used for substitutions, so the destructive
+    // control lives behind Edit, where the day's other destructive edits are
+    await expect(page.locator('.ex.extra')).toHaveCount(3);
+    await expect(page.locator('[data-drop]')).toHaveCount(0);
+  });
+
+  test('the way to fix it is not hidden by the place you go to look', async () => {
+    await page.click('#editprog');
+    // hunting for a way to clear these rows is exactly what sends you into
+    // Edit, and the one-tap answer used to be suppressed there
+    await expect(page.locator('.misday')).toContainText('This looks like Lower A, not Lower B.');
+    await expect(page.locator('[data-drop]')).toHaveCount(3);
+  });
+
+  test('a stray exercise can be removed, warm-ups and all', async () => {
+    // the row counts working sets but stands for every set logged under it —
+    // leaving the warm-up behind would leave the row on screen saying 0
+    await expect(page.locator('.ex.extra[data-ex="Deadlift"] .count')).toHaveText('4');
+    await page.click('[data-drop="Deadlift"]');
+    await expect(page.locator('.ex.extra')).toHaveCount(2);
+    expect(await page.evaluate(() => db.sets.some(s => s.e === 'Deadlift'))).toBe(false);
+    await expect(page.locator('#toast')).toContainText('Deadlift removed');
+  });
+
+  test('and put back exactly where it was', async () => {
+    await page.click('#toast button');
+    await expect(page.locator('.ex.extra')).toHaveCount(3);
+    await expect(page.locator('.ex.extra[data-ex="Deadlift"] .count')).toHaveText('4');
+    // which session is up is read off the last set in the array, so undo has
+    // to restore the order, not just the sets
+    expect(await page.evaluate(() => db.sets.at(-1).e)).toBe('Leg curl');
+    expect(await page.evaluate(() => db.sets.map(s => s.e + s.id.slice(-1)).join(',')))
+      .toBe('Leg press0,Leg press1,Leg press2,Deadlift0,Deadlift1,Deadlift2,Deadlift3,Deadlift4,'
+          + 'Leg curl0,Leg curl1,Leg curl2');
+  });
+
+  test('clearing them all leaves the day as if nothing was logged', async () => {
+    for (const name of ['Leg press', 'Deadlift', 'Leg curl']) {
+      await page.click(`[data-drop="${name}"]`);
+    }
+    await expect(page.locator('.ex.extra')).toHaveCount(0);
+    await expect(page.locator('.misday')).toHaveCount(0);
+    await page.click('#editprog');
+    await expect(page.locator('#exlist')).toContainText('Front squat');
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});

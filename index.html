@@ -1776,6 +1776,27 @@ function looksLikeDay(date){
   return best;
 }
 
+// Everything logged for one exercise on the day being looked at, warm-ups
+// included: the row counts working sets, but it stands for all of them, and
+// leaving the warm-ups behind would leave the row on screen still saying 0.
+// Undoable, because this is real logged work and the tap that removes it is
+// one row away from the tap that opens it.
+function dropExtra(name){
+  const hit = s => s.d === state.date && s.e === name;
+  const gone = [];
+  db.sets.forEach((s, i) => { if(hit(s)) gone.push({s, i}); });
+  if(!gone.length) return;
+  db.sets = db.sets.filter(s => !hit(s));
+  save(); renderDays(); renderExercises();
+  toast(`${name} removed`, {label:'Undo', fn:()=>{
+    // Back at the indices they came from, lowest first, so each insertion
+    // shifts the later ones into place. Which session is up is read off the
+    // last set in this array, so its order is not decoration.
+    gone.forEach(({s, i}) => db.sets.splice(i, 0, s));
+    save(); renderDays(); renderExercises(); toast('Restored');
+  }});
+}
+
 // Moves the session, and the work already logged in it, to the day that work
 // belongs to. The restamp is the point: a set carries the day it was logged
 // under, and the target it is judged against is read back out of it, so sets
@@ -1853,13 +1874,24 @@ function renderExercises(){
   const extras = [...new Set(db.sets.filter(s => s.d === state.date && !listed.has(s.e)).map(s => s.e))];
   const extraRows = extras.map(name => {
     const n = workingSets(setsFor(state.date, name)).length;
+    // Logged by mistake is the other way one of these gets here, and there was
+    // no way to take it back: the row is not in the program, so the program
+    // editor's own controls never applied to it. Removing lives where the day's
+    // other destructive edits already do, behind Edit, rather than under a
+    // thumb mid-session — these rows are legitimately used for substitutions.
+    const tools = state.progEdit ? `<div class="tools">
+        <button data-drop="${esc(name)}" aria-label="Remove ${esc(name)} from ${
+          esc(prettyDate(state.date))}">&#215;</button>
+      </div>` : '';
     return `<div class="exrow"><button class="ex extra" data-ex="${esc(name)}">
       <span class="name">${esc(name)}<span class="pairline">Not in ${esc(day.name)}</span></span>
-      <span class="count">${n}</span></button></div>`;
+      <span class="count">${n}</span></button>${tools}</div>`;
   });
   // Offered where the evidence is, immediately above the rows that are the
   // evidence, rather than at the top of a screen you have already scrolled past.
-  const other = state.progEdit ? null : looksLikeDay(state.date);
+  // Shown while editing too: hunting for a way to clear these rows is exactly
+  // what sends you into Edit, and hiding the one-tap answer there was perverse.
+  const other = looksLikeDay(state.date);
   if(other) extraRows.unshift(`<div class="banner misday">
       <span>This looks like ${esc(other.name)}, not ${esc(day.name)}.</span>
       <button data-switchday="${esc(other.id)}">Switch</button>
@@ -3101,6 +3133,8 @@ $('#exlist').addEventListener('click', e=>{
   }
   const sw = e.target.closest('[data-switchday]');
   if(sw){ switchSessionDay(sw.dataset.switchday); return; }
+  const drop = e.target.closest('[data-drop]');
+  if(drop){ dropExtra(drop.dataset.drop); return; }
   const ed = e.target.closest('[data-edit]');
   if(ed){ openExEditor(ed.dataset.edit); return; }
   const b = e.target.closest('[data-ex]'); if(!b) return;

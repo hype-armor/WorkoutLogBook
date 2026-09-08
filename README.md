@@ -40,7 +40,7 @@ npx playwright install chromium
 npm test
 ```
 
-217 tests in `tests/`, run on every pull request and again before any deploy.
+223 tests in `tests/`, run on every pull request and again before any deploy.
 They cover the things that actually broke: that a logged set survives a reload
 and a service-worker update, that `Log set` and the RIR selector are never
 underneath the rest timer at phone sizes, that unit switching converts rather
@@ -196,6 +196,15 @@ Switching moves the session and re-stamps the work, so the targets fill in and
 the weights progress from the right prescription. One lift borrowed from another
 day stays a substitution: the offer needs the other day to cover strictly more
 of the session than this one does.
+
+Logged by mistake is the other way a `Not in` row appears, and it used to be a
+one-way door: the row is not in the program, so the program editor's controls
+never applied to it. Under **Edit** each one now has a **×** that removes
+everything logged under it that day, warm-ups included, with an Undo that puts
+the sets back at the indices they came from — which session is up is read off
+the last set in the list, so the order is not decoration. The control lives
+behind Edit rather than under a thumb mid-session, because these rows are
+legitimately used for substitutions.
 
 ## Machines that take weight off
 
