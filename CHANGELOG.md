@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.17.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.16.0...logbook-v1.17.0) (2026-09-08)
+
+
+### Features
+
+* let a stray exercise be taken back off a day ([c162d56](https://github.com/hype-armor/WorkoutLogBook/commit/c162d5664fd3a6b6420aaee2f4f3416ccb800c59))
+
+
+### Bug Fixes
+
+* keep a session's extra lifts on the day it was logged under ([e08ecc4](https://github.com/hype-armor/WorkoutLogBook/commit/e08ecc479fcb63c9a5e682d153f091013db8c509))
+
+
+### Documentation
+
+* write down the branch protection that gates merges on the tests ([352d063](https://github.com/hype-armor/WorkoutLogBook/commit/352d063e3e1706fbf358d275815df93eb3f90ffc))
+
 ## [1.16.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.15.0...logbook-v1.16.0) (2026-09-07)
 
 
