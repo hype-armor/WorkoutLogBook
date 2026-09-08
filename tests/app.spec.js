@@ -2151,3 +2151,103 @@ test.describe('taking back work logged against the wrong day', () => {
     expect(errs).toEqual([]);
   });
 });
+
+test.describe('a session belongs to the day it was logged under', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await chooseDay(page, 'A');
+    // today's Lower A session, most of it where it belongs
+    await page.click('.ex[data-ex="Deadlift"]');
+    for (let i = 0; i < 4; i++) {
+      await page.fill('#wt', '225');
+      await page.fill('#reps', '4');
+      await page.click('#logset');
+    }
+    await page.click('#close');
+    // and one substitution, because the rack was taken
+    await page.click('#logother');
+    await page.fill('#pickfilter', 'Front squat');
+    await page.click('[data-pick="Front squat"]');
+    await page.fill('#wt', '135');
+    await page.fill('#reps', '5');
+    await page.click('#logset');
+    await page.click('#close');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('it shows on the day it was logged under', async () => {
+    await expect(page.locator('.ex.extra[data-ex="Front squat"]')).toHaveCount(1);
+  });
+
+  test('and not on the days it was not', async () => {
+    // going by date alone, today's work turned up under all four days at once:
+    // switch to another day to look at it and there was today's session again,
+    // filed as "not in" a day it was never logged against
+    for (const id of ['B', 'C', 'D']) {
+      await chooseDay(page, id);
+      await expect(page.locator('.ex.extra')).toHaveCount(0);
+    }
+    await chooseDay(page, 'A');
+    await expect(page.locator('.ex.extra[data-ex="Front squat"]')).toHaveCount(1);
+  });
+
+  test('and no offer to move a session that is not there', async () => {
+    // Front squat is a Lower B lift, so by date alone Lower B scored higher
+    // than whatever day you had switched to, and every day but Lower B told you
+    // to switch to it
+    await chooseDay(page, 'D');
+    await expect(page.locator('.misday')).toHaveCount(0);
+    await chooseDay(page, 'A');
+    // on the day it really was logged under, one substitution is still a
+    // substitution — the day's own work outnumbers it
+    await expect(page.locator('.misday')).toHaveCount(0);
+  });
+
+  test('sets from before the day was recorded still show somewhere', async () => {
+    // the first version of the app did not stamp the day. Migration takes the
+    // commonest stamp on the date, so a set logged in the same session as
+    // stamped ones lands with them rather than under all four days.
+    await page.evaluate(() => {
+      const raw = JSON.parse(localStorage.getItem('logbook-v1'));
+      raw.sets.push({ id: 'old1', t: Date.now(), d: todayISO(), e: 'Calf raise',
+                      w: 100, r: 8, rir: 2, u: 'lb' });
+      localStorage.setItem('logbook-v1', JSON.stringify(raw));
+    });
+    await page.reload();
+    await page.waitForSelector('.ex');
+    expect(await page.evaluate(() => db.sets.find(s => s.id === 'old1').dy)).toBe('A');
+    await expect(page.locator('.ex.extra[data-ex="Calf raise"]')).toHaveCount(1);
+    await chooseDay(page, 'B');
+    await expect(page.locator('.ex.extra')).toHaveCount(0);
+  });
+
+  test('and a day is judged by what was logged under it', async () => {
+    // a whole Upper B session filed under Upper B, and one stray lift under
+    // Upper A. Scored by date, the Upper B session was the loudest thing that
+    // day, so Upper A was told to become Upper B — which would have re-stamped
+    // a lone Front squat into a session it was never part of.
+    await page.evaluate(() => {
+      const d = todayISO();
+      const mk = (e, dy) => ({ id: e + dy, t: Date.now(), d, e, dy, w: 100, r: 8, rir: 2, u: 'lb' });
+      db.sets = ['Weighted dip', 'Pull-up', 'Seated DB press', 'Cable row', 'Face pull', 'Barbell curl']
+        .map(e => mk(e, 'D'));
+      db.sets.push(mk('Front squat', 'B'));
+      save(); state.day = 'B'; rerenderAll();
+    });
+    await expect(page.locator('.ex.extra[data-ex="Front squat"]')).toHaveCount(1);
+    await expect(page.locator('.misday')).toContainText('This looks like Lower B, not Upper A.');
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});

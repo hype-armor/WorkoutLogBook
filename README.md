@@ -40,7 +40,7 @@ npx playwright install chromium
 npm test
 ```
 
-223 tests in `tests/`, run on every pull request and again before any deploy.
+229 tests in `tests/`, run on every pull request and again before any deploy.
 They cover the things that actually broke: that a logged set survives a reload
 and a service-worker update, that `Log set` and the RIR selector are never
 underneath the rest timer at phone sizes, that unit switching converts rather
@@ -196,6 +196,24 @@ Switching moves the session and re-stamps the work, so the targets fill in and
 the weights progress from the right prescription. One lift borrowed from another
 day stays a substitution: the offer needs the other day to cover strictly more
 of the session than this one does.
+
+A `Not in` row belongs to the session it was logged in, which is the day stamped
+on each set — not merely the date. Going by date alone, today's work appeared
+under all four days at once: switch to another day to look at it and there was
+today's session again, filed as `Not in` a day it was never logged against. The
+data was right and the reading of it was wrong, so nothing needed deleting.
+
+Scoring works the same way. A day is judged by what was logged *under it*, so a
+stray lift under one day is not told to join whatever session was loudest that
+date. And with no `Not in` rows on screen there is no offer at all: without them
+it is not a misfiled session, it is you looking at another day, and being told to
+switch back is a nag.
+
+The very first version of the app did not record the day. Where one set of a
+date carries it and its neighbours do not, migration gives them the commonest
+stamp on that date — they were the same session. A date with nothing stamped
+anywhere is left alone and still shows everywhere, because there is nothing
+better to say about it.
 
 Logged by mistake is the other way a `Not in` row appears, and it used to be a
 one-way door: the row is not in the program, so the program editor's controls

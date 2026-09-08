@@ -1353,6 +1353,21 @@ function migrate(d){
         .map(p => p.w);
     }
   }
+  // The day a set was logged under drives which session it belongs to, which
+  // target it is judged against, and now which day lists it. The very first
+  // version of the app did not record it. Where one set of a date carries the
+  // stamp and its neighbours do not, they were the same session — take the
+  // commonest stamp on the date. A date with no stamp anywhere is left alone:
+  // there is nothing on it to infer from.
+  {
+    const byDate = {};
+    for(const s of out.sets) if(s.dy) (byDate[s.d] ||= {})[s.dy] = (byDate[s.d][s.dy] || 0) + 1;
+    for(const s of out.sets){
+      if(s.dy || !byDate[s.d]) continue;
+      s.dy = Object.entries(byDate[s.d]).sort((a, b) => b[1] - a[1])[0][0];
+    }
+  }
+
   // v1 kept bar and rest overrides in flat maps, and weights were always lb.
   if(d.bars) for(const [name, v] of Object.entries(d.bars))
     (out.ex[name] ||= {}).bar = typeof v === 'number' ? {lb:v, kg:+(v/LB_PER_KG).toFixed(1)} : v;
@@ -1763,7 +1778,10 @@ function renderDays(){
 // Only answered when another day covers strictly more of the work than the one
 // on screen does, so a single substitution stays a substitution.
 function looksLikeDay(date){
-  const done = [...new Set(db.sets.filter(s => s.d === date).map(s => s.e))];
+  // The work logged under the day on screen, which is what that day is being
+  // judged on. Every set of the date would drag in sessions filed elsewhere.
+  const done = [...new Set(db.sets
+    .filter(s => s.d === date && (!s.dy || s.dy === state.day)).map(s => s.e))];
   if(!done.length) return null;
   const score = d => done.filter(e => d.ex.some(([n]) => n === e)).length;
   const here = score(dayById(state.day));
@@ -1868,10 +1886,19 @@ function renderExercises(){
       </div>` : '';
     return `<div class="exrow">${ex}${tools}</div>`;
   });
-  // Anything logged today that this day does not list — a substitution when the
-  // rack was taken. Shown so it is not invisible, without joining the program.
+  // Anything logged in this session that this day does not list — a
+  // substitution when the rack was taken. Shown so it is not invisible, without
+  // joining the program.
+  //
+  // "In this session" is the stamp each set carries, not merely the date. Going
+  // by date alone, today's work turned up under all four days at once: switch
+  // to another day to look at it and there was today's session again, filed as
+  // "not in" a day it was never logged against. Only a set with no stamp at all
+  // — data from before the field existed that migration could not attribute —
+  // still shows everywhere, because there is nothing better to say about it.
   const listed = new Set(day.ex.map(([n]) => n));
-  const extras = [...new Set(db.sets.filter(s => s.d === state.date && !listed.has(s.e)).map(s => s.e))];
+  const mine = s => s.d === state.date && (!s.dy || s.dy === state.day);
+  const extras = [...new Set(db.sets.filter(s => mine(s) && !listed.has(s.e)).map(s => s.e))];
   const extraRows = extras.map(name => {
     const n = workingSets(setsFor(state.date, name)).length;
     // Logged by mistake is the other way one of these gets here, and there was
@@ -1891,7 +1918,9 @@ function renderExercises(){
   // evidence, rather than at the top of a screen you have already scrolled past.
   // Shown while editing too: hunting for a way to clear these rows is exactly
   // what sends you into Edit, and hiding the one-tap answer there was perverse.
-  const other = looksLikeDay(state.date);
+  // No rows, no offer: without them it is not a misfiled session, it is you
+  // looking at another day, and being told to switch back is a nag.
+  const other = extras.length ? looksLikeDay(state.date) : null;
   if(other) extraRows.unshift(`<div class="banner misday">
       <span>This looks like ${esc(other.name)}, not ${esc(day.name)}.</span>
       <button data-switchday="${esc(other.id)}">Switch</button>
