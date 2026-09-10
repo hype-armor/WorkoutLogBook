@@ -13,6 +13,16 @@
 <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
 <link rel="icon" href="icon-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
+<script>
+  // Before anything paints. The theme is stored with the rest of the data, and
+  // that load is async, so waiting for it would flash the dark app on the way to
+  // a cream one. Anything missing or unrecognised leaves the default in place;
+  // the pattern check is there because this value ends up in an attribute.
+  try{
+    var t = (JSON.parse(localStorage.getItem('logbook-v1') || '{}').settings || {}).theme;
+    if(t && t !== 'midnight' && /^[a-z]{2,12}$/.test(t)) document.documentElement.dataset.theme = t;
+  }catch(e){}
+</script>
 <style>
   :root{
     color-scheme:dark;
@@ -71,7 +81,102 @@
     /* How much of the viewport the on-screen keyboard is covering. Zero until
        something says otherwise, so every layout below is unchanged without it. */
     --kb:0px;
+
+    /* Tints are the accent and the "done" green at low alpha, so they need the
+       hue as channels rather than as a colour. Everything that used to write
+       rgba(124,107,255,…) inline reads these instead — a literal in a rule is a
+       colour a theme cannot reach, and it showed: the tab bar stayed near-black
+       behind a cream app. */
+    --accent-rgb:124,107,255;
+    --good-rgb:41,170,99;
+    --scrim:rgba(6,8,11,.7);
+    --nav-bg:rgba(10,12,16,.82);
+    --shade:rgba(0,0,0,.45);
+    --toast-line:rgba(10,12,16,.25);
   }
+
+  /* ---------- themes ----------
+     Everything above is the default, Midnight. A theme is nothing but a second
+     set of values for the same tokens, so nothing below this point knows a
+     theme exists — which is also why every one of them has to carry a full set:
+     a token left out would fall back to a Midnight value on a cream ground.
+
+     The plate colours in the diagram are deliberately *not* themed. A 45 is red
+     in every gym, and the diagram is a picture of the bar in front of you, not
+     a chart. What is themed is --p45..--p10 as UI ink, because the reps-in-
+     reserve discs print those hues as text and text has to clear 4.5:1 on the
+     surface it sits on. Every pair below was checked against that. */
+
+  :root[data-theme="retro"]{
+    --accent-rgb:240,169,59; --good-rgb:79,191,99;
+    --scrim:rgba(3,8,5,.72); --nav-bg:rgba(6,14,9,.86);
+    --shade:rgba(0,0,0,.5); --toast-line:rgba(10,20,8,.28);
+    color-scheme:dark;
+    --bg:#08110B; --surface:#0E1B12; --surface-2:#15271A; --surface-3:#1E3724;
+    --line:#1E3A28; --line-2:#2C5138;
+    --ink:#E9F6D9; --ink-2:#A8C79A; --ink-3:#85A876; --on-light:#08110B;
+    --accent:#F0A93B; --accent-ink:#F6C776; --accent-soft:rgba(240,169,59,.16);
+    --accent-fill:#C07F1B; --accent-fill-2:#DD9A2A; --on-accent:#0A1408;
+    --p45:#FF6A5E; --p35:#5B93FF; --p25:#D7A81C; --p10:#4FBF63;
+    --good:#4FBF63; --warn:#E0A100; --danger:#FF6A5E;
+    /* A phosphor terminal had one face and square corners; both are the look. */
+    --sans:ui-monospace,'SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace;
+    --r-sm:3px; --r-md:4px; --r-lg:5px; --r-xl:6px;
+  }
+
+  :root[data-theme="coffee"]{
+    --accent-rgb:138,90,43; --good-rgb:30,122,71;
+    --scrim:rgba(45,32,20,.5); --nav-bg:rgba(242,233,221,.9);
+    --shade:rgba(70,50,30,.22); --toast-line:rgba(251,245,236,.3);
+    color-scheme:light;
+    --bg:#F2E9DD; --surface:#FBF5EC; --surface-2:#EFE3D4; --surface-3:#E3D3BE;
+    --line:#DFCEB6; --line-2:#C9B396;
+    --ink:#231A12; --ink-2:#5A4636; --ink-3:#6E5946; --on-light:#FBF5EC;
+    --accent:#8A5A2B; --accent-ink:#6B421D; --accent-soft:rgba(138,90,43,.14);
+    --accent-fill:#7A4E24; --accent-fill-2:#8E5C2C; --on-accent:#FFF8EF;
+    --p45:#A8352B; --p35:#2555B8; --p25:#7A5E00; --p10:#17683A;
+    --good:#1E7A47; --warn:#7E5800; --danger:#A8352B;
+    --sans:Georgia,'Iowan Old Style',Palatino,'Times New Roman',serif;
+    --r-sm:8px; --r-md:11px; --r-lg:14px; --r-xl:18px;
+  }
+
+  :root[data-theme="cute"]{
+    --accent-rgb:208,65,127; --good-rgb:31,127,85;
+    --scrim:rgba(60,35,52,.45); --nav-bg:rgba(255,241,246,.92);
+    --shade:rgba(90,50,75,.18); --toast-line:rgba(255,246,250,.32);
+    color-scheme:light;
+    --bg:#FFF1F6; --surface:#FFFFFF; --surface-2:#FDE7F0; --surface-3:#F9D8E7;
+    --line:#F6D3E3; --line-2:#EBB2CE;
+    --ink:#3A2634; --ink-2:#6A4F64; --ink-3:#7E627A; --on-light:#FFF6FA;
+    --accent:#D0417F; --accent-ink:#A82A63; --accent-soft:rgba(208,65,127,.14);
+    --accent-fill:#AE2E6B; --accent-fill-2:#C33875; --on-accent:#FFFFFF;
+    --p45:#C33350; --p35:#2A5BBF; --p25:#856200; --p10:#1A6E49;
+    --good:#1F7F55; --warn:#8A6208; --danger:#C33350;
+    /* SF Rounded where it exists, a handwritten face for headings only —
+       Noteworthy is charming at 28px and unreadable at 13. */
+    --sans:ui-rounded,'SF Pro Rounded','Hiragino Maru Gothic ProN',system-ui,sans-serif;
+    --display:'Noteworthy','Bradley Hand','Chalkboard SE',var(--sans);
+    --r-sm:14px; --r-md:20px; --r-lg:26px; --r-xl:32px;
+  }
+
+  :root[data-theme="cartoon"]{
+    --accent-rgb:217,49,35; --good-rgb:27,124,67;
+    --scrim:rgba(30,25,15,.5); --nav-bg:rgba(255,244,214,.93);
+    --shade:rgba(30,25,15,.25); --toast-line:rgba(255,253,245,.32);
+    color-scheme:light;
+    --bg:#FFF4D6; --surface:#FFFFFF; --surface-2:#FFEDBE; --surface-3:#FFE29A;
+    /* Borders are the point here: a comic panel is drawn, not tinted. */
+    --line:#2A2418; --line-2:#16130D;
+    --ink:#16130D; --ink-2:#463E2F; --ink-3:#5E5441; --on-light:#FFFDF5;
+    --accent:#D93123; --accent-ink:#AF241A; --accent-soft:rgba(217,49,35,.14);
+    --accent-fill:#BF2A1E; --accent-fill-2:#D93123; --on-accent:#FFFFFF;
+    --p45:#BF2A1E; --p35:#1F53C4; --p25:#7E5A00; --p10:#1B7C43;
+    --good:#1B7C43; --warn:#8A6100; --danger:#BF2A1E;
+    --sans:ui-rounded,'SF Pro Rounded',system-ui,-apple-system,sans-serif;
+    --display:'Chalkboard SE','Comic Sans MS','Marker Felt',var(--sans);
+    --r-sm:12px; --r-md:18px; --r-lg:24px; --r-xl:30px;
+  }
+
 
   /* Tapping Log set twice in a row should log two sets, not zoom the page.
      `manipulation` drops only the double-tap-to-zoom gesture — panning and
@@ -171,7 +276,7 @@
   .days.open{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
   .daynow{
     width:100%;display:flex;align-items:center;gap:12px;
-    background:linear-gradient(155deg,rgba(124,107,255,.20),rgba(124,107,255,.05));
+    background:linear-gradient(155deg,rgba(var(--accent-rgb),.20),rgba(var(--accent-rgb),.05));
     border:1px solid var(--accent);border-radius:var(--r-lg);
     padding:13px 15px;color:var(--ink);font-family:inherit;text-align:left;cursor:pointer;
     min-height:58px;
@@ -201,7 +306,7 @@
   .day .when{display:block;margin-top:6px;color:var(--ink-3);font-size:12px}
   .day[aria-pressed="true"]{
     border-color:var(--accent);
-    background:linear-gradient(155deg,rgba(124,107,255,.26),rgba(124,107,255,.07));
+    background:linear-gradient(155deg,rgba(var(--accent-rgb),.26),rgba(var(--accent-rgb),.07));
   }
   .day[aria-pressed="true"] b{color:var(--ink)}
 
@@ -235,13 +340,13 @@
     background:var(--surface-3);border-radius:999px;padding:4px 10px;color:var(--ink-2);
     min-width:44px;text-align:center;
   }
-  .ex.done{background:linear-gradient(100deg,rgba(124,107,255,.09),transparent 62%)}
+  .ex.done{background:linear-gradient(100deg,rgba(var(--accent-rgb),.09),transparent 62%)}
   .ex.done .count{background:var(--accent-soft);color:var(--accent-ink)}
   /* Finished work recedes through colour, not opacity: dimming the row took
      the target text to 2.90:1, and "done" is no reason to stop being readable.
      The green tint and the filled badge carry it. Tint strengths are the most
      the row can take while the tertiary ink on top still clears 4.5:1. */
-  .ex.full{background:linear-gradient(100deg,rgba(41,170,99,.07),transparent 62%)}
+  .ex.full{background:linear-gradient(100deg,rgba(var(--good-rgb),.07),transparent 62%)}
   .ex.full .name{color:var(--ink-2)}
   .ex.full .count{background:var(--good);color:var(--on-light)}
   .ex.full .name{text-decoration:none}
@@ -282,7 +387,7 @@
   .setrow .del:active{background:var(--surface-2);color:var(--danger)}
 
   /* sheets */
-  .scrim{position:fixed;inset:0;background:rgba(6,8,11,.7);backdrop-filter:blur(3px);
+  .scrim{position:fixed;inset:0;background:var(--scrim);backdrop-filter:blur(3px);
     overscroll-behavior:contain;touch-action:none;
     z-index:40;opacity:0;pointer-events:none;transition:opacity .18s}
   .scrim.open{opacity:1;pointer-events:auto}
@@ -461,7 +566,7 @@
      as a bare gradient its translucent top let the RIR labels read through it. */
   .nextup{
     border-color:var(--good);background-color:var(--surface-2);
-    background-image:linear-gradient(180deg,rgba(41,170,99,.16),rgba(41,170,99,0) 70%);
+    background-image:linear-gradient(180deg,rgba(var(--good-rgb),.16),rgba(var(--good-rgb),0) 70%);
   }
   .nextup .mid{flex:1;min-width:0;display:flex;align-items:center;gap:12px}
   .nextup .lbl{flex:1;min-width:0}
@@ -575,7 +680,7 @@
   .exhistday span{flex:1;min-width:0;color:var(--ink-2);font-size:14.5px;
     letter-spacing:-.01em;font-variant-numeric:tabular-nums}
   .exhistday em{font-style:normal;color:var(--ink-3);font-size:13px;white-space:nowrap}
-  .card.done{border-color:var(--good);background:linear-gradient(180deg,rgba(41,170,99,.10),transparent 60%)}
+  .card.done{border-color:var(--good);background:linear-gradient(180deg,rgba(var(--good-rgb),.10),transparent 60%)}
   .card.done h3{color:var(--good)}
   .card h3{font-size:16px;font-weight:660;letter-spacing:-.02em;margin:0 0 8px}
   .metric{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
@@ -611,7 +716,7 @@
   .hint{color:var(--ink-3);font-size:13px;margin-top:10px;line-height:1.5;letter-spacing:-.005em}
 
   nav{
-    position:fixed;bottom:0;left:0;right:0;z-index:30;background:rgba(10,12,16,.82);
+    position:fixed;bottom:0;left:0;right:0;z-index:30;background:var(--nav-bg);
     backdrop-filter:saturate(180%) blur(20px);border-top:1px solid var(--line);
     padding:8px 0 calc(8px + var(--safe-bottom));
     display:flex;justify-content:center;gap:8px;
@@ -669,7 +774,7 @@
     letter-spacing:-.015em;font-size:14.5px;font-weight:620;
     padding:11px 18px;border-radius:999px;opacity:0;transition:opacity .2s;pointer-events:none;
     display:flex;align-items:center;gap:14px;max-width:calc(100% - 32px);
-    box-shadow:0 8px 24px rgba(0,0,0,.45);
+    box-shadow:0 8px 24px var(--shade);
   }
   /* With a sheet open the bottom half is all controls, so the toast goes to
      the top where it covers nothing. */
@@ -677,7 +782,7 @@
   .toast.show{opacity:1}
   .toast.act{pointer-events:auto}
   .toast button{
-    background:none;border:0;border-left:1px solid rgba(10,12,16,.25);
+    background:none;border:0;border-left:1px solid var(--toast-line);
     color:var(--on-light);font:inherit;font-weight:720;padding:4px 0 4px 14px;cursor:pointer;
   }
   /* ---------- motion ----------
@@ -688,9 +793,9 @@
   @keyframes toastin{from{opacity:0;transform:translateX(-50%) translateY(8px)}
                      to{opacity:1;transform:translateX(-50%) translateY(0)}}
   @keyframes readypulse{
-    0%{box-shadow:0 0 0 0 rgba(41,170,99,.45)}
-    70%{box-shadow:0 0 0 12px rgba(41,170,99,0)}
-    100%{box-shadow:0 0 0 0 rgba(41,170,99,0)}
+    0%{box-shadow:0 0 0 0 rgba(var(--good-rgb),.45)}
+    70%{box-shadow:0 0 0 12px rgba(var(--good-rgb),0)}
+    100%{box-shadow:0 0 0 0 rgba(var(--good-rgb),0)}
   }
   @keyframes platein{from{opacity:0;transform:scaleY(.72)}to{opacity:1;transform:none}}
   @keyframes platefade{from{opacity:0}to{opacity:1}}
@@ -968,7 +1073,10 @@
     <button class="icon" id="setclose" aria-label="Close">&#215;</button>
   </div>
   <div class="sheetbody">
-    <div class="eyebrow" style="margin-top:0">Units</div>
+    <div class="eyebrow" style="margin-top:0">Theme</div>
+    <div class="bars" id="themesel" style="justify-content:flex-start;flex-wrap:wrap"></div>
+
+    <div class="eyebrow">Units</div>
     <div class="bars" id="unitsel" style="justify-content:flex-start"></div>
 
     <div class="eyebrow">Plates you have</div>
@@ -1164,6 +1272,28 @@ const PAIN_RAMP = ['#9E3A40','#BE454C','#DA5158','#EE666D','#FF8C91'];
 const PAIN_MAX = 5;
 // 0 and 1 share the dimmest step: five colours over six levels, and the place
 // to spend the collision is between "none" and "barely", not further up.
+// The palettes offered in Settings. Everything that makes one look different
+// lives in CSS; this is only what the picker lists, and the colour the phone's
+// own chrome is told to paint behind the status bar — which the browser cannot
+// read out of a stylesheet.
+const THEMES = [
+  {id:'midnight', name:'Midnight', bg:'#0A0B13'},
+  {id:'retro',    name:'Retro',    bg:'#08110B'},
+  {id:'coffee',   name:'Coffee',   bg:'#F2E9DD'},
+  {id:'cute',     name:'Cute',     bg:'#FFF1F6'},
+  {id:'cartoon',  name:'Cartoon',  bg:'#FFF4D6'},
+];
+const themeId = () => THEMES.some(t => t.id === db.settings.theme) ? db.settings.theme : 'midnight';
+
+function applyTheme(){
+  const t = THEMES.find(x => x.id === themeId());
+  // Midnight is the stylesheet's own :root, so it is the absence of the
+  // attribute rather than a value of it — one less pair that can disagree.
+  if(t.id === 'midnight') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = t.id;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', t.bg);
+}
+
 const painColor = v => PAIN_RAMP[Math.min(PAIN_RAMP.length - 1, Math.max(0, v - 1))];
 
 // The sites worth tracking, ordered head to foot so the list scans like a body
@@ -3536,8 +3666,14 @@ $('#exdelete').addEventListener('click', ()=>{
 $('#exclose').addEventListener('click', ()=>closePanel($('#exsheet')));
 
 /* ---------- settings ---------- */
+function renderThemeSel(){
+  $('#themesel').innerHTML = THEMES.map(t =>
+    `<button data-theme="${t.id}" aria-pressed="${t.id === themeId()}">${esc(t.name)}</button>`).join('');
+}
+
 function openSettings(){
   const u = U();
+  renderThemeSel();
   $('#unitsel').innerHTML = Object.keys(UNITS).map(k =>
     `<button data-unit="${k}" aria-pressed="${k===units()}">${UNITS[k].label}</button>`).join('');
   const owned = new Set(availablePlates().map(p => p.w));
@@ -3571,6 +3707,12 @@ function openSettings(){
 $('#gear').addEventListener('click', openSettings);
 $('#setclose').addEventListener('click', ()=>closePanel($('#settings')));
 $('#setdone').addEventListener('click', ()=>closePanel($('#settings')));
+
+$('#themesel').addEventListener('click', e=>{
+  const b = e.target.closest('[data-theme]'); if(!b) return;
+  db.settings.theme = b.dataset.theme;
+  save(); applyTheme(); renderThemeSel();
+});
 
 $('#unitsel').addEventListener('click', e=>{
   const b = e.target.closest('[data-unit]'); if(!b) return;
@@ -3908,6 +4050,9 @@ let persistentStorage = null;
 
 (async ()=>{
   await load();
+  // The head script reads raw storage; this is the value after migration, and
+  // the one that corrects it if storage was unreadable there.
+  applyTheme();
   persistentStorage = await claimPersistentStorage();
   state.day = suggestDay();
   if(!program().some(d => d.id === state.day)) state.day = program()[0].id;

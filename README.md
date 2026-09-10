@@ -251,6 +251,28 @@ tell a 6 from a 7 about their own back. Ratings written on the old 0-10 scale
 are halved on load, once — the migration is gated on the stored version, since
 every 0-5 rating is also a valid 0-10 one.
 
+## Themes
+
+Five, under **Settings → Theme**: Midnight (the default), Retro, Coffee, Cute and
+Cartoon. A theme is nothing but a second set of values for the same tokens, so
+nothing in the app knows one exists — which is also why each carries a *full*
+set. A token left out falls back to Midnight's value, and that is not a subtle
+failure: it left a near-black tab bar under a cream app.
+
+Every palette is checked the way the default was, at 4.5:1 — ink on each
+surface, the label on a filled button, the reps-in-reserve discs, which print
+their hues as text. A test reads the live values back out of the stylesheet and
+re-runs those pairs on all five, so a forgotten token fails the build rather
+than the eye.
+
+The plate diagram is deliberately **not** themed. A 45 is red in every gym, and
+that drawing is a picture of the bar in front of you rather than a chart.
+
+The choice is read in the document head, before the stylesheet has finished
+parsing, because the data load is asynchronous and waiting for it flashes the
+dark app on the way to a cream one. It is also what the browser is told to paint
+behind the status bar; left alone, a cream app keeps a near-black notch.
+
 ## Your data
 
 Stored in `localStorage` under `logbook-v1`, on the device only. The app asks
@@ -268,7 +290,7 @@ instead of failing quietly.
 ## Built like this
 
 Markup, styles and logic in one file; a service worker that precaches the shell
-and keeps the exercise photos in a cache of their own; 229 Playwright tests that
+and keeps the exercise photos in a cache of their own; 237 Playwright tests that
 read real bounding boxes at phone sizes; and Release Please, which tags the
 version and rewrites it in `sw.js` — the thing that makes an installed phone
 notice a release at all. The deploy refuses to publish a build the suite rejects.

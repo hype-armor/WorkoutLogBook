@@ -2251,3 +2251,155 @@ test.describe('a session belongs to the day it was logged under', () => {
     expect(errs).toEqual([]);
   });
 });
+
+test.describe('themes', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  const THEMES = ['midnight', 'retro', 'coffee', 'cute', 'cartoon'];
+
+  // The app's own rule, applied to whatever the live stylesheet resolves to.
+  const contrastIn = (page, pairs) => page.evaluate(pairs => {
+    const relLum = rgb => rgb.map(v => v / 255)
+      .map(v => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
+      .reduce((a, v, i) => a + [0.2126, 0.7152, 0.0722][i] * v, 0);
+    const parse = s => {
+      const n = s.match(/[\d.]+/g).map(Number);
+      return n.slice(0, 3);
+    };
+    const cs = getComputedStyle(document.documentElement);
+    const val = t => {
+      const raw = cs.getPropertyValue(t).trim();
+      const el = document.createElement('span');
+      el.style.color = raw; document.body.append(el);
+      const out = parse(getComputedStyle(el).color); el.remove();
+      return out;
+    };
+    return pairs.map(([a, b]) => {
+      const [hi, lo] = [relLum(val(a)), relLum(val(b))].sort((x, y) => y - x);
+      return +((hi + 0.05) / (lo + 0.05)).toFixed(2);
+    });
+  }, pairs);
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('settings offers them, and marks the one you are on', async () => {
+    await page.click('#gear');
+    await expect(page.locator('#themesel button')).toHaveCount(THEMES.length);
+    await expect(page.locator('#themesel [data-theme="midnight"]'))
+      .toHaveAttribute('aria-pressed', 'true');
+    for (const t of THEMES) await expect(page.locator(`#themesel [data-theme="${t}"]`)).toBeVisible();
+  });
+
+  test('picking one repaints, and tells the phone what to paint behind it', async () => {
+    await page.click('#themesel [data-theme="coffee"]');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'coffee');
+    // the strip behind the status bar is the browser's to paint and it reads
+    // only this — left alone, a cream app keeps a near-black notch
+    expect(await page.getAttribute('meta[name="theme-color"]', 'content')).toBe('#F2E9DD');
+    await expect(page.locator('#themesel [data-theme="coffee"]'))
+      .toHaveAttribute('aria-pressed', 'true');
+  });
+
+  // The first value data-theme is ever given, and whether the body existed yet
+  // when it happened. Reading the attribute at DOMContentLoaded is already too
+  // late: the app's own load resolves in a microtask, so it beats that event and
+  // the probe passes with no head script at all. Set before there is a body is
+  // the actual claim — that is a theme applied while the page is still parsing,
+  // which is what keeps a cream app from flashing dark on the way in.
+  const firstTheme = async () => {
+    await page.addInitScript(() => {
+      window.__first = null;
+      const watch = () => new MutationObserver(ms => {
+        for (const m of ms) {
+          if (m.attributeName === 'data-theme' && window.__first === null) {
+            window.__first = { value: document.documentElement.getAttribute('data-theme'),
+                               beforeBody: !document.body };
+          }
+        }
+      }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+      if (document.documentElement) watch();
+      else new MutationObserver((_, o) => {
+        if (document.documentElement) { o.disconnect(); watch(); }
+      }).observe(document, { childList: true, subtree: true });
+    });
+    await page.reload();
+    await page.waitForSelector('.ex');
+    return page.evaluate(() => window.__first);
+  };
+
+  test('and it is there before the first paint, not after the data loads', async () => {
+    // the stored theme is read in the head, while the stylesheet is still
+    // parsing, so there is no dark flash on the way to a cream app
+    expect(await firstTheme()).toEqual({ value: 'coffee', beforeBody: true });
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'coffee');
+  });
+
+  test('the default is the absence of a theme, not a value of one', async () => {
+    await page.click('#gear');
+    await page.click('#themesel [data-theme="midnight"]');
+    expect(await page.getAttribute('html', 'data-theme')).toBe(null);
+    expect(await page.getAttribute('meta[name="theme-color"]', 'content')).toBe('#0A0B13');
+    await page.click('#setclose');
+  });
+
+  test('a tampered stored value is ignored rather than written into the DOM', async () => {
+    await page.evaluate(() => {
+      const raw = JSON.parse(localStorage.getItem('logbook-v1'));
+      raw.settings.theme = 'cute" onload="x';
+      localStorage.setItem('logbook-v1', JSON.stringify(raw));
+    });
+    // never reaches the attribute in the first place — by the time applyTheme()
+    // would reject it the value has already been in the DOM for a paint
+    expect(await firstTheme()).toBe(null);
+    expect(await page.getAttribute('html', 'data-theme')).toBe(null);
+    await page.evaluate(() => { db.settings.theme = 'midnight'; save(); });
+  });
+
+  test('every theme carries a full set of tokens', async () => {
+    // A token a theme forgets falls back to Midnight's value, which is how a
+    // near-black tab bar ended up under a cream app. Contrast is the check that
+    // catches it: a dark value left on a light ground cannot pass.
+    for (const t of THEMES) {
+      await page.evaluate(id => { db.settings.theme = id; save(); applyTheme(); }, t);
+      const pairs = [
+        ['--ink', '--bg'], ['--ink', '--surface'], ['--ink', '--surface-2'], ['--ink', '--surface-3'],
+        ['--ink-2', '--surface'], ['--ink-3', '--surface'], ['--ink-3', '--bg'],
+        ['--accent-ink', '--surface'], ['--on-accent', '--accent-fill'],
+        ['--on-accent', '--accent-fill-2'], ['--on-light', '--ink'], ['--on-light', '--good'],
+        ['--danger', '--surface'], ['--warn', '--surface'],
+        ['--p45', '--surface'], ['--p35', '--surface'], ['--p25', '--surface'], ['--p10', '--surface'],
+      ];
+      const got = await contrastIn(page, pairs);
+      const bad = pairs.map((p, i) => [p, got[i]]).filter(([, r]) => r < 4.5);
+      expect(bad, `${t}: ${bad.map(([p, r]) => p.join(' on ') + ' = ' + r).join(', ')}`).toEqual([]);
+    }
+  });
+
+  test('the tab bar belongs to the theme too', async () => {
+    // it was a hardcoded near-black rgba, so it stayed dark under every light
+    // theme no matter what the tokens said
+    const lum = async () => page.evaluate(() => {
+      const n = getComputedStyle(document.querySelector('nav')).backgroundColor.match(/[\d.]+/g).map(Number);
+      return (0.2126 * n[0] + 0.7152 * n[1] + 0.0722 * n[2]) / 255;
+    });
+    await page.evaluate(() => { db.settings.theme = 'midnight'; save(); applyTheme(); });
+    expect(await lum()).toBeLessThan(0.2);
+    await page.evaluate(() => { db.settings.theme = 'coffee'; save(); applyTheme(); });
+    expect(await lum()).toBeGreaterThan(0.7);
+    await page.evaluate(() => { db.settings.theme = 'midnight'; save(); applyTheme(); });
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
