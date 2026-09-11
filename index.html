@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#14161a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -227,12 +227,16 @@
 
 
 
-  /* Tapping Log set twice in a row should log two sets, not zoom the page.
-     `manipulation` drops only the double-tap-to-zoom gesture — panning and
-     pinch-to-zoom still work, so the page can be enlarged deliberately. It is
-     set here rather than via user-scalable=no, which would take zooming away
-     entirely. As a bonus it removes the legacy 300ms click delay. */
-  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+  /* No zooming, by request. Panning is all that is left: `pan-x pan-y` drops
+     both pinch and the double-tap gesture, so tapping Log set twice logs two
+     sets instead of magnifying the button, and it still removes the legacy
+     300ms click delay. `manipulation`, which was here before, disables only the
+     double tap and leaves pinch alone.
+
+     This is the half that Chrome and Android honour. iOS Safari has ignored
+     both this and user-scalable=no for page zoom since iOS 10 — the gesture
+     handler further down is what actually stops it on an iPhone. */
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;touch-action:pan-x pan-y}
   /* Holding a stepper to repeat it should add weight, not start selecting the
      "+5" printed on it or raise the iOS callout menu. Every control opts out;
      the fields you actually type into opt back in below. */
@@ -506,7 +510,11 @@
     color:var(--ink);font-family:inherit;font-size:26px;font-weight:640;letter-spacing:-.03em;
     padding:9px;text-align:center;
   }
-  input[type=text],textarea,select{font-size:15px;font-weight:450;text-align:left;letter-spacing:-.01em}
+  /* 16px, not 15: below 16 iOS zooms the page in to meet the caret when a
+     field takes focus, which is the zoom you actually notice — tap the
+     exercise search and the whole screen lurches. Nothing above can stop
+     that one; only the type size can. */
+  input[type=text],textarea,select{font-size:16px;font-weight:450;text-align:left;letter-spacing:-.01em}
   select{padding:13px 12px;min-height:48px}
   textarea{line-height:1.45}
   input:focus,textarea:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -2743,6 +2751,18 @@ if('scrollRestoration' in history) history.scrollRestoration = 'manual';
 // Scroll lock. The page keeps its position across open/close: pinning the body
 // sets scrollY to 0, so it has to be remembered and put back.
 let lockedScrollY = 0;
+/* ---------- zoom ---------- */
+// Safari's own pinch events, and the only thing on an iPhone that stops the
+// page being zoomed: touch-action and user-scalable are both ignored there for
+// page zoom. gesturechange and gestureend are cancelled too — preventing only
+// the start still lets a pinch already under way through.
+//
+// Deliberately not touching multi-touch on `touchmove`: two fingers on the
+// screen is also how a phone scrolls, and cancelling that costs a real gesture
+// to stop one that is already covered here.
+['gesturestart','gesturechange','gestureend'].forEach(ev =>
+  document.addEventListener(ev, e => e.preventDefault(), {passive:false}));
+
 // iOS does not shrink the layout viewport for the keyboard. A position:fixed
 // sheet stays anchored to a bottom edge that is now behind the keys, and the
 // page is scrolled to chase the caret, which is what makes the sheet jump and

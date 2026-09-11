@@ -641,7 +641,11 @@ test.describe('accessibility', () => {
     await ctx.close();
   });
 
-  test('double-tap does not zoom, but pinch-zoom is still allowed', async ({ browser }) => {
+  test('no gesture zooms the page, on any control', async ({ browser }) => {
+    // This test used to assert the opposite — `manipulation` everywhere and a
+    // viewport that refused to pin the scale, on the grounds that removing zoom
+    // fails WCAG 1.4.4. Zoom is off by request now. The suite records what the
+    // app does; the trade is noted in the README.
     const ctx = await phone(browser);
     const page = await ctx.newPage();
     await page.goto(FILE_URL);
@@ -663,14 +667,12 @@ test.describe('accessibility', () => {
       };
     });
     for (const [where, value] of Object.entries(touch)) {
-      expect(value, where).toBe('manipulation');
+      expect(value, where).toBe('pan-x pan-y');
     }
 
-    // Removing zoom altogether would fail WCAG 1.4.4, so the viewport must not
-    // pin the scale.
     const viewport = await page.getAttribute('meta[name="viewport"]', 'content');
-    expect(viewport).not.toMatch(/user-scalable\s*=\s*(no|0)/);
-    expect(viewport).not.toMatch(/maximum-scale/);
+    expect(viewport).toMatch(/user-scalable\s*=\s*no/);
+    expect(viewport).toMatch(/maximum-scale\s*=\s*1/);
     await ctx.close();
   });
 
@@ -2403,6 +2405,69 @@ test.describe('themes', () => {
     await page.evaluate(() => { db.settings.theme = 'coffee'; save(); applyTheme(); });
     expect(await lum()).toBeGreaterThan(0.7);
     await page.evaluate(() => { db.settings.theme = 'midnight'; save(); applyTheme(); });
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
+
+test.describe('the page does not zoom', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('the viewport says so', async () => {
+    const v = await page.getAttribute('meta[name="viewport"]', 'content');
+    expect(v).toContain('user-scalable=no');
+    expect(v).toContain('maximum-scale=1');
+    // still edge-to-edge, and still starting at life size
+    expect(v).toContain('viewport-fit=cover');
+    expect(v).toContain('initial-scale=1');
+  });
+
+  test('pinch and double-tap are both off, panning is not', async () => {
+    // `manipulation`, which was here before, drops the double tap and leaves
+    // pinch alone. Only panning is allowed now.
+    const ta = await page.evaluate(() =>
+      getComputedStyle(document.querySelector('.ex')).touchAction);
+    expect(ta).toBe('pan-x pan-y');
+  });
+
+  test('and Safari, which ignores all of that, is answered directly', async () => {
+    // touch-action and user-scalable do not stop page zoom on an iPhone; these
+    // events are the only thing that does. Chromium never fires them, so this
+    // dispatches them itself — what is under test is that the app cancels them.
+    const cancelled = await page.evaluate(() =>
+      ['gesturestart', 'gesturechange', 'gestureend'].map(name => {
+        const e = new Event(name, { bubbles: true, cancelable: true });
+        document.querySelector('.ex').dispatchEvent(e);
+        return e.defaultPrevented;
+      }));
+    expect(cancelled).toEqual([true, true, true]);
+  });
+
+  test('a field taking focus does not zoom either', async () => {
+    // iOS zooms the page in to meet the caret when a focused control is under
+    // 16px, which is the zoom you actually notice. Nothing above stops that
+    // one — only the type size does.
+    await page.click('#logother');
+    const small = await page.evaluate(() =>
+      [...document.querySelectorAll('input[type=text], input[type=number], textarea, select')]
+        .map(el => [el.id || el.type, parseFloat(getComputedStyle(el).fontSize)])
+        .filter(([, px]) => px < 16));
+    expect(small).toEqual([]);
+    await page.click('#pickercancel');
   });
 
   test('no page errors', () => {

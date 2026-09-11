@@ -278,6 +278,32 @@ parsing, because the data load is asynchronous and waiting for it flashes the
 dark app on the way to a cream one. It is also what the browser is told to paint
 behind the status bar; left alone, a cream app keeps a near-black notch.
 
+## Zooming
+
+Turned off, deliberately, and it takes three separate mechanisms because no one
+of them covers a phone on its own:
+
+- `user-scalable=no, maximum-scale=1` in the viewport — which Chrome and Android
+  honour and **iOS Safari has ignored for page zoom since iOS 10**.
+- `touch-action: pan-x pan-y`, which leaves panning and drops both pinch and the
+  double tap. The rule was `manipulation` before, which drops only the double
+  tap; pinch went straight through it.
+- Cancelling Safari's own `gesturestart`, `gesturechange` and `gestureend`,
+  which is the only thing that actually stops it on an iPhone. All three, not
+  just the first: preventing the start still lets a pinch already under way
+  through. Multi-touch on `touchmove` is deliberately left alone — two fingers
+  is also how a phone scrolls.
+
+The fourth kind of zoom is the one you notice most, and none of the above
+touches it: iOS magnifies the page to meet the caret when a focused field is
+under 16px. The text inputs, textareas and selects were 15px and are 16px now.
+
+The honest note: this fails WCAG 1.4.4, and a test in the suite used to assert
+the opposite for that reason. It is a deliberate trade for an app used one-handed
+mid-set, where an accidental pinch leaves you lost on a magnified screen with a
+bar waiting. Body text is 16px and the numbers that matter are 26px, so the
+browser's own text-size control still has room to work.
+
 ## Your data
 
 Stored in `localStorage` under `logbook-v1`, on the device only. The app asks
@@ -295,7 +321,7 @@ instead of failing quietly.
 ## Built like this
 
 Markup, styles and logic in one file; a service worker that precaches the shell
-and keeps the exercise photos in a cache of their own; 237 Playwright tests that
+and keeps the exercise photos in a cache of their own; 242 Playwright tests that
 read real bounding boxes at phone sizes; and Release Please, which tags the
 version and rewrites it in `sw.js` — the thing that makes an installed phone
 notice a release at all. The deploy refuses to publish a build the suite rejects.
