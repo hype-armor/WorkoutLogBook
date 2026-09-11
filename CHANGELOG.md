@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.19.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.18.0...logbook-v1.19.0) (2026-09-11)
+
+
+### Features
+
+* three more themes — Neon, Newsprint and Contrast ([f3cf42b](https://github.com/hype-armor/WorkoutLogBook/commit/f3cf42bc214535adad37e28881d3a7cea9bfd35c))
+
 ## [1.18.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.17.0...logbook-v1.18.0) (2026-09-10)
 
 
