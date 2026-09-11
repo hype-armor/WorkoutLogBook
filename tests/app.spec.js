@@ -641,7 +641,11 @@ test.describe('accessibility', () => {
     await ctx.close();
   });
 
-  test('double-tap does not zoom, but pinch-zoom is still allowed', async ({ browser }) => {
+  test('no gesture zooms the page, on any control', async ({ browser }) => {
+    // This test used to assert the opposite — `manipulation` everywhere and a
+    // viewport that refused to pin the scale, on the grounds that removing zoom
+    // fails WCAG 1.4.4. Zoom is off by request now. The suite records what the
+    // app does; the trade is noted in the README.
     const ctx = await phone(browser);
     const page = await ctx.newPage();
     await page.goto(FILE_URL);
@@ -663,14 +667,12 @@ test.describe('accessibility', () => {
       };
     });
     for (const [where, value] of Object.entries(touch)) {
-      expect(value, where).toBe('manipulation');
+      expect(value, where).toBe('pan-x pan-y');
     }
 
-    // Removing zoom altogether would fail WCAG 1.4.4, so the viewport must not
-    // pin the scale.
     const viewport = await page.getAttribute('meta[name="viewport"]', 'content');
-    expect(viewport).not.toMatch(/user-scalable\s*=\s*(no|0)/);
-    expect(viewport).not.toMatch(/maximum-scale/);
+    expect(viewport).toMatch(/user-scalable\s*=\s*no/);
+    expect(viewport).toMatch(/maximum-scale\s*=\s*1/);
     await ctx.close();
   });
 
@@ -1839,10 +1841,10 @@ test.describe('a machine that takes weight off', () => {
     // reachable in the record. Left signed it would eat into the volume of the
     // session it appears in.
     const under = await page.evaluate(() => {
-      const real = db.settings.bw.lb;
-      db.settings.bw.lb = 30;
+      const real = JSON.parse(JSON.stringify(db.bw));
+      db.bw = [{ d: '2000-01-01', lb: 30, kg: 13.6 }];
       const v = sessionStats(state.date).tonnage;
-      db.settings.bw.lb = real; save();
+      db.bw = real; save();
       return v;
     });
     expect(under).toBe(0);
@@ -2403,6 +2405,500 @@ test.describe('themes', () => {
     await page.evaluate(() => { db.settings.theme = 'coffee'; save(); applyTheme(); });
     expect(await lum()).toBeGreaterThan(0.7);
     await page.evaluate(() => { db.settings.theme = 'midnight'; save(); applyTheme(); });
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
+
+test.describe('the page does not zoom', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('the viewport says so', async () => {
+    const v = await page.getAttribute('meta[name="viewport"]', 'content');
+    expect(v).toContain('user-scalable=no');
+    expect(v).toContain('maximum-scale=1');
+    // still edge-to-edge, and still starting at life size
+    expect(v).toContain('viewport-fit=cover');
+    expect(v).toContain('initial-scale=1');
+  });
+
+  test('pinch and double-tap are both off, panning is not', async () => {
+    // `manipulation`, which was here before, drops the double tap and leaves
+    // pinch alone. Only panning is allowed now.
+    const ta = await page.evaluate(() =>
+      getComputedStyle(document.querySelector('.ex')).touchAction);
+    expect(ta).toBe('pan-x pan-y');
+  });
+
+  test('and Safari, which ignores all of that, is answered directly', async () => {
+    // touch-action and user-scalable do not stop page zoom on an iPhone; these
+    // events are the only thing that does. Chromium never fires them, so this
+    // dispatches them itself — what is under test is that the app cancels them.
+    const cancelled = await page.evaluate(() =>
+      ['gesturestart', 'gesturechange', 'gestureend'].map(name => {
+        const e = new Event(name, { bubbles: true, cancelable: true });
+        document.querySelector('.ex').dispatchEvent(e);
+        return e.defaultPrevented;
+      }));
+    expect(cancelled).toEqual([true, true, true]);
+  });
+
+  test('a field taking focus does not zoom either', async () => {
+    // iOS zooms the page in to meet the caret when a focused control is under
+    // 16px, which is the zoom you actually notice. Nothing above stops that
+    // one — only the type size does.
+    await page.click('#logother');
+    const small = await page.evaluate(() =>
+      [...document.querySelectorAll('input[type=text], input[type=number], textarea, select')]
+        .map(el => [el.id || el.type, parseFloat(getComputedStyle(el).fontSize)])
+        .filter(([, px]) => px < 16));
+    expect(small).toEqual([]);
+    await page.click('#pickercancel');
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
+
+test.describe('bodyweight is a history, not a setting', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('a set is scored against the weight you were that day', async () => {
+    // the same pull-up, logged twice, at two bodyweights. It used to be scored
+    // twice against whatever the scale said most recently, so weighing yourself
+    // rewrote the past.
+    const loads = await page.evaluate(() => {
+      db.bw = [{ d: '2026-01-01', lb: 200, kg: 90.7 }, { d: '2026-06-01', lb: 180, kg: 81.6 }];
+      const mk = d => ({ id: 'p' + d, t: Date.parse(d), d, e: 'Pull-up', dy: 'D',
+                         w: 0, r: 5, rir: 1, u: 'lb' });
+      db.sets = [mk('2026-02-01'), mk('2026-07-01')];
+      save();
+      return db.sets.map(s => loadOf(s));
+    });
+    expect(loads).toEqual([200, 180]);
+  });
+
+  test('a set older than the first weighing takes the earliest one', async () => {
+    // there is no honest answer for it, and dropping the set would be worse
+    // than the least-wrong number
+    const load = await page.evaluate(() => loadOf(
+      { id: 'old', t: 0, d: '2025-01-01', e: 'Pull-up', dy: 'D', w: 0, r: 5, rir: 1, u: 'lb' }));
+    expect(load).toBe(200);
+  });
+
+  test('a new weighing does not move an old session', async () => {
+    const before = await page.evaluate(() => loadOf(db.sets[0]));
+    await page.evaluate(() => { setBwOn(todayISO(), 170); save(); });
+    const after = await page.evaluate(() => loadOf(db.sets[0]));
+    expect(after).toBe(before);
+    // and today is scored against the new number
+    expect(await page.evaluate(() => bw())).toBe(170);
+  });
+
+  test('the old single number becomes the first entry, dated to the last session', async () => {
+    // not today: it was entered at some point in the past and was true then,
+    // and dating it today would claim a weighing that never happened
+    const seeded = await page.evaluate(() => migrate({
+      v: 4, sets: [{ id: 'a', t: 1, d: '2026-03-04', e: 'Pull-up', w: 0, r: 5, rir: 2, u: 'lb' }],
+      days: {}, pairs: {}, ex: {}, program: null,
+      settings: { units: 'lb', bw: { lb: 195, kg: 0 } }
+    }).bw);
+    expect(seeded).toEqual([{ d: '2026-03-04', lb: 195, kg: 88.5 }]);
+  });
+
+  test('History charts it once there are two readings', async () => {
+    await page.evaluate(() => {
+      db.bw = [{ d: '2026-01-01', lb: 200, kg: 90.7 }, { d: '2026-06-01', lb: 180, kg: 81.6 }];
+      save();
+    });
+    await page.click('#tab-history');
+    await expect(page.locator('#bwcard')).toBeVisible();
+    await expect(page.locator('#bwcard .metric b')).toHaveText('180');
+    await expect(page.locator('#bwcard')).toContainText('20 lb over 2 weigh-ins');
+    // neither direction is progress on its own, so it is not coloured like the
+    // estimated-max cards are
+    await expect(page.locator('#bwcard .delta')).toHaveClass(/flat/);
+
+    await page.evaluate(() => { db.bw = db.bw.slice(0, 1); save(); renderHistory(); });
+    await expect(page.locator('#bwcard')).toBeHidden();
+    await page.click('#tab-train');
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
+
+test.describe('a lift that will not move', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  // n sessions of Deadlift at the same weight, each one short of its target so
+  // every one of them is held.
+  const stalledSessions = (n, w = 300) => page.evaluate(({ n, w }) => {
+    const iso = k => { const t = new Date(); t.setDate(t.getDate() - k * 7);
+      return new Date(t.getTime() - t.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+    db.sets = [];
+    for (let i = n; i >= 1; i--) {
+      const d = iso(i);
+      // two of a prescribed four: held, every time
+      for (let s = 0; s < 2; s++) {
+        db.sets.push({ id: `d${i}-${s}`, t: Date.parse(d) + s, d, e: 'Deadlift', dy: 'A',
+                       w, r: 4, rir: 2, rest: 180, u: 'lb' });
+      }
+    }
+    db.settings.lastDay = 'A'; save(); state.day = 'A'; state.date = todayISO(); rerenderAll();
+  }, { n, w });
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('two bad sessions is a bad patch, and repeats', async () => {
+    await stalledSessions(2);
+    await page.click('.ex[data-ex="Deadlift"]');
+    await expect(page.locator('#sheet-sub')).toContainText('repeating — 2 of 4 sets');
+    expect(await page.inputValue('#wt')).toBe('300');
+    await page.click('#close');
+  });
+
+  test('three is a stall, and it backs off', async () => {
+    await stalledSessions(3);
+    await page.click('.ex[data-ex="Deadlift"]');
+    // the field carries the backed-off weight, so the line says why rather than
+    // repeating the number underneath it
+    await expect(page.locator('#sheet-sub')).toContainText('stalled 3 sessions — backing off 10%');
+    // 10% off 300 is 270, and 270 is loadable on a 45 bar with 2.5s
+    expect(await page.inputValue('#wt')).toBe('270');
+    await page.click('#close');
+  });
+
+  test('a session that earned its weight resets the count', async () => {
+    await page.evaluate(() => {
+      // the most recent session completed: four of four, none to failure
+      const d = todayISO();
+      const t = new Date(); t.setDate(t.getDate() - 3);
+      const good = new Date(t.getTime() - t.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+      for (let s = 0; s < 4; s++) {
+        db.sets.push({ id: `g${s}`, t: Date.parse(good) + s, d: good, e: 'Deadlift', dy: 'A',
+                       w: 300, r: 4, rir: 2, rest: 180, u: 'lb' });
+      }
+      save(); rerenderAll();
+    });
+    await page.click('.ex[data-ex="Deadlift"]');
+    await expect(page.locator('#sheet-sub')).not.toContainText('stalled');
+    // earned it, so it goes up rather than back
+    expect(+(await page.inputValue('#wt'))).toBeGreaterThan(300);
+    await page.click('#close');
+  });
+
+  test('nothing to take off is not a deload', async () => {
+    // an unweighted bodyweight lift stalls at BW+0, and 10% of nothing is
+    // nothing — calling that a back-off would be the old behaviour relabelled
+    await page.evaluate(() => {
+      const iso = k => { const t = new Date(); t.setDate(t.getDate() - k * 7);
+        return new Date(t.getTime() - t.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+      db.sets = [];
+      for (let i = 4; i >= 1; i--) {
+        const d = iso(i);
+        db.sets.push({ id: `p${i}`, t: Date.parse(d), d, e: 'Weighted dip', dy: 'D',
+                       w: 0, r: 4, rir: 0, rest: 180, u: 'lb' });
+      }
+      db.settings.lastDay = 'D'; save(); state.day = 'D'; rerenderAll();
+    });
+    await page.click('.ex[data-ex="Weighted dip"]');
+    await expect(page.locator('#sheet-sub')).toContainText('repeating — a set went to failure');
+    await expect(page.locator('#sheet-sub')).not.toContainText('stalled');
+    await page.click('#close');
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
+
+test.describe('warming up', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('.ex[data-ex="Deadlift"]');
+    await page.fill('#wt', '315');
+    await page.dispatchEvent('#wt', 'input');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('a ramp is offered, starting at the bar and stopping short of the work', async () => {
+    const chips = await page.$$eval('#ramp button', els => els.map(e => e.textContent));
+    expect(chips[0]).toBe('45 × 8');
+    const weights = chips.map(c => parseFloat(c));
+    expect(weights).toEqual([...weights].sort((a, b) => a - b));
+    expect(Math.max(...weights)).toBeLessThan(315);
+    // every step is loadable on the rack, not a percentage with a decimal
+    const step = await page.evaluate(() => stepFor('Deadlift'));
+    const bar = await page.evaluate(() => barFor('Deadlift'));
+    for (const w of weights) expect((w - bar) % step, `${w} not loadable`).toBe(0);
+  });
+
+  test('tapping one logs it without disturbing the weight you are ramping to', async () => {
+    await page.click('#ramp button');
+    await expect(page.locator('.setrow.warm')).toHaveCount(1);
+    await expect(page.locator('.setrow .load').first()).toContainText('45 × 8');
+    // the field still holds the working set, which is the whole point
+    expect(await page.inputValue('#wt')).toBe('315');
+    // and the step just logged drops off the row, leaving the ones above it
+    expect(await page.$$eval('#ramp button', els => els.map(e => e.textContent)))
+      .toEqual(['125 × 5', '190 × 3', '250 × 2']);
+  });
+
+  test('it goes away once the work starts', async () => {
+    await page.fill('#reps', '5');
+    await page.click('#logset');
+    await expect(page.locator('#ramprow')).toBeHidden();
+  });
+
+  test('and is not offered where there is no ramp to compute', async () => {
+    await page.click('#close');
+    await chooseDay(page, 'D');
+    await page.click('.ex[data-ex="Pull-up"]');   // bodyweight: no bar, no plates
+    await expect(page.locator('#ramprow')).toBeHidden();
+    await page.click('#close');
+    await chooseDay(page, 'A');
+    await page.click('.ex[data-ex="Suitcase carry"]');   // distance
+    await expect(page.locator('#ramprow')).toBeHidden();
+    await page.click('#close');
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
+
+test.describe('sets per muscle', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.evaluate(() => {
+      const d = todayISO();
+      const mk = (e, n, dy) => Array.from({ length: n }, (_, i) => ({
+        id: e + i, t: Date.now() + i, d, e, dy, w: 100, r: 8, rir: 2, u: 'lb' }));
+      db.sets = [
+        // Romanian deadlift: hamstrings direct, calves/glutes/lower back indirect
+        ...mk('Romanian deadlift', 3, 'A'),
+        // Leg curl: hamstrings direct, nothing else
+        ...mk('Leg curl', 2, 'A'),
+        // a warm-up, which is not training and must not be counted
+        { id: 'w1', t: Date.now(), d, e: 'Romanian deadlift', dy: 'A',
+          w: 60, r: 10, rir: 2, u: 'lb', wu: true },
+      ];
+      save(); rerenderAll();
+    });
+    await page.click('#tab-history');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('direct and indirect are counted apart', async () => {
+    const row = page.locator('.mrow', { hasText: 'hamstrings' });
+    // 3 Romanian deadlifts + 2 leg curls direct; nothing indirect
+    await expect(row.locator('.n')).toHaveText('5 · 0');
+    // a Romanian deadlift is a hamstring set and is not a calf set — summing
+    // them would say it was
+    await expect(page.locator('.mrow', { hasText: 'calves' }).locator('.n')).toHaveText('0 · 3');
+  });
+
+  test('warm-ups are not training here either', async () => {
+    // 3 working Romanian deadlifts, not 4
+    const n = await page.locator('.mrow', { hasText: 'glutes' }).locator('.n').textContent();
+    expect(n).toBe('0 · 3');
+  });
+
+  test('an exercise the guide does not know is named, not dropped', async () => {
+    // a chart that quietly ignores a third of the work is worse than no chart
+    await page.evaluate(() => {
+      db.sets.push({ id: 'mine', t: Date.now(), d: todayISO(), e: 'Zercher carry',
+                     dy: 'A', w: 100, r: 8, rir: 2, u: 'lb' });
+      save(); renderHistory();
+    });
+    await expect(page.locator('#musclecard')).toContainText('1 set of Zercher carry could not be placed');
+  });
+
+  test('it says nothing when there is nothing to say', async () => {
+    await page.evaluate(() => { db.sets = []; save(); renderHistory(); });
+    await expect(page.locator('#musclecard')).toBeHidden();
+    await expect(page.locator('#musclelabel')).toBeHidden();
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
+
+test.describe('a backup that can leave the phone', () => {
+  test('the share button is offered only where sharing a file works', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    // Chromium on a desktop cannot share a file, and the button must not sit
+    // there doing nothing — a download on iOS lands somewhere most people will
+    // not find again, which is the whole reason for the other route.
+    await page.click('#gear');
+    const can = await page.evaluate(() => canShareBackup());
+    await expect(page.locator('#sharebackup')).toBeVisible({ visible: can });
+
+    // and with a share available it hands over a real JSON file
+    const shared = await page.evaluate(async () => {
+      let got = null;
+      navigator.canShare = () => true;
+      navigator.share = async d => { got = d; };
+      document.querySelector('#sharebackup').classList.remove('hide');
+      await shareBackup();
+      return got && { name: got.files[0].name, type: got.files[0].type,
+                      sets: JSON.parse(await got.files[0].text()).sets.length };
+    });
+    expect(shared.type).toBe('application/json');
+    expect(shared.name).toMatch(/^logbook-.*\.json$/);
+    expect(shared.sets).toBe(0);
+    await ctx.close();
+  });
+});
+
+test.describe('how often the weight goes up', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  // n completed sessions of Deadlift, all at the same weight
+  const completed = (n, w = 300) => page.evaluate(({ n, w }) => {
+    const iso = k => { const t = new Date(); t.setDate(t.getDate() - k * 7);
+      return new Date(t.getTime() - t.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+    db.sets = [];
+    for (let i = n; i >= 1; i--) {
+      const d = iso(i);
+      for (let s = 0; s < 4; s++) {          // four of a prescribed four
+        db.sets.push({ id: `d${i}-${s}`, t: Date.parse(d) + s, d, e: 'Deadlift', dy: 'A',
+                       w, r: 4, rir: 2, rest: 180, u: 'lb' });
+      }
+    }
+    db.settings.lastDay = 'A'; save(); state.day = 'A'; state.date = todayISO(); rerenderAll();
+  }, { n, w });
+
+  const setEvery = n => page.evaluate(k => {
+    (db.ex['Deadlift'] ||= {}).every = k; save();
+  }, n);
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('every session, by default', async () => {
+    await completed(1);
+    await page.click('.ex[data-ex="Deadlift"]');
+    expect(await page.inputValue('#wt')).toBe('305');
+    await page.click('#close');
+  });
+
+  test('set to every third, one good session is not a reason to add weight', async () => {
+    await completed(1);
+    await setEvery(3);
+    await page.click('.ex[data-ex="Deadlift"]');
+    expect(await page.inputValue('#wt')).toBe('300');
+    // and it says why, or a lift that has stopped climbing looks broken
+    await expect(page.locator('#sheet-sub')).toContainText('1 of 3 before the next jump');
+    await page.click('#close');
+  });
+
+  test('the third one earns it', async () => {
+    await completed(3);
+    await setEvery(3);
+    await page.click('.ex[data-ex="Deadlift"]');
+    expect(await page.inputValue('#wt')).toBe('305');
+    await expect(page.locator('#sheet-sub')).not.toContainText('before the next jump');
+    await page.click('#close');
+  });
+
+  test('a short session does not count towards the run', async () => {
+    await completed(3);
+    await setEvery(3);
+    await page.evaluate(() => {
+      // the middle session was two of four: held, so the run restarts after it
+      const dates = [...new Set(db.sets.map(s => s.d))].sort();
+      db.sets = db.sets.filter(s => s.d !== dates[1] || +s.id.split('-')[1] < 2);
+      save(); rerenderAll();
+    });
+    await page.click('.ex[data-ex="Deadlift"]');
+    expect(await page.inputValue('#wt')).toBe('300');
+    await expect(page.locator('#sheet-sub')).toContainText('1 of 3 before the next jump');
+    await page.click('#close');
+  });
+
+  test('the editor keeps it, and says what it means', async () => {
+    await page.click('.ex[data-ex="Deadlift"]');
+    await page.click('#exsettings');
+    await expect(page.locator('#exevery')).toHaveValue('3');
+    await expect(page.locator('#exeveryhint')).toContainText(/does not count towards the run/i);
+    await page.selectOption('#exevery', '1');
+    // the hint answers while you are still deciding, not after you save
+    await expect(page.locator('#exeveryhint')).toContainText(/every session you complete/i);
+    await page.click('#exsave');
+    expect(await page.evaluate(() => db.ex['Deadlift'].every)).toBe(undefined);
+    await page.click('#close');
   });
 
   test('no page errors', () => {

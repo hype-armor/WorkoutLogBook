@@ -35,11 +35,25 @@ full-screen and offline.
 
 ```sh
 npm ci
-npx playwright install chromium
+npx playwright install chromium webkit
 npm test
 ```
 
-237 tests in `tests/`, run on every pull request and again before any deploy.
+Both engines run. WebKit is the one the app is actually used on — Chromium has
+no on-screen keyboard, no `gesturestart`, honours `user-scalable`, and reports
+zero for every safe-area inset, so every iOS behaviour the app handles was
+invisible to the suite until it was added. It is not Safari and not iOS Safari:
+shared engine, different shell. It closes most of the gap, not all of it.
+
+Three cases are skipped on WebKit, each for a named reason rather than by
+loosening an assertion for everyone: the service-worker suite (Playwright's
+WebKit does not drive registration and offline emulation reliably), the
+scroll-leak wheel check (`mouse.wheel` is unsupported in mobile WebKit), and
+the persistent-storage request (WebKit has no `StorageManager.persist` — which
+is the real state of affairs on an iPhone).
+
+271 tests in `tests/`, 262 of them on WebKit too, run on every pull request
+and again before any deploy.
 They cover the things that actually broke: that a logged set survives a reload
 and a service-worker update, that `Log set` and the RIR selector are never
 underneath the rest timer at phone sizes, that unit switching converts rather

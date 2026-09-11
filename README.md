@@ -54,10 +54,60 @@ all describe the same values.
 
 For a bodyweight lift the figure is what you could **add**, not you plus it — a
 set of unweighted dips reporting "195 lb" read as a barbell number with nothing
-on the belt.
+on the belt. The bodyweight it uses is the one you were on *that* date, not the
+one you are now; see below.
 
 A card whose sessions did not all qualify says so: `1 of 2 sessions counted`
 rather than `first session`, which contradicted the rows listed underneath it.
+
+## Bodyweight
+
+A dated series, not a setting. It used to be one number applied to every set
+ever logged, which meant the effective load of a pull-up done in January was
+computed from what you weigh today: step on a scale and the whole dip and
+pull-up history re-rated itself, trend and volume together. Losing ten pounds
+read as getting weaker.
+
+Each set is now scored against the weight in force on its own date — the most
+recent reading on or before it. A set logged before the first reading has no
+honest answer and takes the earliest one, which is the least-wrong option rather
+than a good one.
+
+Two readings and it is also a chart, beside the estimated-max cards. It is the
+one number there that moves for reasons other than training, which is why it is
+worth seeing next to the ones that do not — and why it is not coloured as
+progress in either direction.
+
+## Sets per muscle
+
+The guide already knew which muscles each exercise works and every working set
+was already dated; nothing joined the two. So the app could report that a
+deadlift estimate was up 10.7% over eight sessions and could not report that two
+direct hamstring sets had been done in a fortnight.
+
+History now counts working sets per muscle over the last seven days. Primary and
+secondary are counted **apart**, never summed: a Romanian deadlift is a hamstring
+set and is not a calf set, and adding them would say it was. No target is named
+— the usual ten-to-twenty is a range with wide individual variation, and this
+reports what you did.
+
+Anything the guide does not know — every exercise you add yourself — is counted
+and named rather than dropped. A chart that quietly ignores a third of the work
+is worse than no chart.
+
+## Warming up
+
+For a barbell lift with a working weight entered, a suggested ramp sits under
+the Working/Warm-up toggle: the empty bar, then roughly 40%, 60% and 80%, each
+rounded to what your rack can actually make. Tapping one logs it as a warm-up
+without touching the weight in the field, which is the working set you are
+ramping towards. Steps you have already done drop off, and the whole row goes
+once the work starts.
+
+Rounding is also what thins the list on a light lift: two steps that land on the
+same loadable number collapse into one. A ramp is lifting convention rather than
+a finding, and this is here to save taps on something you were going to do
+anyway.
 
 ## Which session is next
 
@@ -204,7 +254,23 @@ of any of those and the same weight comes back, with the sheet saying which —
 `repeating — 3 of 4 sets`, `short of 4 reps`, `a set went to failure`. RIR 0 is
 failure by definition, wherever in the session it happened.
 
+How often that jump is taken is per exercise, under **Add it how often** in its
+settings: every session, or every second, third or fourth. Adding to every
+completed session is right for a lift you are new to and too fast for one you
+are not — five pounds a session on an overhead press is twenty a month, which
+nobody holds for long, and until now the only way to slow a lift down was to
+fail it. Sessions have to be *completed* to count: a short one does not advance
+the run, and starts it again. The sheet says where you are —
+`2 of 3 before the next jump` — because a lift that has quietly stopped climbing
+otherwise looks broken.
+
 Adding load to a session you could not finish is how a lift stalls for a month.
+So is repeating one. After three held sessions in a row the app stops offering
+the same number and backs off about 10%, rounded to the plates, saying
+`stalled 3 sessions — backing off 10%` instead of the reason for the hundredth
+time. Three and ten percent are conventions, not findings; they are there to
+break a loop rather than to be precise about it. Nothing to take off — an
+unweighted bodyweight lift — is not called a deload.
 
 ## How long it will take
 
@@ -278,6 +344,32 @@ parsing, because the data load is asynchronous and waiting for it flashes the
 dark app on the way to a cream one. It is also what the browser is told to paint
 behind the status bar; left alone, a cream app keeps a near-black notch.
 
+## Zooming
+
+Turned off, deliberately, and it takes three separate mechanisms because no one
+of them covers a phone on its own:
+
+- `user-scalable=no, maximum-scale=1` in the viewport — which Chrome and Android
+  honour and **iOS Safari has ignored for page zoom since iOS 10**.
+- `touch-action: pan-x pan-y`, which leaves panning and drops both pinch and the
+  double tap. The rule was `manipulation` before, which drops only the double
+  tap; pinch went straight through it.
+- Cancelling Safari's own `gesturestart`, `gesturechange` and `gestureend`,
+  which is the only thing that actually stops it on an iPhone. All three, not
+  just the first: preventing the start still lets a pinch already under way
+  through. Multi-touch on `touchmove` is deliberately left alone — two fingers
+  is also how a phone scrolls.
+
+The fourth kind of zoom is the one you notice most, and none of the above
+touches it: iOS magnifies the page to meet the caret when a focused field is
+under 16px. The text inputs, textareas and selects were 15px and are 16px now.
+
+The honest note: this fails WCAG 1.4.4, and a test in the suite used to assert
+the opposite for that reason. It is a deliberate trade for an app used one-handed
+mid-set, where an accidental pinch leaves you lost on a magnified screen with a
+bar waiting. Body text is 16px and the numbers that matter are 26px, so the
+browser's own text-size control still has room to work.
+
 ## Your data
 
 Stored in `localStorage` under `logbook-v1`, on the device only. The app asks
@@ -289,13 +381,27 @@ So it still nags: after eight sessions without one, a banner offers a backup.
 **Settings → Download backup (JSON)** round-trips through **Restore from
 backup**. The CSV export is for spreadsheets and does not restore.
 
+Where the browser can share a file — which on a phone means the iOS share sheet
+— **Send backup somewhere safe** puts the same JSON into Files, iCloud Drive or
+a message. A download never leaves the device, and losing the device is the one
+failure a local backup does not cover.
+
+**Restore merges; it does not replace.** It used to overwrite the only copy of
+the data, which made the moment you most want it — you have just reinstalled, or
+something looks wrong — the moment a month-old file silently took out everything
+logged since, with no undo. Sets carry a stable id, so the union is well defined:
+anything the backup has and the device does not is added, anything both have is
+left alone, and anything only the device has is kept. It reports both halves,
+because a merge that says nothing is as unnerving as a replace that says
+everything.
+
 If a device blocks storage (private mode, a full disk), a banner says so
 instead of failing quietly.
 
 ## Built like this
 
 Markup, styles and logic in one file; a service worker that precaches the shell
-and keeps the exercise photos in a cache of their own; 237 Playwright tests that
+and keeps the exercise photos in a cache of their own; 271 Playwright tests that
 read real bounding boxes at phone sizes; and Release Please, which tags the
 version and rewrites it in `sw.js` — the thing that makes an installed phone
 notice a release at all. The deploy refuses to publish a build the suite rejects.
