@@ -557,6 +557,28 @@
   .bars button[aria-pressed="true"]{
     background:linear-gradient(180deg,var(--accent-fill-2),var(--accent-fill));
     color:var(--on-accent);border-color:var(--accent-fill)}
+  .mrow{display:grid;grid-template-columns:1fr 96px;align-items:center;gap:12px;padding:9px 0}
+  .mrow + .mrow{border-top:1px solid var(--line)}
+  .mrow .nm{font-size:15px;letter-spacing:-.01em;text-transform:capitalize;color:var(--ink)}
+  /* Direct sets fill the bar; indirect sit behind them at a lower weight,
+     because a Romanian deadlift is a hamstring set and is not a calf set. */
+  .mrow .bar{position:relative;height:7px;border-radius:999px;background:var(--surface-3);
+    margin-top:6px;overflow:hidden}
+  .mrow .bar i{position:absolute;left:0;top:0;bottom:0;border-radius:999px}
+  .mrow .bar .ind{background:var(--accent-soft)}
+  .mrow .bar .dir{background:var(--accent)}
+  .mrow .n{text-align:right;font-size:13.5px;font-weight:600;color:var(--ink-2);
+    font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  .mrow .n small{color:var(--ink-3);font-weight:500}
+
+  /* Top-aligned, not centred: a ramp that wraps to two rows left the label
+     sitting beside the second one. Same reason the guide's muscle labels are
+     in their own column. */
+  .ramprow{display:flex;align-items:flex-start;gap:10px;margin:0 0 6px}
+  .ramprow .lbl{
+    flex:none;color:var(--ink-3);font-size:11px;font-weight:620;letter-spacing:.06em;
+    text-transform:uppercase;padding-top:11px;
+  }
   .barsvg{display:block;width:100%;height:86px}
   .pmtext{font-size:16px;font-weight:600;letter-spacing:-.02em;text-align:center;margin-top:4px}
   .pmtext .per{color:var(--ink-3);font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase}
@@ -946,6 +968,10 @@
     <div class="bars" id="trendspan"></div>
   </div>
   <div id="trends"></div>
+  <div class="eyebrow hide" id="bwlabel">Bodyweight</div>
+  <div class="card hide" id="bwcard"></div>
+  <div class="eyebrow hide" id="musclelabel">Sets per muscle — last 7 days</div>
+  <div class="card hide" id="musclecard"></div>
   <div class="eyebrow">Pain — last 21 rated days</div>
   <div class="card" id="paincard"></div>
   <div class="eyebrow">Sessions</div>
@@ -976,6 +1002,11 @@
     <div id="setlist"></div>
 
     <div class="bars" id="setkind" style="margin:0 0 2px;justify-content:flex-start"></div>
+
+    <div class="ramprow hide" id="ramprow">
+      <span class="lbl">Warm up</span>
+      <div class="bars" id="ramp"></div>
+    </div>
 
     <label class="f" style="margin-top:8px">
       <span class="lab" id="wtlab">Weight</span>
@@ -1144,8 +1175,7 @@
 
     <label class="f" style="margin-top:16px"><span class="lab" id="bwlab">Bodyweight</span>
       <input type="number" id="bwinput" inputmode="decimal" step="any" aria-labelledby="bwlab"></label>
-    <div class="hint">Used to score pull-ups and dips. Without it, a bodyweight set
-      estimates out at zero and its trend line stays flat.</div>
+    <div class="hint" id="bwhistory"></div>
 
     <div class="eyebrow">Timers</div>
     <label class="f"><span class="lab">Superset transition</span>
@@ -1179,6 +1209,7 @@
       the edge it gives is small once total sets are equal.</div>
 
     <div class="eyebrow">Data</div>
+    <button class="btn ghost small wide hide" id="sharebackup">Send backup somewhere safe</button>
     <button class="btn ghost small wide" id="backup">Download backup (JSON)</button>
     <button class="btn ghost small wide" id="export" style="margin-top:8px">Download CSV</button>
     <button class="btn ghost small wide" id="copycsv" style="margin-top:8px">Copy CSV to clipboard</button>
@@ -1442,7 +1473,6 @@ function todayISO(){
 }
 const U = () => UNITS[db.settings.units] || UNITS.lb;
 const units = () => db.settings.units || 'lb';
-const bw = () => +(db.settings.bw?.[units()] || 0);
 const announce = m => { $('#sr').textContent = m; };
 
 function toast(msg, action){
@@ -1522,6 +1552,18 @@ function migrate(d){
     if(+out.settings.bw[a] > 0 && !(+out.settings.bw[b] > 0)){
       out.settings.bw[b] = +conv(+out.settings.bw[a], a, b).toFixed(1);
     }
+  }
+  // The scalar becomes the first entry in the series. Dated to the last session
+  // rather than to today: it was entered at some point in the past and was
+  // true then, and dating it today would leave every existing set resolving
+  // back to it anyway while claiming to be a fresh weighing.
+  out.bw = Array.isArray(d.bw)
+    ? d.bw.filter(e => e && typeof e.d === 'string' && (+e.lb > 0 || +e.kg > 0))
+          .sort((a, b) => a.d.localeCompare(b.d))
+    : [];
+  if(!out.bw.length && (+out.settings.bw.lb > 0 || +out.settings.bw.kg > 0)){
+    const last = out.sets.length ? out.sets.reduce((a, s) => s.d > a ? s.d : a, out.sets[0].d) : null;
+    out.bw = [{d: last || todayISO(), lb: +out.settings.bw.lb || 0, kg: +out.settings.bw.kg || 0}];
   }
   out.ex = d.ex && typeof d.ex === 'object' ? d.ex : {};
   // A program that is empty, or not a list at all, leaves nothing to log
@@ -1802,6 +1844,35 @@ function heldAt(ex, date){
   return null;
 }
 
+// Three sessions in a row is the usual convention for calling a lift stalled,
+// and a convention is what it is — there is no finding that says three rather
+// than two or four. Ten percent likewise. Both are here to break a loop, not to
+// be precise about it.
+const STALL_LIMIT = 3;
+const DELOAD_PCT = 0.10;
+
+// How many sessions in a row this exercise has failed to earn its next weight.
+// heldAt answers for one session; a lift that has not moved in a month is a
+// different problem from one that had a bad day, and the app could not tell
+// them apart — it offered the same number a fifth time with the same sentence
+// under it. Adding load to a session you could not finish stalls a lift; so
+// does repeating one.
+function stallRun(ex, through){
+  const dates = [...new Set(db.sets
+    .filter(s => s.e === ex && !isWarmup(s) && s.d <= through).map(s => s.d))].sort().reverse();
+  let n = 0;
+  for(const d of dates){ if(!heldAt(ex, d)) break; n++; }
+  return n;
+}
+
+// Ten percent easier, not ten percent lighter: on an assisted machine the
+// weight is negative and easier means more help, so the sign decides which way
+// the number moves.
+function deloadTo(w, ex){
+  const next = w >= 0 ? w * (1 - DELOAD_PCT) : w * (1 + DELOAD_PCT);
+  return Math.max(minWeight(ex), roundLoadable(next, ex));
+}
+
 // What to put in the fields when the sheet opens.
 //   nothing logged     -> the bar, and the target's reps
 //   already going today-> repeat today's last set, because straight sets are
@@ -1813,8 +1884,15 @@ function seedFor(ex){
   const prior = mine.filter(s => s.d !== state.date).slice(-1)[0];
   const base = today || prior;
   const held = prior ? heldAt(ex, prior.d) : null;
+  const stall = held ? stallRun(ex, prior.d) : 0;
+  // Only a deload if the number actually moves. An unweighted bodyweight lift
+  // has nothing to take off, and calling that a deload would be the old
+  // behaviour wearing a new label.
+  const deload = stall >= STALL_LIMIT && prior &&
+    deloadTo(toDisplay(prior), ex) !== roundLoadable(toDisplay(prior), ex);
   const weight = !base ? startingWeight(ex)
     : today ? toDisplay(today)
+    : deload ? deloadTo(toDisplay(prior), ex)
     // Rounded like any other suggestion: after a unit switch the weight being
     // repeated is a converted decimal, and offering 102.06 kg is exactly the
     // thing the plate calculator would then warn about.
@@ -1822,7 +1900,8 @@ function seedFor(ex){
     : roundLoadable(toDisplay(prior) + progressionFor(ex), ex);
   // Turning assistance back off leaves negative sets in the record. Repeating
   // one into a field that will not accept it offers a weight you cannot log.
-  return {weight: Math.max(minWeight(ex), weight), rir: base ? base.rir : 2, prior, base, held};
+  return {weight: Math.max(minWeight(ex), weight), rir: base ? base.rir : 2,
+          prior, base, held, stall, deload};
 }
 
 // Round a target up to an even number of sets, leaving the rest of the string
@@ -1855,16 +1934,47 @@ function targetSets(target){
 /* ---------- weight helpers ---------- */
 const conv = (w, from, to) => from === to ? w : (to === 'kg' ? w / LB_PER_KG : w * LB_PER_KG);
 
-// Plates are stored per unit because a kg rack really does hold different
-// discs. Bodyweight is not like that — it is one fact with two spellings, and
-// leaving the other slot at zero told the app the lifter weighed nothing, so
-// every pull-up scored zero volume. Only an empty slot is filled: a number
-// entered by hand is never overwritten.
+// Bodyweight is a series, not a setting. It was one number applied to every set
+// ever logged, which meant the effective load of a pull-up done in January was
+// computed from what you weigh today: step on a scale and the whole dip and
+// pull-up history re-rated itself, trend and volume together. Losing ten pounds
+// read as getting weaker.
+const bwLog = () => Array.isArray(db.bw) ? db.bw : (db.bw = []);
+
+// The weight in force on a date: the most recent entry on or before it. A set
+// logged before the first entry has no honest answer, so it takes the earliest
+// one — the least-wrong guess, and the reason the chart starts where the
+// weighing did rather than where the lifting did.
+function bwOn(date){
+  const log = bwLog();
+  if(!log.length) return 0;
+  let best = log[0];
+  for(const e of log){ if(e.d <= date && e.d >= best.d) best = e; }
+  if(best.d > date) best = log.reduce((a, e) => e.d < a.d ? e : a, log[0]);
+  return +(best[units()] || 0);
+}
+const bw = () => bwOn(todayISO());
+
+// One weighing, both spellings. Stored in both units for the same reason the
+// old scalar was: a unit switch must not tell the app you weigh nothing.
+function setBwOn(date, v){
+  const log = bwLog();
+  const u = units(), other = u === 'lb' ? 'kg' : 'lb';
+  const i = log.findIndex(e => e.d === date);
+  if(!(v > 0)){ if(i >= 0) log.splice(i, 1); return; }
+  const e = i >= 0 ? log[i] : {d: date};
+  e[u] = v;
+  e[other] = +conv(v, u, other).toFixed(1);
+  if(i < 0) log.push(e);
+  log.sort((a, b) => a.d.localeCompare(b.d));
+}
+
+// Only an empty slot is filled: a number entered by hand is never overwritten.
 function carryBodyweight(from, to){
-  const w = db.settings.bw;
-  if(!w || typeof w !== 'object') return;
-  if(+w[to] > 0 || !(+w[from] > 0)) return;
-  w[to] = +conv(+w[from], from, to).toFixed(1);
+  for(const e of bwLog()){
+    if(+e[to] > 0 || !(+e[from] > 0)) continue;
+    e[to] = +conv(+e[from], from, to).toFixed(1);
+  }
 }
 const toDisplay = s => conv(s.w, s.u || 'lb', units());
 // Effective load: bodyweight work is only meaningful with the lifter on it.
@@ -1875,12 +1985,13 @@ const toDisplay = s => conv(s.w, s.u || 'lb', units());
 // Clamped at nothing-added, unless the machine is allowed to take weight off:
 // then below zero is the honest answer, and how much help it still needs is
 // exactly the number that ought to be climbing.
-const shownMax = (ex, v) => kindOf(ex) !== 'bodyweight' ? v
-  : allowsAssist(ex) ? v - bw() : Math.max(0, v - bw());
+const shownMax = (ex, v, date = todayISO()) => kindOf(ex) !== 'bodyweight' ? v
+  : allowsAssist(ex) ? v - bwOn(date) : Math.max(0, v - bwOn(date));
 
 function loadOf(s){
   const base = toDisplay(s);
-  const load = kindOf(s.e) === 'bodyweight' ? base + bw() : base;
+  // The weight the lifter actually was that day, not the one they are now.
+  const load = kindOf(s.e) === 'bodyweight' ? base + bwOn(s.d) : base;
   // More assistance than the thing being assisted is not negative work. Left
   // signed it would subtract from a session's volume and from the estimate.
   return Math.max(0, load);
@@ -2337,6 +2448,59 @@ function renderLoadHint(){
       : '';
   $('#bwhint').classList.toggle('hide', !say);
   $('#bwhint').textContent = say;
+}
+
+// A ramp is lifting convention, not a finding, and this is here to save taps on
+// something you were going to do anyway rather than to tell anyone how to warm
+// up. Percentages of the working weight, each rounded to what the rack can
+// actually make — which is also what thins the list on a light lift, since two
+// steps that round to the same number collapse into one.
+const RAMP = [[0.40, 5], [0.60, 3], [0.80, 2]];
+function warmupRamp(ex, work){
+  if(!isLoadable(ex) || kindOf(ex) === 'distance' || !(work > 0)) return [];
+  const bar = barFor(ex) || 0;
+  if(!(work > bar)) return [];
+  const out = [];
+  // An empty bar is a warm-up set in its own right, where there is a bar.
+  if(bar > 0) out.push({w: bar, r: 8});
+  for(const [pct, reps] of RAMP){
+    const w = roundLoadable(work * pct, ex);
+    if(w <= (out.length ? out[out.length - 1].w : 0)) continue;
+    // Never the working set itself: the last ramp set has to stop short of it.
+    if(w >= work) break;
+    out.push({w, r: reps});
+  }
+  return out;
+}
+
+function renderRamp(){
+  const ex = state.ex;
+  if(!ex) return;
+  const work = parseFloat($('#wt').value);
+  // Once the work has started there is nothing left to ramp to.
+  const started = workingSets(setsFor(state.date, ex)).length;
+  const done = new Set(setsFor(state.date, ex).filter(isWarmup).map(s => fmtW(toDisplay(s))));
+  const left = started ? [] : warmupRamp(ex, work).filter(x => !done.has(fmtW(x.w)));
+  $('#ramprow').classList.toggle('hide', !left.length);
+  if(!left.length) return;
+  $('#ramp').innerHTML = left.map(x =>
+    `<button data-ramp="${x.w}" data-reps="${x.r}">${fmtW(x.w)} \u00d7 ${x.r}</button>`).join('');
+}
+
+// Logged straight from the chip, without disturbing the fields: the weight in
+// them is the working set you are ramping towards, and having to put it back
+// after every warm-up is the thing this is meant to save.
+function logRamp(w, r){
+  const now = Date.now();
+  const id = now + '' + Math.random().toString(36).slice(2, 6);
+  state.justLogged = id;
+  if(db.days[state.date]?.done) delete db.days[state.date].done;
+  db.sets.push({id, t: now, d: state.date, e: state.ex, dy: state.day,
+                w, r, rir: state.rir, rest: null, u: units(), wu: true});
+  // No rest timer, the same as every other warm-up: three and a half minutes
+  // between ramp sets is not a thing anyone wants.
+  save(); renderSetList(); renderSheetSub(); renderRamp(); renderDays();
+  toast(`Warm-up ${fmtW(w)} \u00d7 ${r}`);
 }
 
 function renderRepBand(){
@@ -2948,7 +3112,14 @@ function renderSheetSub(){
   // Only worth saying before the first set of the day: once you are logging,
   // the weight in the field is whatever you decided it should be.
   const held = prev && !done ? heldAt(ex, prev.d) : null;
-  if(held) bits.push(`repeating — ${held}`);
+  if(held){
+    const seed = seedFor(ex);
+    // The field already holds the backed-off weight, so this says why rather
+    // than repeating the number underneath it.
+    bits.push(seed.deload
+      ? `stalled ${seed.stall} sessions — backing off ${Math.round(DELOAD_PCT * 100)}%`
+      : `repeating — ${held}`);
+  }
   $('#sheet-sub').textContent = bits.join(' · ');
 }
 
@@ -2979,7 +3150,7 @@ function openSheet(ex){
   $('#canceledit').classList.add('hide');
   $('#logset').textContent = 'Log set';
   renderSetKind(); renderPlates(); renderSetList(); renderPlateMath();
-  refreshStepperLabels(); renderPairSelect(); renderLoadHint();
+  refreshStepperLabels(); renderPairSelect(); renderLoadHint(); renderRamp();
   showExerciseScreen();
 }
 
@@ -3112,8 +3283,8 @@ function renderHistory(){
       // the display would have the card read 55 to 60 while the badge worked
       // out the change from 57 to 60.2.
       const round = kindOf(ex) === 'distance'
-        ? (v => Math.round(v)) : (v => roundToStep(shownMax(ex, v), ex));
-      return {ex, dates, vals: dates.map(d=>round(days[d])),
+        ? ((v) => Math.round(v)) : ((v, d) => roundToStep(shownMax(ex, v, d), ex));
+      return {ex, dates, vals: dates.map(d=>round(days[d], d)),
               logged: logged[ex] ? logged[ex].size : dates.length};
     })
     .sort((a,b)=> b.dates.at(-1).localeCompare(a.dates.at(-1)))
@@ -3180,7 +3351,80 @@ function renderHistory(){
       + `<button class="btn ghost small wide" id="logpain" style="margin-top:14px">Log pain for today</button>`;
   }
 
+  renderBwChart();
+  renderMuscles();
   renderSessions();
+}
+
+// The guide already knows which muscles each exercise works, and every working
+// set is dated. Nothing joined the two, so the app could report that a deadlift
+// estimate was up 10% and not that two direct hamstring sets had been done in a
+// fortnight.
+//
+// Primary and secondary are counted apart rather than summed. A Romanian
+// deadlift is a hamstring set; it is not a calf set, and adding them would say
+// it was. No target is named either — the usual ten-to-twenty is a range with
+// wide individual variation, and this reports what you did.
+function setsPerMuscle(days = 7){
+  const t = new Date(); t.setDate(t.getDate() - (days - 1));
+  const since = new Date(t.getTime() - t.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const direct = {}, indirect = {}, stray = new Set();
+  let unplaced = 0;
+  for(const s of db.sets){
+    if(isWarmup(s) || s.d < since) continue;
+    const g = guideFor(s.e);
+    // Anything you added yourself: counted and named, never silently dropped.
+    // A chart that quietly ignores a third of the work is worse than no chart.
+    if(!g){ unplaced++; stray.add(s.e); continue; }
+    for(const m of g.primary || []) direct[m] = (direct[m] || 0) + 1;
+    for(const m of g.secondary || []) indirect[m] = (indirect[m] || 0) + 1;
+  }
+  const rows = [...new Set([...Object.keys(direct), ...Object.keys(indirect)])]
+    .map(m => ({m, dir: direct[m] || 0, ind: indirect[m] || 0}))
+    .sort((a, b) => b.dir - a.dir || b.ind - a.ind || a.m.localeCompare(b.m));
+  return {rows, unplaced, stray: [...stray].sort()};
+}
+
+function renderMuscles(){
+  const {rows, unplaced, stray} = setsPerMuscle();
+  const show = rows.length || unplaced;
+  $('#musclelabel').classList.toggle('hide', !show);
+  $('#musclecard').classList.toggle('hide', !show);
+  if(!show) return;
+  const top = Math.max(1, ...rows.map(r => r.dir + r.ind));
+  $('#musclecard').innerHTML = rows.map(r => `<div class="mrow">
+      <div><div class="nm">${esc(r.m)}</div>
+        <div class="bar"><i class="ind" style="width:${((r.dir + r.ind) / top * 100).toFixed(1)}%"></i>
+          <i class="dir" style="width:${(r.dir / top * 100).toFixed(1)}%"></i></div></div>
+      <div class="n">${r.dir}<small> \u00b7 ${r.ind}</small></div>
+    </div>`).join('')
+    + `<div class="sessmeta" style="margin-top:10px">Direct \u00b7 indirect sets. ${
+        unplaced ? `${unplaced} set${unplaced === 1 ? '' : 's'} of ${
+          esc(stray.join(', '))} could not be placed \u2014 the guide does not know ${
+          stray.length === 1 ? 'it' : 'them'}.`
+        : 'Every set in the last week is counted.'}</div>`;
+}
+
+// The one number here that moves for reasons other than training, which is what
+// makes it worth seeing beside the ones that do not.
+function renderBwChart(){
+  const log = bwLog(), u = U();
+  const vals = log.map(e => +(e[units()] || 0)).filter(v => v > 0);
+  const show = vals.length >= 2;
+  $('#bwlabel').classList.toggle('hide', !show);
+  $('#bwcard').classList.toggle('hide', !show);
+  if(!show) return;
+  const now = vals.at(-1), first = vals[0];
+  const diff = +(now - first).toFixed(1);
+  // Neither direction is progress on its own — it depends entirely on what you
+  // are training for — so this one is not coloured up or down like the rest.
+  const label = Math.abs(diff) < 0.5 ? 'no clear change'
+    : `${diff > 0 ? '+' : '\u2212'}${Math.abs(diff)} ${u.label} over ${vals.length} weigh-ins`;
+  $('#bwcard').innerHTML =
+    `<div class="metric"><b>${now}</b><small>${esc(u.label)}</small>
+       <small class="delta flat" style="margin-left:auto">${esc(label)}</small></div>
+     ${sparkline(vals)}
+     <div class="sessmeta" style="margin-top:4px">Last weighed ${esc(agoLabel(log.at(-1).d))}</div>`;
 }
 
 function dayNameFor(sets){
@@ -3422,7 +3666,12 @@ $('#delday').addEventListener('click', ()=>{
 });
 
 /* ---------- events: log sheet ---------- */
-$('#wt').addEventListener('input', renderPlateMath);
+$('#wt').addEventListener('input', ()=>{ renderPlateMath(); renderRamp(); });
+
+$('#ramp').addEventListener('click', e=>{
+  const b = e.target.closest('[data-ramp]'); if(!b) return;
+  logRamp(+b.dataset.ramp, +b.dataset.reps);
+});
 $('#reps').addEventListener('input', renderRepBand);
 
 $('#plates').addEventListener('click', e=>{
@@ -3481,7 +3730,7 @@ $('#logset').addEventListener('click', ()=>{
                 d: state.date, e: state.ex, dy: state.day,
                 w, r, rir: state.rir, rest: restTaken, u: units(),
                 ...(state.warmup ? {wu: true} : {})});
-  save(); renderSetList(); renderSheetSub();
+  save(); renderSetList(); renderSheetSub(); renderRamp();
   if(state.warmup){
     toast('Warm-up logged');
     // No rest timer: three and a half minutes between ramp-up sets is not a
@@ -3738,6 +3987,15 @@ $('#exdelete').addEventListener('click', ()=>{
 $('#exclose').addEventListener('click', ()=>closePanel($('#exsheet')));
 
 /* ---------- settings ---------- */
+// Says when you were last weighed, because a bodyweight from five weeks ago is
+// still what everything logged since is being scored against.
+function renderBwHint(){
+  const log = bwLog(), last = log[log.length - 1];
+  $('#bwhistory').textContent = !last
+    ? 'Used to score pull-ups and dips. Without it a bodyweight set estimates out at zero and its trend stays flat.'
+    : `Last weighed ${agoLabel(last.d)}. Every set is scored against the weight in force on its own date, so a new reading does not rewrite what you already logged.`;
+}
+
 function renderThemeSel(){
   $('#themesel').innerHTML = THEMES.map(t =>
     `<button data-theme="${t.id}" aria-pressed="${t.id === themeId()}">${esc(t.name)}</button>`).join('');
@@ -3751,8 +4009,10 @@ function openSettings(){
   const owned = new Set(availablePlates().map(p => p.w));
   $('#platesel').innerHTML = u.plates.map(p =>
     `<button data-plate="${p.w}" aria-pressed="${owned.has(p.w)}">${p.w}</button>`).join('');
+  $('#sharebackup').classList.toggle('hide', !canShareBackup());
   $('#bwlab').textContent = `Bodyweight (${u.label})`;
   $('#bwinput').value = bw() || '';
+  renderBwHint();
   $('#transel').innerHTML = TRANSITION_OPTIONS.map(v =>
     `<option value="${v}">${v}s</option>`).join('');
   $('#transel').value = String(db.settings.transition ?? TRANSITION);
@@ -3815,8 +4075,12 @@ $('#platesel').addEventListener('click', e=>{
 
 $('#bwinput').addEventListener('change', e=>{
   const v = parseFloat(e.target.value);
-  (db.settings.bw ||= {})[units()] = isNaN(v) ? 0 : v;
+  // Dated today, so a weighing is a reading rather than a correction applied
+  // backwards over everything already logged.
+  setBwOn(todayISO(), isNaN(v) ? 0 : v);
   save();
+  renderBwHint();
+  if(state.tab === 'history') renderHistory();
 });
 
 $('#alertsel').addEventListener('change', e=>{
@@ -3873,6 +4137,33 @@ function downloadBackup(){
   toast(ok ? 'Backup downloaded' : 'Download blocked');
 }
 
+// A download on iOS lands somewhere most people will not find again, and it
+// never leaves the phone. The share sheet puts the same JSON into Files, iCloud
+// Drive, a message — anywhere that survives losing the device, which is the only
+// failure a local backup does not cover.
+function canShareBackup(){
+  try{
+    return !!navigator.canShare?.({files: [new File(['{}'], 'x.json', {type: 'application/json'})]});
+  }catch(e){ return false; }
+}
+
+async function shareBackup(){
+  const name = `logbook-${stamp()}.json`;
+  const file = new File([JSON.stringify(db, null, 2)], name, {type: 'application/json'});
+  try{
+    await navigator.share({files: [file], title: 'Logbook backup'});
+    db.settings.lastBackup = Date.now();
+    db.settings.backupSnooze = 0;
+    save(); renderBanners();
+    toast('Backup sent');
+  }catch(err){
+    // A cancelled share is a choice, not a failure, and saying "blocked" for it
+    // would be a lie.
+    if(err && err.name === 'AbortError') return;
+    toast('Sharing not available');
+  }
+}
+
 function csv(){
   const q = v => { v = String(v ?? ''); return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; };
   // One column per site that has data, so a spreadsheet can chart a site
@@ -3911,16 +4202,57 @@ $('#copycsv').addEventListener('click', async ()=>{
   catch(e){ toast('Copy blocked — use Download CSV'); }
 });
 $('#restore').addEventListener('click', ()=>$('#restorefile').click());
+// A union, not a replacement. Restore used to overwrite the only copy of the
+// data, which made the moment you most want it — you have just reinstalled, or
+// something looks wrong — the moment a month-old file silently took out
+// everything logged since. There is no undo after save().
+//
+// Sets carry a stable id, so the union is well defined: anything the backup has
+// and the device does not is added, anything both have is left alone, and
+// anything only the device has is kept. Settings and the program stay as they
+// are on the device, because they are what you are looking at and a merge
+// cannot ask.
+function mergeBackup(incoming){
+  const have = new Set(db.sets.map(s => s.id));
+  const added = incoming.sets.filter(s => s && s.id && !have.has(s.id));
+  db.sets = db.sets.concat(added).sort((a, b) => (a.d || '').localeCompare(b.d || ''));
+
+  let days = 0;
+  for(const [d, v] of Object.entries(incoming.days || {})){
+    if(db.days[d]) continue;
+    db.days[d] = v; days++;
+  }
+  // Bodyweight readings merge by date the same way.
+  const seen = new Set(bwLog().map(e => e.d));
+  let weighs = 0;
+  for(const e of incoming.bw || []){
+    if(!e || seen.has(e.d)) continue;
+    bwLog().push(e); weighs++;
+  }
+  bwLog().sort((a, b) => a.d.localeCompare(b.d));
+  return {sets: added.length, days, weighs, kept: db.sets.length - added.length};
+}
+
+$('#sharebackup').addEventListener('click', shareBackup);
+
 $('#restorefile').addEventListener('change', async e=>{
   const f = e.target.files?.[0]; if(!f) return;
   e.target.value = '';
   try{
     const parsed = JSON.parse(await f.text());
     if(!parsed || !Array.isArray(parsed.sets)) throw new Error('not a logbook backup');
-    if(!confirm(`Replace everything on this device with ${parsed.sets.length} sets from the backup?`)) return;
-    db = migrate(parsed);
+    const incoming = migrate(parsed);
+    if(!confirm(`Merge ${incoming.sets.length} sets from the backup into this device? `
+      + `Nothing already here is removed.`)) return;
+    const n = mergeBackup(incoming);
     save(); rerenderAll(); openSettings();
-    toast('Backup restored');
+    // A merge that says nothing is as unnerving as a replace that says
+    // everything, so it reports both halves.
+    toast(n.sets || n.days || n.weighs
+      ? `Added ${n.sets} set${n.sets === 1 ? '' : 's'}, kept ${n.kept} already here`
+      // Still worth saying what is here: "nothing new" on its own reads as
+      // nothing happened, when the point is that nothing was lost.
+      : `Nothing new — all ${db.sets.length} sets already here`);
   }catch(err){ toast('Not a valid backup'); }
 });
 
@@ -4044,7 +4376,10 @@ function openExHistory(ex){
   const sessions = dates.length;
   const forMax = mine.filter(s => k === 'distance' ? !isWarmup(s) : countsForMax(s));
   const best = Math.max(0, ...forMax.map(s => k === 'distance' ? s.r : e1rm(s)));
-  const bestShown = k === 'distance' ? Math.round(best) : roundToStep(shownMax(ex, best), ex);
+  // Shown per set and then maxed, not maxed and then shown: the bodyweight to
+  // subtract belongs to the set that produced the number.
+  const bestShown = k === 'distance' ? Math.round(best)
+    : roundToStep(Math.max(0, ...forMax.map(s => shownMax(ex, e1rm(s), s.d))), ex);
   $('#exhist-sub').textContent = !sessions ? 'Nothing logged yet'
     : `${sessions} session${sessions===1?'':'s'}` + (best
       ? ` · best ${k==='bodyweight' ? signed(bestShown) : bestShown} ${k==='distance'?u.dist:u.label}`
@@ -4061,7 +4396,7 @@ function openExHistory(ex){
     const work = list.filter(s => k === 'distance' ? !isWarmup(s) : countsForMax(s));
     const top = work.length
       ? (k === 'distance' ? Math.round(Math.max(...work.map(s => s.r)))
-                          : roundToStep(shownMax(ex, Math.max(...work.map(e1rm))), ex)) : null;
+                          : roundToStep(Math.max(...work.map(s => shownMax(ex, e1rm(s), s.d))), ex)) : null;
     return `<div class="exhistday">
       <b>${esc(prettyDate(d))}</b>
       <span>${detail}</span>

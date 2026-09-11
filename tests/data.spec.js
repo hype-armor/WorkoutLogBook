@@ -64,12 +64,43 @@ test.describe('backup, restore and export', () => {
 
     await page.click('#gear');
     await page.setInputFiles('#restorefile', backupPath);
-    await expect(page.locator('#toast')).toContainText(/restored/i);
+    await expect(page.locator('#toast')).toContainText(/added 5 sets/i);
     await page.click('#setdone');
     await expect(page.locator('.ex[data-ex="Deadlift"] .count')).toHaveText('5/4');
 
     await page.reload();
     await expect(page.locator('.ex[data-ex="Deadlift"] .count')).toHaveText('5/4');
+  });
+
+  test('restoring merges rather than replacing', async () => {
+    // The moment you most want restore — you have just reinstalled, or
+    // something looks wrong — used to be the moment a month-old file silently
+    // took out everything logged since. There is no undo after save().
+    const before = await page.evaluate(() => db.sets.length);
+    await page.evaluate(() => {
+      db.sets.push({ id: 'newer-than-the-backup', t: Date.now(), d: todayISO(),
+                     e: 'Leg press', dy: 'A', w: 300, r: 10, rir: 2, u: 'lb' });
+      save();
+    });
+
+    await page.click('#gear');
+    await page.setInputFiles('#restorefile', backupPath);
+    // either way it says what survived, because a merge that says nothing is as
+    // unnerving as a replace that says everything
+    await expect(page.locator('#toast')).toContainText(/already here/i);
+
+    // the set the backup has never heard of is still here
+    expect(await page.evaluate(() =>
+      db.sets.some(s => s.id === 'newer-than-the-backup'))).toBe(true);
+    // and nothing was duplicated: the backup's own sets were already present
+    expect(await page.evaluate(() => db.sets.length)).toBe(before + 1);
+    expect(await page.evaluate(() =>
+      new Set(db.sets.map(s => s.id)).size)).toBe(before + 1);
+
+    await page.evaluate(() => {
+      db.sets = db.sets.filter(s => s.id !== 'newer-than-the-backup'); save();
+    });
+    await page.click('#setdone');
   });
 
   test('a file that is not a backup is rejected without losing data', async () => {
@@ -1094,7 +1125,7 @@ test('bodyweight follows you across a unit switch (#37)', async ({ browser }) =>
   // one fact with two spellings, and leaving the other slot at zero told the
   // app the lifter weighed nothing.
   await expect.poll(async () => page.evaluate(() =>
-    JSON.parse(localStorage.getItem('logbook-v1')).settings.bw.kg)).toBeCloseTo(81.6, 1);
+    JSON.parse(localStorage.getItem('logbook-v1')).bw.at(-1).kg)).toBeCloseTo(81.6, 1);
   await expect(page.locator('#bwinput')).toHaveValue('81.6');
 
   // a number entered by hand is never overwritten
