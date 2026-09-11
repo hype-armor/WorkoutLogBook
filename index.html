@@ -177,6 +177,55 @@
     --r-sm:12px; --r-md:18px; --r-lg:24px; --r-xl:30px;
   }
 
+  :root[data-theme="neon"]{
+    color-scheme:dark;
+    --accent-rgb:255,63,164; --good-rgb:53,211,154;
+    --scrim:rgba(5,3,10,.72); --nav-bg:rgba(11,7,20,.86);
+    --shade:rgba(0,0,0,.55); --toast-line:rgba(11,7,20,.28);
+    --bg:#0B0714; --surface:#150C24; --surface-2:#1E1233; --surface-3:#2A1A45;
+    --line:#2C1C48; --line-2:#40296A;
+    --ink:#F4EBFF; --ink-2:#BBA6DC; --ink-3:#9683BD; --on-light:#0B0714;
+    --accent:#FF3FA4; --accent-ink:#FF8ACB; --accent-soft:rgba(255,63,164,.16);
+    --accent-fill:#AD1669; --accent-fill-2:#C81F7C; --on-accent:#FFFFFF;
+    --p45:#FF5E7A; --p35:#4FC3F7; --p25:#E0B93C; --p10:#35D39A;
+    --good:#35D39A; --warn:#E0B93C; --danger:#FF5E7A;
+  }
+
+  :root[data-theme="newsprint"]{
+    color-scheme:light;
+    --accent-rgb:163,35,28; --good-rgb:27,107,60;
+    --scrim:rgba(30,28,22,.5); --nav-bg:rgba(232,230,225,.92);
+    --shade:rgba(40,38,30,.22); --toast-line:rgba(246,244,240,.3);
+    --bg:#E8E6E1; --surface:#F6F4F0; --surface-2:#E2DFD8; --surface-3:#D4D0C7;
+    --line:#CFCBC2; --line-2:#B4AFA4;
+    --ink:#191814; --ink-2:#4D4A42; --ink-3:#5E5B51; --on-light:#F6F4F0;
+    --accent:#A3231C; --accent-ink:#86201A; --accent-soft:rgba(163,35,28,.12);
+    --accent-fill:#8E1F19; --accent-fill-2:#A3231C; --on-accent:#FBF9F5;
+    --p45:#A3231C; --p35:#1F4E9C; --p25:#6E5800; --p10:#1B6B3C;
+    --good:#1B6B3C; --warn:#6E5800; --danger:#A3231C;
+    /* A broadsheet is set in a serif and ruled with square corners. */
+    --sans:'Iowan Old Style',Georgia,Palatino,'Times New Roman',serif;
+    --r-sm:2px; --r-md:3px; --r-lg:4px; --r-xl:5px;
+  }
+
+  /* Not a look so much as a setting: pure black, white ink, one signal colour,
+     and borders strong enough to find in direct sun. Every pair here clears 7:1
+     rather than 4.5 — the test checks it at that number, not the usual one. */
+  :root[data-theme="contrast"]{
+    color-scheme:dark;
+    --accent-rgb:255,212,0; --good-rgb:86,224,138;
+    --scrim:rgba(0,0,0,.8); --nav-bg:rgba(0,0,0,.92);
+    --shade:rgba(0,0,0,.6); --toast-line:rgba(0,0,0,.3);
+    --bg:#000000; --surface:#0B0B0B; --surface-2:#161616; --surface-3:#222222;
+    --line:#4A4A4A; --line-2:#6E6E6E;
+    --ink:#FFFFFF; --ink-2:#E0E0E0; --ink-3:#BDBDBD; --on-light:#000000;
+    --accent:#FFD400; --accent-ink:#FFDF4D; --accent-soft:rgba(255,212,0,.18);
+    --accent-fill:#E6BE00; --accent-fill-2:#FFD400; --on-accent:#000000;
+    --p45:#FF6B66; --p35:#7FB2FF; --p25:#FFD400; --p10:#56E08A;
+    --good:#56E08A; --warn:#FFD400; --danger:#FF6B66;
+  }
+
+
 
   /* Tapping Log set twice in a row should log two sets, not zoom the page.
      `manipulation` drops only the double-tap-to-zoom gesture — panning and
@@ -1282,6 +1331,9 @@ const THEMES = [
   {id:'coffee',   name:'Coffee',   bg:'#F2E9DD'},
   {id:'cute',     name:'Cute',     bg:'#FFF1F6'},
   {id:'cartoon',  name:'Cartoon',  bg:'#FFF4D6'},
+  {id:'neon',     name:'Neon',     bg:'#0B0714'},
+  {id:'newsprint',name:'Newsprint',bg:'#E8E6E1'},
+  {id:'contrast', name:'Contrast', bg:'#000000'},
 ];
 const themeId = () => THEMES.some(t => t.id === db.settings.theme) ? db.settings.theme : 'midnight';
 

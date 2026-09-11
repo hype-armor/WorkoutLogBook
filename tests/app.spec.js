@@ -2257,7 +2257,11 @@ test.describe('themes', () => {
 
   let page, errs;
 
-  const THEMES = ['midnight', 'retro', 'coffee', 'cute', 'cartoon'];
+  const THEMES = ['midnight', 'retro', 'coffee', 'cute', 'cartoon',
+                  'neon', 'newsprint', 'contrast'];
+  // Contrast is not a look, it is a setting: it promises 7:1, so it is held
+  // to 7:1 rather than to the 4.5 the rest of them clear.
+  const floorFor = t => t === 'contrast' ? 7 : 4.5;
 
   // The app's own rule, applied to whatever the live stylesheet resolves to.
   const contrastIn = (page, pairs) => page.evaluate(pairs => {
@@ -2380,8 +2384,10 @@ test.describe('themes', () => {
         ['--p45', '--surface'], ['--p35', '--surface'], ['--p25', '--surface'], ['--p10', '--surface'],
       ];
       const got = await contrastIn(page, pairs);
-      const bad = pairs.map((p, i) => [p, got[i]]).filter(([, r]) => r < 4.5);
-      expect(bad, `${t}: ${bad.map(([p, r]) => p.join(' on ') + ' = ' + r).join(', ')}`).toEqual([]);
+      const floor = floorFor(t);
+      const bad = pairs.map((p, i) => [p, got[i]]).filter(([, r]) => r < floor);
+      expect(bad, `${t} below ${floor}: ${
+        bad.map(([p, r]) => p.join(' on ') + ' = ' + r).join(', ')}`).toEqual([]);
     }
   });
 

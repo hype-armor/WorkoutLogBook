@@ -253,8 +253,9 @@ every 0-5 rating is also a valid 0-10 one.
 
 ## Themes
 
-Five, under **Settings → Theme**: Midnight (the default), Retro, Coffee, Cute and
-Cartoon. A theme is nothing but a second set of values for the same tokens, so
+Eight, under **Settings → Theme**: Midnight (the default), Retro, Coffee, Cute,
+Cartoon, Neon, Newsprint and Contrast. A theme is nothing but a second set of
+values for the same tokens, so
 nothing in the app knows one exists — which is also why each carries a *full*
 set. A token left out falls back to Midnight's value, and that is not a subtle
 failure: it left a near-black tab bar under a cream app.
@@ -262,8 +263,12 @@ failure: it left a near-black tab bar under a cream app.
 Every palette is checked the way the default was, at 4.5:1 — ink on each
 surface, the label on a filled button, the reps-in-reserve discs, which print
 their hues as text. A test reads the live values back out of the stylesheet and
-re-runs those pairs on all five, so a forgotten token fails the build rather
+re-runs those pairs on all eight, so a forgotten token fails the build rather
 than the eye.
+
+**Contrast** is the exception, and barely a look: pure black, white ink, one
+signal colour, and borders heavy enough to find in direct sun. It promises 7:1
+rather than 4.5, so the same test holds it to 7:1.
 
 The plate diagram is deliberately **not** themed. A 45 is red in every gym, and
 that drawing is a picture of the bar in front of you rather than a chart.
