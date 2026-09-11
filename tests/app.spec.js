@@ -2812,3 +2812,96 @@ test.describe('a backup that can leave the phone', () => {
     await ctx.close();
   });
 });
+
+test.describe('how often the weight goes up', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  // n completed sessions of Deadlift, all at the same weight
+  const completed = (n, w = 300) => page.evaluate(({ n, w }) => {
+    const iso = k => { const t = new Date(); t.setDate(t.getDate() - k * 7);
+      return new Date(t.getTime() - t.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+    db.sets = [];
+    for (let i = n; i >= 1; i--) {
+      const d = iso(i);
+      for (let s = 0; s < 4; s++) {          // four of a prescribed four
+        db.sets.push({ id: `d${i}-${s}`, t: Date.parse(d) + s, d, e: 'Deadlift', dy: 'A',
+                       w, r: 4, rir: 2, rest: 180, u: 'lb' });
+      }
+    }
+    db.settings.lastDay = 'A'; save(); state.day = 'A'; state.date = todayISO(); rerenderAll();
+  }, { n, w });
+
+  const setEvery = n => page.evaluate(k => {
+    (db.ex['Deadlift'] ||= {}).every = k; save();
+  }, n);
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('every session, by default', async () => {
+    await completed(1);
+    await page.click('.ex[data-ex="Deadlift"]');
+    expect(await page.inputValue('#wt')).toBe('305');
+    await page.click('#close');
+  });
+
+  test('set to every third, one good session is not a reason to add weight', async () => {
+    await completed(1);
+    await setEvery(3);
+    await page.click('.ex[data-ex="Deadlift"]');
+    expect(await page.inputValue('#wt')).toBe('300');
+    // and it says why, or a lift that has stopped climbing looks broken
+    await expect(page.locator('#sheet-sub')).toContainText('1 of 3 before the next jump');
+    await page.click('#close');
+  });
+
+  test('the third one earns it', async () => {
+    await completed(3);
+    await setEvery(3);
+    await page.click('.ex[data-ex="Deadlift"]');
+    expect(await page.inputValue('#wt')).toBe('305');
+    await expect(page.locator('#sheet-sub')).not.toContainText('before the next jump');
+    await page.click('#close');
+  });
+
+  test('a short session does not count towards the run', async () => {
+    await completed(3);
+    await setEvery(3);
+    await page.evaluate(() => {
+      // the middle session was two of four: held, so the run restarts after it
+      const dates = [...new Set(db.sets.map(s => s.d))].sort();
+      db.sets = db.sets.filter(s => s.d !== dates[1] || +s.id.split('-')[1] < 2);
+      save(); rerenderAll();
+    });
+    await page.click('.ex[data-ex="Deadlift"]');
+    expect(await page.inputValue('#wt')).toBe('300');
+    await expect(page.locator('#sheet-sub')).toContainText('1 of 3 before the next jump');
+    await page.click('#close');
+  });
+
+  test('the editor keeps it, and says what it means', async () => {
+    await page.click('.ex[data-ex="Deadlift"]');
+    await page.click('#exsettings');
+    await expect(page.locator('#exevery')).toHaveValue('3');
+    await expect(page.locator('#exeveryhint')).toContainText(/does not count towards the run/i);
+    await page.selectOption('#exevery', '1');
+    // the hint answers while you are still deciding, not after you save
+    await expect(page.locator('#exeveryhint')).toContainText(/every session you complete/i);
+    await page.click('#exsave');
+    expect(await page.evaluate(() => db.ex['Deadlift'].every)).toBe(undefined);
+    await page.click('#close');
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});

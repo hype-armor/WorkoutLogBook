@@ -1089,6 +1089,9 @@
       <span class="lab" id="exproglab">Progression</span>
       <input type="number" id="exprog" inputmode="decimal" step="any" aria-labelledby="exproglab"></label>
     <div class="hint" id="exproghint"></div>
+    <label class="f" style="margin-top:10px"><span class="lab">Add it how often</span>
+      <select id="exevery"></select></label>
+    <div class="hint" id="exeveryhint"></div>
     <label class="f" style="margin-top:14px"><span class="lab">Rest target</span>
       <select id="exrest"></select></label>
     <button class="btn danger small wide" id="exdelete" style="margin-top:16px">Remove from this day</button>
@@ -1783,6 +1786,41 @@ function progressionFor(ex){
   return isLoadable(ex) ? smallestPlate() * 2 : U().otherStep;
 }
 
+// How often that jump is taken. Adding to every completed session is right for
+// a lift you are new to and too fast for one you are not: five pounds a session
+// on an overhead press is twenty a month, which nobody holds for long. Holding
+// a weight for two or three sessions before moving is the usual answer, and the
+// app had no way to say it — so the only way to slow a lift down was to fail it.
+const PROGRESS_EVERY = [[1, 'Every session'], [2, 'Every 2nd session'],
+                        [3, 'Every 3rd session'], [4, 'Every 4th session']];
+const progressEveryFor = ex => {
+  const n = +meta(ex).every;
+  return n >= 1 && n <= 4 ? n : 1;
+};
+
+// The weight a session was worked at: the last working set of that date, which
+// is the same set the next session's suggestion is built from.
+function sessionWeight(ex, date){
+  const sets = workingSets(db.sets.filter(s => s.e === ex && s.d === date));
+  return sets.length ? toDisplay(sets[sets.length - 1]) : null;
+}
+
+// How many sessions in a row have been completed at the weight just used. A
+// held session is not a step towards the next weight, and neither is one at a
+// different weight, so either ends the run.
+function earnedRun(ex, through){
+  const target = sessionWeight(ex, through);
+  if(target == null) return 0;
+  const dates = [...new Set(db.sets
+    .filter(s => s.e === ex && !isWarmup(s) && s.d <= through).map(s => s.d))].sort().reverse();
+  let n = 0;
+  for(const d of dates){
+    if(heldAt(ex, d) || sessionWeight(ex, d) !== target) break;
+    n++;
+  }
+  return n;
+}
+
 // Where the weight starts with no history: an empty bar already weighs
 // something, so counting up from zero means dialling past a number the lift
 // cannot go below. Zero is only right when there is no bar — machines counted
@@ -1890,18 +1928,23 @@ function seedFor(ex){
   // behaviour wearing a new label.
   const deload = stall >= STALL_LIMIT && prior &&
     deloadTo(toDisplay(prior), ex) !== roundLoadable(toDisplay(prior), ex);
+  // Earned it, but not necessarily due it: on a lift set to move every third
+  // session, two good ones are not a reason to add weight.
+  const every = progressEveryFor(ex);
+  const run = !held && prior ? earnedRun(ex, prior.d) : 0;
+  const due = run >= every;
   const weight = !base ? startingWeight(ex)
     : today ? toDisplay(today)
     : deload ? deloadTo(toDisplay(prior), ex)
     // Rounded like any other suggestion: after a unit switch the weight being
     // repeated is a converted decimal, and offering 102.06 kg is exactly the
     // thing the plate calculator would then warn about.
-    : held ? roundLoadable(toDisplay(prior), ex)
+    : (held || !due) ? roundLoadable(toDisplay(prior), ex)
     : roundLoadable(toDisplay(prior) + progressionFor(ex), ex);
   // Turning assistance back off leaves negative sets in the record. Repeating
   // one into a field that will not accept it offers a weight you cannot log.
   return {weight: Math.max(minWeight(ex), weight), rir: base ? base.rir : 2,
-          prior, base, held, stall, deload};
+          prior, base, held, stall, deload, every, run, due};
 }
 
 // Round a target up to an even number of sets, leaving the rest of the string
@@ -3112,13 +3155,15 @@ function renderSheetSub(){
   // Only worth saying before the first set of the day: once you are logging,
   // the weight in the field is whatever you decided it should be.
   const held = prev && !done ? heldAt(ex, prev.d) : null;
-  if(held){
+  if(prev && !done){
     const seed = seedFor(ex);
-    // The field already holds the backed-off weight, so this says why rather
-    // than repeating the number underneath it.
-    bits.push(seed.deload
-      ? `stalled ${seed.stall} sessions — backing off ${Math.round(DELOAD_PCT * 100)}%`
-      : `repeating — ${held}`);
+    // The field already holds the weight, so each of these says why it is the
+    // one it is. Without the last line a lift set to move every third session
+    // looks like it has simply stopped progressing.
+    if(seed.deload) bits.push(`stalled ${seed.stall} sessions — backing off ${
+      Math.round(DELOAD_PCT * 100)}%`);
+    else if(held) bits.push(`repeating — ${held}`);
+    else if(!seed.due) bits.push(`${seed.run} of ${seed.every} before the next jump`);
   }
   $('#sheet-sub').textContent = bits.join(' · ');
 }
@@ -3894,6 +3939,9 @@ function openExEditor(name){
   $('#exbar').innerHTML = [`<option value="">No plate math</option>`]
     .concat(u.bars.map(b => `<option value="${b}">${esc(u.barLabel[b])}</option>`)).join('');
   $('#exbar').value = name && isLoadable(name) ? String(barFor(name)) : '';
+  $('#exevery').innerHTML = PROGRESS_EVERY.map(([v, label]) =>
+    `<option value="${v}">${esc(label)}</option>`).join('');
+  $('#exevery').value = String(name ? progressEveryFor(name) : 1);
   $('#exrest').innerHTML = REST_OPTIONS.map(v =>
     `<option value="${v}">${mmss(v)}</option>`).join('');
   $('#exrest').value = String(name ? restTargetFor(name) : 120);
@@ -3904,6 +3952,7 @@ function openExEditor(name){
   $('#exproghint').textContent = name
     ? `Added to the last session's weight when this opens. Blank follows the rack — currently ${progressionFor(name)} ${u.label}.`
     : 'Blank follows the smallest jump your plates allow.';
+  renderEveryHint();
   const inDay = !!name && dayById(state.day).ex.some(([n]) => n === name);
   $('#exdelete').classList.toggle('hide', !inDay);
   // Adding an exercise starts with typing its name, so the keyboard is wanted.
@@ -3949,6 +3998,9 @@ $('#exsave').addEventListener('click', ()=>{
   if(barVal === '') delete m.bar;
   else m.bar = Object.assign({}, m.bar || {}, {[units()]: +barVal});
 
+  const every = +$('#exevery').value;
+  if(every > 1) m.every = every; else delete m.every;
+
   const progVal = parseFloat($('#exprog').value);
   if(progVal > 0) m.prog = Object.assign({}, m.prog || {}, {[units()]: progVal});
   else if(m.prog) delete m.prog[units()];
@@ -3969,6 +4021,8 @@ $('#exsave').addEventListener('click', ()=>{
   }
   toast(rounded ? `Rounded to ${targetSets(target)} sets — one side each` : (old ? 'Saved' : 'Added'));
 });
+
+$('#exevery').addEventListener('change', renderEveryHint);
 
 $('#exdelete').addEventListener('click', ()=>{
   const name = state.editingEx; if(!name) return;
@@ -3994,6 +4048,14 @@ function renderBwHint(){
   $('#bwhistory').textContent = !last
     ? 'Used to score pull-ups and dips. Without it a bodyweight set estimates out at zero and its trend stays flat.'
     : `Last weighed ${agoLabel(last.d)}. Every set is scored against the weight in force on its own date, so a new reading does not rewrite what you already logged.`;
+}
+
+// Reads off the select rather than the stored value, so it answers while you
+// are still deciding rather than after you have saved.
+function renderEveryHint(){
+  $('#exeveryhint').textContent = +$('#exevery').value === 1
+    ? 'Every session you complete earns the jump. Right for a lift you are new to, and fast for one you are not.'
+    : 'Sessions have to be completed — a short one does not count towards the run, and starts it again.';
 }
 
 function renderThemeSel(){

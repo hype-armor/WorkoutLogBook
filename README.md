@@ -254,6 +254,16 @@ of any of those and the same weight comes back, with the sheet saying which —
 `repeating — 3 of 4 sets`, `short of 4 reps`, `a set went to failure`. RIR 0 is
 failure by definition, wherever in the session it happened.
 
+How often that jump is taken is per exercise, under **Add it how often** in its
+settings: every session, or every second, third or fourth. Adding to every
+completed session is right for a lift you are new to and too fast for one you
+are not — five pounds a session on an overhead press is twenty a month, which
+nobody holds for long, and until now the only way to slow a lift down was to
+fail it. Sessions have to be *completed* to count: a short one does not advance
+the run, and starts it again. The sheet says where you are —
+`2 of 3 before the next jump` — because a lift that has quietly stopped climbing
+otherwise looks broken.
+
 Adding load to a session you could not finish is how a lift stalls for a month.
 So is repeating one. After three held sessions in a row the app stops offering
 the same number and backs off about 10%, rounded to the plates, saying
@@ -391,7 +401,7 @@ instead of failing quietly.
 ## Built like this
 
 Markup, styles and logic in one file; a service worker that precaches the shell
-and keeps the exercise photos in a cache of their own; 265 Playwright tests that
+and keeps the exercise photos in a cache of their own; 271 Playwright tests that
 read real bounding boxes at phone sizes; and Release Please, which tags the
 version and rewrites it in `sw.js` — the thing that makes an installed phone
 notice a release at all. The deploy refuses to publish a build the suite rejects.
