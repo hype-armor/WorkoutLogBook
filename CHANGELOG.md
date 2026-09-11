@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.18.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.17.0...logbook-v1.18.0) (2026-09-10)
+
+
+### Features
+
+* five themes, chosen in settings ([79381db](https://github.com/hype-armor/WorkoutLogBook/commit/79381dbe053da8f3500f4bf35873cb0970b0374c))
+
+
+### Documentation
+
+* make the README the showcase page ([50f057f](https://github.com/hype-armor/WorkoutLogBook/commit/50f057f748dfa419ab4bb93fff10580823933cab))
+
 ## [1.17.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.16.0...logbook-v1.17.0) (2026-09-08)
 
 
