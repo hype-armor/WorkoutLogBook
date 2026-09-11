@@ -24,7 +24,9 @@ jobs:
 
       - run: npm ci
 
-      - run: npx playwright install --with-deps chromium
+      # Both engines. WebKit is the one the app is actually used on, and it
+      # differs in every way that matters on a phone.
+      - run: npx playwright install --with-deps chromium webkit
 
       - run: npx playwright test
 

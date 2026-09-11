@@ -122,7 +122,7 @@ test.describe('the exercise screen locks the page behind it', () => {
     return { ctx, page };
   };
 
-  test('the page cannot be scrolled behind the screen, and does not jump', async ({ browser }) => {
+  test('the page cannot be scrolled behind the screen, and does not jump', async ({ browser, browserName }) => {
     const { ctx, page } = await openAt(browser, 120);
     const headingBefore = await page.locator('h1').boundingBox();
 
@@ -135,12 +135,17 @@ test.describe('the exercise screen locks the page behind it', () => {
     const headingDuring = await page.locator('h1').boundingBox();
     expect(headingDuring.y).toBeCloseTo(headingBefore.y, 0);
 
-    for (const [x, y] of [[195, 60], [195, 300]]) {
-      const before = await page.evaluate(() => window.scrollY);
-      await page.mouse.move(x, y);
-      await page.mouse.wheel(0, 1500);
-      await page.waitForTimeout(200);
-      expect(await page.evaluate(() => window.scrollY), `wheel at ${x},${y} leaked`).toBe(before);
+    // Playwright cannot send a wheel to mobile WebKit at all — the driver
+    // limitation, not the engine's. position:fixed above is the assertion that
+    // actually encodes the fix; this is the belt to its braces.
+    if (browserName !== 'webkit') {
+      for (const [x, y] of [[195, 60], [195, 300]]) {
+        const before = await page.evaluate(() => window.scrollY);
+        await page.mouse.move(x, y);
+        await page.mouse.wheel(0, 1500);
+        await page.waitForTimeout(200);
+        expect(await page.evaluate(() => window.scrollY), `wheel at ${x},${y} leaked`).toBe(before);
+      }
     }
     await ctx.close();
   });
@@ -452,7 +457,12 @@ test('button text cannot be selected, but fields still can', async ({ browser })
   // every control reports it, so a new button inherits the behaviour
   const styles = await page.evaluate(() =>
     ['#wup', '#logset', '.plate', '#tab-train', '.ex', '.setrow .del', '#close']
-      .map(s => [s, getComputedStyle(document.querySelector(s)).userSelect]));
+      // WebKit's computed style carries -webkit-user-select and leaves the
+      // unprefixed one undefined. The app sets both; the test read one.
+      .map(s => {
+        const cs = getComputedStyle(document.querySelector(s));
+        return [s, cs.userSelect || cs.webkitUserSelect];
+      }));
   for (const [sel, v] of styles) expect(v, sel).toBe('none');
 
   // the fields you type into are untouched — notes are prose you may want to edit
@@ -464,7 +474,10 @@ test('button text cannot be selected, but fields still can', async ({ browser })
     return t.value.slice(t.selectionStart, t.selectionEnd);
   });
   expect(picked).toBe('felt sharp on set three');
-  expect(await page.evaluate(() => getComputedStyle(document.querySelector('#wt')).userSelect)).toBe('text');
+  expect(await page.evaluate(() => {
+    const cs = getComputedStyle(document.querySelector('#wt'));
+    return cs.userSelect || cs.webkitUserSelect;
+  })).toBe('text');
   await ctx.close();
 });
 

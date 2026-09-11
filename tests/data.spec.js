@@ -403,7 +403,12 @@ test.describe('data durability', () => {
     }));
   }, [n, lastBackup]);
 
-  test('storage asks to be treated as permanent', async ({ browser }) => {
+  test('storage asks to be treated as permanent', async ({ browser, browserName }) => {
+    // WebKit does not implement StorageManager.persist, so there is nothing to
+    // ask and the app correctly does not ask it — claimPersistentStorage
+    // returns null on the feature check. That is the real state of affairs on
+    // an iPhone: no persistence guarantee is available there to request.
+    test.skip(browserName === 'webkit', 'no StorageManager.persist in WebKit');
     const ctx = await phone(browser);
     const page = await ctx.newPage();
     const asked = [];

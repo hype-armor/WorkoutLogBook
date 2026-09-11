@@ -14,6 +14,12 @@ const phone = (browser, over = {}) => browser.newContext({ ...PHONE, ...over });
 
 /** Collect page errors and failed responses so a test can assert on silence. */
 function watchErrors(page, { ignore = [] } = {}) {
+  // WebKit refuses a manifest fetched from file:// as a cross-origin request
+  // (origin null) and logs it; Chromium allows it. The behaviour suites run on
+  // file:// on purpose, and the app is served over http in every real install,
+  // where the manifest loads. Ignored everywhere rather than per-suite, because
+  // it is the environment talking, not the app.
+  ignore = ignore.concat(['manifest.webmanifest', 'Access-Control-Allow-Origin']);
   const errs = [];
   const skip = url => ignore.some(p => (url || '').includes(p));
   page.on('pageerror', e => errs.push('PAGEERROR: ' + e.message));

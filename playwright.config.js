@@ -31,6 +31,22 @@ module.exports = defineConfig({
         ? { executablePath: process.env.CHROMIUM_PATH }
         : {}
     }
+  }, {
+    // The engine the app is actually used on. Chromium has no on-screen
+    // keyboard, no gesturestart, honours user-scalable, and reports zero for
+    // every safe-area inset — so every iOS behaviour the app handles was
+    // invisible to the suite, and several were found on a phone instead.
+    //
+    // Not the same as Safari, and not the same as iOS Safari: shared engine,
+    // different shell. No real keyboard, no Home Screen lifecycle. It closes
+    // most of the gap rather than all of it.
+    name: 'webkit',
+    use: { browserName: 'webkit' },
+    // The service-worker suite stays on Chromium. Playwright's WebKit does not
+    // drive registration, update and offline emulation reliably enough to
+    // assert on, and what it would be testing is Playwright's WebKit rather
+    // than Safari's service worker, which is a different implementation again.
+    testIgnore: /pwa\.spec\.js/
   }],
   webServer: {
     command: `node tests/server.js ${PORT}`,
