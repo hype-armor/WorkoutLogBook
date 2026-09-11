@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.20.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.19.0...logbook-v1.20.0) (2026-09-11)
+
+
+### Features
+
+* bodyweight history, muscle volume, deloads, merging restore and warm-up ramps ([c7c4d7a](https://github.com/hype-armor/WorkoutLogBook/commit/c7c4d7a16d9e8a475c8e46756e9d2c7f5cae4dce))
+* choose how often an exercise takes its next jump ([48c1bc0](https://github.com/hype-armor/WorkoutLogBook/commit/48c1bc0238011186d146ca57d8bac2449b9d81fc))
+* stop the page zooming on a phone ([71cb8e0](https://github.com/hype-armor/WorkoutLogBook/commit/71cb8e0f494896c3e2dfd9d893e05ed680054343))
+
 ## [1.19.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.18.0...logbook-v1.19.0) (2026-09-11)
 
 
