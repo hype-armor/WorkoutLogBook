@@ -504,12 +504,17 @@ which is what the leakage list above is for.
 
 ## Order of work
 
-1. `registration.showNotification()` in place of `new Notification()`, and
-   honesty about `vibrate` on iOS. No server involved; fixes a feature that is
-   broken on iPhones today.
-2. Local schema v4 → v5: per-record HLC, tombstones, `migrate()` synthesising
-   both. Entirely local, testable against the existing suite, and the
-   prerequisite for everything after it.
+1. ~~`registration.showNotification()` in place of `new Notification()`, and
+   honesty about `vibrate` on iOS.~~ **Done.** No server involved; it fixed a
+   feature that was broken on every iPhone.
+2. ~~Local schema v4 → v5: per-record HLC, tombstones, `migrate()` synthesising
+   both.~~ **Done.** `db.rev` maps a record key to `{h, del}`; stamping works by
+   diffing against a snapshot in `save()` rather than by calling a function at
+   each of the sixty-odd sites that change something, because one of those
+   would be forgotten and a forgotten one is a change that syncs as though it
+   never happened. The device id lives outside the database, in `logbook-device`,
+   so a restored backup does not clone it. Nothing reads any of it yet — except
+   restore, which no longer hands back a set you deleted.
 3. The crypto module: MK generation, HKDF subkeys, both wrap paths, AES-GCM with
    AAD. Pure functions, heavily unit-tested, no network.
 4. The server: schema, vault and auth routes, invites, sync endpoints.

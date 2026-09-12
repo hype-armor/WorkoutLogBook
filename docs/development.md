@@ -16,8 +16,10 @@ it behaves the way it does, see the [README](../README.md).
 
 An optional self-hosted server — end-to-end encrypted sync between devices,
 and the push notifications that are the only way to wake a suspended phone
-when a rest timer ends — is designed in [server.md](server.md). Nothing in it
-is built yet.
+when a rest timer ends — is designed in [server.md](server.md). None of the
+server exists. Two things the design needs from the app do: alerts are raised
+through the service worker, and every record carries a clock and leaves a mark
+when it is deleted (`db.rev`, schema v5). Nothing reads the clocks yet.
 
 
 ## Running it
@@ -58,7 +60,7 @@ scroll-leak wheel check (`mouse.wheel` is unsupported in mobile WebKit), and
 the persistent-storage request (WebKit has no `StorageManager.persist` — which
 is the real state of affairs on an iPhone).
 
-295 tests in `tests/`, 286 of them on WebKit too, run on every pull request
+302 tests in `tests/`, 293 of them on WebKit too, run on every pull request
 and again before any deploy.
 They cover the things that actually broke: that a logged set survives a reload
 and a service-worker update, that `Log set` and the RIR selector are never

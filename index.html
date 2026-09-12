@@ -1571,10 +1571,120 @@ let undoBuf = null, saveFails = 0, storageBroken = false;
 let pendingWorker = null, installPrompt = null;
 
 function blank(){
-  return {v:4, sets:[], days:{}, pairs:{}, ex:{}, program:null,
+  return {v:5, sets:[], days:{}, pairs:{}, ex:{}, program:null,
           settings:{units:'lb', plates:null, transition:30, bw:{lb:0,kg:0},
                     lastDay:'A', alert:'both', painSites:['lower-back']},
-          rest:null};
+          rest:null, rev:{}};
+}
+
+/* ---------- record identity and clocks ---------- */
+// Two devices can only be reconciled if there is something to reconcile: a name
+// for each thing that can change, a clock saying when it last changed, and a
+// mark left behind when it is deleted. None of that existed — a delete spliced
+// the array and left nothing to see, so any merge would hand the set straight
+// back. This is all local and nothing reads it yet; it is what a merge would
+// need to be written against.
+
+// This device's own id, in a key of its own rather than inside the database.
+// It is what breaks a tie between two clocks, so restoring a backup onto a
+// second phone must not hand it the first one's identity.
+const DEVICE_KEY = 'logbook-device';
+let deviceId = Math.random().toString(36).slice(2, 10).padEnd(8, '0');
+try{
+  const saved = localStorage.getItem(DEVICE_KEY);
+  if(/^[0-9a-z]{8}$/.test(saved || '')) deviceId = saved;
+  else localStorage.setItem(DEVICE_KEY, deviceId);
+}catch(e){ /* storage blocked — a per-session id still orders this device */ }
+
+// A hybrid logical clock. Wall time where it can be trusted and a counter where
+// it cannot: a phone whose clock is wrong — and gym phones are — would
+// otherwise lose the write that really was last, or win with one made in
+// January. The counter only ever moves forward, so two writes on this device
+// are ordered by this device whatever the clock does underneath them.
+//
+// Rendered so that comparing two clocks is comparing two strings. Base 36 and
+// ten digits of wall time is good for the next hundred thousand years.
+const hlcStr = (w, c, dev) =>
+  w.toString(36).padStart(10, '0') + ':' + c.toString(36).padStart(4, '0') + ':' + dev;
+// Before anything that happens from now on, which is all that can be said
+// honestly about data that was logged before there were any clocks.
+const HLC_ZERO = hlcStr(0, 0, '00000000');
+
+let hlcLast = {w: 0, c: 0};
+function hlcNext(){
+  const w = Date.now();
+  hlcLast = w > hlcLast.w ? {w, c: 0} : {w: hlcLast.w, c: hlcLast.c + 1};
+  return hlcStr(hlcLast.w, hlcLast.c, deviceId);
+}
+// Resume from the furthest the clock has already reached, so a phone that has
+// been set back an hour still issues clocks above the ones it has written.
+function hlcSeed(d){
+  for(const r of Object.values(d.rev || {})){
+    const [w, c] = String(r?.h || '').split(':');
+    const wi = parseInt(w, 36) || 0, ci = parseInt(c, 36) || 0;
+    if(wi > hlcLast.w || (wi === hlcLast.w && ci > hlcLast.c)) hlcLast = {w: wi, c: ci};
+  }
+}
+
+// Every syncable thing in the database, addressed the same way. `rest` is not
+// here on purpose: a running timer belongs to the phone in your hand, not to
+// the training log, and stamping it would bump a clock every quarter second.
+// Nor are the two backup fields, which describe this device's own backup file
+// rather than anything you lifted.
+const DEVICE_ONLY = new Set(['lastBackup', 'backupSnooze']);
+function records(d){
+  const out = new Map();
+  for(const s of d.sets || []) if(s?.id) out.set('set:' + s.id, s);
+  for(const [k, v] of Object.entries(d.days  || {})) out.set('day:' + k, v);
+  for(const [k, v] of Object.entries(d.ex    || {})) out.set('ex:' + k, v);
+  for(const [k, v] of Object.entries(d.pairs || {})) out.set('pair:' + k, v);
+  for(const e of d.bw || []) if(e?.d) out.set('bw:' + e.d, e);
+  for(const [k, v] of Object.entries(d.settings || {}))
+    if(!DEVICE_ONLY.has(k)) out.set('cfg:' + k, v);
+  // An ordered list whose order is the point. Per-day records would need a
+  // rank between two neighbours to merge, which is a lot of machinery for a
+  // thing that changes a few times a year.
+  out.set('program', d.program);
+  return out;
+}
+
+const snapshot = d => {
+  const out = new Map();
+  for(const [k, v] of records(d)) out.set(k, JSON.stringify(v ?? null));
+  return out;
+};
+
+// Anything without a clock gets the one that says "before everything".
+function fillRev(d){
+  d.rev = d.rev && typeof d.rev === 'object' ? d.rev : {};
+  for(const k of records(d).keys()) if(!d.rev[k]) d.rev[k] = {h: HLC_ZERO};
+  return d;
+}
+
+// What the database looked like at the last write. Stamping works by comparing
+// against it rather than by calling a function at each of the sixty-odd places
+// that change something: one of those call sites will be forgotten, and a
+// forgotten one is a change that syncs as though it never happened. A
+// comparison has nothing to forget, and it gets deletes and undo for free.
+let shadow = null;
+
+function stampRev(){
+  const now = snapshot(db);
+  db.rev = db.rev && typeof db.rev === 'object' ? db.rev : {};
+  if(!shadow){ shadow = now; return; }
+
+  // One action, one clock: logging a set changes the set and the day it belongs
+  // to, and those happened at the same moment because they were the same tap.
+  let h = null;
+  const clock = () => (h ||= hlcNext());
+
+  for(const [k, ser] of now){
+    if(shadow.get(k) !== ser || db.rev[k]?.del) db.rev[k] = {h: clock()};
+  }
+  for(const k of shadow.keys()){
+    if(!now.has(k)) db.rev[k] = {h: clock(), del: true};
+  }
+  shadow = now;
 }
 
 const $ = s => document.querySelector(s);
@@ -1650,6 +1760,12 @@ async function load(){
     try{ db = migrate(JSON.parse(raw)); }
     catch(e){ toast('Saved data unreadable'); db = blank(); }
   }
+  // Before the first change, so the first save compares against what was on
+  // disk rather than restamping the whole database as if it had just been
+  // typed in.
+  fillRev(db);
+  hlcSeed(db);
+  shadow = snapshot(db);
 }
 
 function migrate(d){
@@ -1754,7 +1870,12 @@ function migrate(d){
       }
     }
   }
-  out.v = 4;
+  // v5 adds a clock per record and a mark where one was deleted. Nothing in
+  // the old data says when any of it last changed, so it all starts at the
+  // same instant — below anything done from here on, which is the only
+  // ordering that is true rather than invented.
+  fillRev(out);
+  out.v = 5;
   return out;
 }
 
@@ -1797,8 +1918,10 @@ const hasPain = date => Object.values(painsOn(date)).some(v => typeof v === 'num
 // stream: the weight and reps steppers only touch their own inputs, the rest
 // timer persists on start and stop rather than per tick, and notes are already
 // debounced upstream. Every caller is one discrete action, and a write costs
-// about 2ms at 2,000 sets — so the delay bought nothing and cost a window.
+// about 4.5ms at 2,000 sets, most of a millisecond of that the record diff —
+// so the delay bought nothing and cost a window.
 async function save(){
+  stampRev();
   try{
     await store.set(KEY, JSON.stringify(db));
     if(saveFails){ saveFails = 0; storageBroken = false; renderBanners(); }
@@ -4507,21 +4630,28 @@ $('#restore').addEventListener('click', ()=>$('#restorefile').click());
 // anything only the device has is kept. Settings and the program stay as they
 // are on the device, because they are what you are looking at and a merge
 // cannot ask.
+// A record this device deleted is not one it is missing. Without the mark a
+// delete leaves, a backup taken before it reads as "has something you do not"
+// and hands it straight back — so the one thing restore could not do was
+// restore a database you had tidied.
+const wasDeleted = key => !!db.rev?.[key]?.del;
+
 function mergeBackup(incoming){
   const have = new Set(db.sets.map(s => s.id));
-  const added = incoming.sets.filter(s => s && s.id && !have.has(s.id));
+  const added = incoming.sets.filter(s =>
+    s && s.id && !have.has(s.id) && !wasDeleted('set:' + s.id));
   db.sets = db.sets.concat(added).sort((a, b) => (a.d || '').localeCompare(b.d || ''));
 
   let days = 0;
   for(const [d, v] of Object.entries(incoming.days || {})){
-    if(db.days[d]) continue;
+    if(db.days[d] || wasDeleted('day:' + d)) continue;
     db.days[d] = v; days++;
   }
   // Bodyweight readings merge by date the same way.
   const seen = new Set(bwLog().map(e => e.d));
   let weighs = 0;
   for(const e of incoming.bw || []){
-    if(!e || seen.has(e.d)) continue;
+    if(!e || seen.has(e.d) || wasDeleted('bw:' + e.d)) continue;
     bwLog().push(e); weighs++;
   }
   bwLog().sort((a, b) => a.d.localeCompare(b.d));
