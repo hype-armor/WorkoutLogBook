@@ -151,6 +151,21 @@ self.addEventListener('fetch', event => {
   })());
 });
 
+// A notification raised through the registration — which on iOS is the only
+// kind there is — has no onclick of its own: the worker handles the tap. Focus
+// a window that is already open rather than adding a second copy of an app
+// whose whole state is in one tab.
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const open = await self.clients.matchAll({type: 'window', includeUncontrolled: true});
+    for(const c of open){
+      if('focus' in c) return c.focus();
+    }
+    if(self.clients.openWindow) return self.clients.openWindow('./');
+  })());
+});
+
 // The page asks for the update rather than being reloaded out from under a
 // set being logged.
 self.addEventListener('message', event => {

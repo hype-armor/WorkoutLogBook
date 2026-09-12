@@ -341,6 +341,18 @@ fix. What the app can stop doing is pretending on the way back: firing "Rest
 complete" ten minutes late says the timer just finished, which is the one thing
 that is not true.
 
+The alert it does raise while the app is merely backgrounded comes from the
+service worker, not the `Notification` constructor — which has never existed on
+iOS, so every one of these used to be thrown away on the phone the setting was
+written for while the toggle still read as on.
+
+For the same reason the menu under **When a rest timer ends** is shorter on an
+iPhone. A web page cannot vibrate one, so "Vibration only" there was silence
+wearing the name of an alert, and "Sound and vibration" was sound. The choices
+offered are the ones the device can honour; a mode picked on a phone that can
+buzz is kept, not rewritten, so it still means what it said when that phone
+comes back.
+
 A rest that finished while you were away now says how long ago and does not
 sound the alert, because ringing on the way back in is an alarm for something
 that already happened. One left running well past its target belongs to a
@@ -451,7 +463,7 @@ instead of failing quietly.
 ## Built like this
 
 Markup, styles and logic in one file; a service worker that precaches the shell
-and keeps the exercise photos in a cache of their own; 293 Playwright tests that
+and keeps the exercise photos in a cache of their own; 295 Playwright tests that
 read real bounding boxes at phone sizes; and Release Please, which tags the
 version and rewrites it in `sw.js` — the thing that makes an installed phone
 notice a release at all. The deploy refuses to publish a build the suite rejects.

@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { FILE_URL, phone, watchErrors , chooseDay, settle } = require('./helpers');
+const { FILE_URL, phone, watchErrors , chooseDay, settle, seed, blankDb } = require('./helpers');
 
 test.describe('logging a session', () => {
   test.describe.configure({ mode: 'serial' });
@@ -844,30 +844,91 @@ test.describe('PWA affordances', () => {
 
     const counts = await page.evaluate(() => {
       const Real = window.Notification;
-      let made = 0;
-      window.Notification = function () { made++; this.close = () => {}; };
+      let shown = 0, constructed = 0;
+      window.Notification = function () { constructed++; this.close = () => {}; };
       window.Notification.permission = 'granted';
+      // The registration is what raises a notification on a phone; this suite
+      // runs on file://, where there is no worker, so stand one in.
+      swReg = { showNotification: () => { shown++; return Promise.resolve(); } };
       const at = (vis, notify) => {
         db.settings.notify = notify;
         Object.defineProperty(document, 'visibilityState', { get: () => vis, configurable: true });
-        const before = made;
+        const before = shown;
         fireAlert(false);
-        return made - before;
+        return shown - before;
       };
       const out = {
         backgroundedAndOn: at('hidden', true),
         // on screen the timer already turned green, so a banner is noise
         onScreen: at('visible', true),
-        settingOff: at('hidden', false)
+        settingOff: at('hidden', false),
+        constructed
       };
       Object.defineProperty(document, 'visibilityState', { get: () => 'visible', configurable: true });
       window.Notification = Real;
+      swReg = null;
       return out;
     });
 
     expect(counts.backgroundedAndOn).toBe(1);
     expect(counts.onScreen).toBe(0);
     expect(counts.settingOff).toBe(0);
+    // The constructor does not exist on iOS. Reaching for it where a
+    // registration is available is the bug this replaced.
+    expect(counts.constructed, 'used the Notification constructor').toBe(0);
+    await ctx.close();
+  });
+
+  // Without a worker there is nothing else to try, and on the platforms that
+  // have no registration the constructor does work.
+  test('with no service worker the constructor is still used', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    const constructed = await page.evaluate(() => {
+      const Real = window.Notification;
+      let made = 0;
+      window.Notification = function () { made++; this.close = () => {}; };
+      window.Notification.permission = 'granted';
+      swReg = null;
+      db.settings.notify = true;
+      Object.defineProperty(document, 'visibilityState', { get: () => 'hidden', configurable: true });
+      fireAlert(false);
+      Object.defineProperty(document, 'visibilityState', { get: () => 'visible', configurable: true });
+      window.Notification = Real;
+      return made;
+    });
+
+    expect(constructed).toBe(1);
+    await ctx.close();
+  });
+
+  // navigator.vibrate does not exist on iOS, so a menu offering "Vibration
+  // only" there promised an alert that could never arrive.
+  test('alert modes the device cannot honour are not offered', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'vibrate', { value: undefined, configurable: true });
+    });
+    await seed(page, blankDb({ settings: { ...blankDb().settings, alert: 'vibrate' } }));
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('#gear');
+
+    const offered = await page.locator('#alertsel option').evaluateAll(
+      os => os.map(o => o.value));
+    expect(offered).toEqual(['sound', 'silent']);
+    await expect(page.locator('#alerthint')).toBeVisible();
+
+    // "Vibration only" on a phone that cannot vibrate is silence, and the menu
+    // says so rather than showing a choice that does nothing.
+    expect(await page.locator('#alertsel').inputValue()).toBe('silent');
+    // The stored preference is left alone: this phone cannot honour it, which
+    // is not a reason to lose it on the phone that can.
+    expect(await page.evaluate(() => db.settings.alert)).toBe('vibrate');
     await ctx.close();
   });
 });

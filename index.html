@@ -1228,6 +1228,8 @@
 
     <label class="f" style="margin-top:16px"><span class="lab">When a rest timer ends</span>
       <select id="alertsel"></select></label>
+    <div class="hint hide" id="alerthint">This browser gives a web page no way to
+      vibrate the phone, so only sound is offered.</div>
     <label class="toggle" style="margin-top:14px">
       <input type="checkbox" id="notifybox">
       <span>Also notify when the app is in the background
@@ -1582,6 +1584,10 @@ function todayISO(){
   const d = new Date();
   return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10);
 }
+// Installed to a home screen rather than open in a browser tab. Both spellings:
+// the media query is the standard, navigator.standalone is what iOS answers to.
+const isStandalone = () => !!(window.matchMedia?.('(display-mode: standalone)').matches
+  || navigator.standalone);
 const U = () => UNITS[db.settings.units] || UNITS.lb;
 const units = () => db.settings.units || 'lb';
 const announce = m => { $('#sr').textContent = m; };
@@ -2931,9 +2937,23 @@ async function requestWake(){
 }
 function releaseWake(){ try{ wakeLock?.release(); }catch(e){} wakeLock = null; }
 
+// A web page gets no vibration on iOS — navigator.vibrate is not implemented
+// there at all — so "Vibration only" was an alert that never arrived, offered
+// from a menu that promised one, and "Sound and vibration" quietly meant sound.
+// The menu now offers what the device can do, and a mode chosen on a phone that
+// can buzz is degraded rather than rewritten, so it still means what it said
+// when that phone opens the app again.
+const canVibrate = () => typeof navigator.vibrate === 'function';
+const alertOptions = () =>
+  ALERT_OPTIONS.filter(([v]) => canVibrate() || (v !== 'vibrate' && v !== 'both'));
+
 const alertMode = () => {
   const m = db.settings.alert;
-  return ALERT_OPTIONS.some(([v]) => v === m) ? m : 'both';
+  const known = ALERT_OPTIONS.some(([v]) => v === m) ? m : 'both';
+  if(canVibrate()) return known;
+  if(known === 'both')    return 'sound';   // the half of it that can happen
+  if(known === 'vibrate') return 'silent';  // none of it can
+  return known;
 };
 const wantsSound = () => alertMode() === 'both' || alertMode() === 'sound';
 const wantsBuzz  = () => alertMode() === 'both' || alertMode() === 'vibrate';
@@ -2945,26 +2965,58 @@ function fireAlert(short){
   notifyRestDone(short);
 }
 
+// The Notification constructor has never existed on iOS, which is the platform
+// this setting was written for: every call below used to throw there, caught,
+// and the toggle reported itself as on while raising nothing. Notifications on
+// an iPhone come from the service worker registration or not at all. It is also
+// the only path a pushed alert could take, so it is the one kept warm rather
+// than a second mechanism maintained for desktop alone.
+//
+// Resolved ahead of time because firing is synchronous: a rest timer is at
+// least fifteen seconds long and registration settles in milliseconds, so by
+// the time an alert is due this is set.
+let swReg = null;
+if('serviceWorker' in navigator && location.protocol.startsWith('http')){
+  navigator.serviceWorker.ready.then(r => { swReg = r; }).catch(()=>{});
+}
+
 // Only worth raising when you are looking at something else; on screen the
 // timer already turned green.
 function notifyRestDone(short){
   if(!db.settings.notify) return;
   if(typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
   if(document.visibilityState === 'visible') return;
+  const title = short ? 'Go now' : 'Rest complete';
+  const opts = {
+    body: rest.ex || 'Next set',
+    tag: 'logbook-rest',      // replaces rather than stacks
+    icon: 'icon-192.png',
+    silent: alertMode() === 'silent'
+  };
+  if(swReg?.showNotification){
+    // The tap is handled by the worker; a notification raised this way has no
+    // onclick of its own.
+    swReg.showNotification(title, opts).catch(()=>{});
+    return;
+  }
+  // No worker: opened from disk, or registration blocked. The constructor is
+  // all there is, and on the platforms where it exists it still works.
   try{
-    const n = new Notification(short ? 'Go now' : 'Rest complete', {
-      body: rest.ex || 'Next set',
-      tag: 'logbook-rest',      // replaces rather than stacks
-      icon: 'icon-192.png',
-      silent: alertMode() === 'silent'
-    });
+    const n = new Notification(title, opts);
     n.onclick = () => { window.focus(); n.close(); };
   }catch(e){ /* denied or unsupported */ }
 }
 
 async function askNotify(on){
   if(!on){ db.settings.notify = false; save(); return true; }
-  if(typeof Notification === 'undefined'){ toast('Not supported here'); return false; }
+  if(typeof Notification === 'undefined'){
+    // iOS exposes the API only to a web app installed to the Home Screen. In a
+    // tab it is not that the browser cannot notify, it is that this copy of the
+    // app cannot — which is worth saying, because there is something to do
+    // about it.
+    toast(isStandalone() ? 'Not supported here' : 'Add to Home Screen first');
+    return false;
+  }
   let perm = Notification.permission;
   if(perm === 'default') perm = await Notification.requestPermission();
   if(perm !== 'granted'){ toast('Notifications are blocked'); return false; }
@@ -4252,9 +4304,10 @@ function openSettings(){
   $('#transel').innerHTML = TRANSITION_OPTIONS.map(v =>
     `<option value="${v}">${v}s</option>`).join('');
   $('#transel').value = String(db.settings.transition ?? TRANSITION);
-  $('#alertsel').innerHTML = ALERT_OPTIONS.map(([v,label]) =>
+  $('#alertsel').innerHTML = alertOptions().map(([v,label]) =>
     `<option value="${v}">${esc(label)}</option>`).join('');
   $('#alertsel').value = alertMode();
+  $('#alerthint').classList.toggle('hide', canVibrate());
   $('#notifybox').checked = !!db.settings.notify &&
     typeof Notification !== 'undefined' && Notification.permission === 'granted';
   $('#storagesub').textContent = storageBroken
