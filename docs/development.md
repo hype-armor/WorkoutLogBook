@@ -14,9 +14,10 @@ it behaves the way it does, see the [README](../README.md).
 | `img/*.webp` | exercise photos, start and finish, 44 files |
 | `version.txt`, `release-please-config.json` | release automation, see below |
 
-A design for waking a suspended phone when a rest timer ends — which nothing
-in the browser can do — is in [notifications.md](notifications.md). Nothing in
-it is built yet.
+An optional self-hosted server — end-to-end encrypted sync between devices,
+and the push notifications that are the only way to wake a suspended phone
+when a rest timer ends — is designed in [server.md](server.md). Nothing in it
+is built yet.
 
 
 ## Running it
