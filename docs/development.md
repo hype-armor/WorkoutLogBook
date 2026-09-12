@@ -52,7 +52,7 @@ scroll-leak wheel check (`mouse.wheel` is unsupported in mobile WebKit), and
 the persistent-storage request (WebKit has no `StorageManager.persist` — which
 is the real state of affairs on an iPhone).
 
-271 tests in `tests/`, 262 of them on WebKit too, run on every pull request
+293 tests in `tests/`, 284 of them on WebKit too, run on every pull request
 and again before any deploy.
 They cover the things that actually broke: that a logged set survives a reload
 and a service-worker update, that `Log set` and the RIR selector are never

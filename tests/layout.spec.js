@@ -646,3 +646,36 @@ test('the move-on panel docks like the timer it replaces', async ({ browser }) =
   expect(overlaps(r.nextup, r.logset), 'panel over Log set').toBe(false);
   await ctx.close();
 });
+
+test('the largest text size still fits the narrowest phone', async ({ browser }) => {
+  // Zoom is off, so this control is the only way to enlarge the text — and a
+  // size that pushes the gear off the screen is not a size anyone can use.
+  const ctx = await browser.newContext({ ...PHONE, viewport: { width: 375, height: 667 } });
+  const page = await ctx.newPage();
+  await page.goto(FILE_URL);
+  await page.waitForSelector('.ex');
+
+  for (const ts of [0.9, 1, 1.15, 1.3]) {
+    await page.evaluate(v => { db.settings.textScale = v; save(); applyTextScale(); rerenderAll(); }, ts);
+    // settle() waits on the exercise screen by default, which is not open yet
+    await settle(page, '#exlist');
+    expect(await page.evaluate(() =>
+      document.documentElement.scrollWidth > document.documentElement.clientWidth),
+      `train overflows at ${ts}`).toBe(false);
+
+    await page.click('.ex[data-ex="Deadlift"]');
+    await settle(page);
+    await page.fill('#wt', '315');
+    await page.dispatchEvent('#wt', 'input');
+    await settle(page);
+    expect(await page.evaluate(() =>
+      document.documentElement.scrollWidth > document.documentElement.clientWidth),
+      `log screen overflows at ${ts}`).toBe(false);
+    // and the button you press between sets is still reachable
+    const box = await page.locator('#logset').boundingBox();
+    expect(box.width, `log set clipped at ${ts}`).toBeGreaterThan(100);
+    await page.click('#close');
+    await settle(page, '#exlist');
+  }
+  await ctx.close();
+});
