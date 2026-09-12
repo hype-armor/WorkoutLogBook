@@ -515,8 +515,14 @@ which is what the leakage list above is for.
    never happened. The device id lives outside the database, in `logbook-device`,
    so a restored backup does not clone it. Nothing reads any of it yet — except
    restore, which no longer hands back a set you deleted.
-3. The crypto module: MK generation, HKDF subkeys, both wrap paths, AES-GCM with
-   AAD. Pure functions, heavily unit-tested, no network.
+3. ~~The crypto module: MK generation, HKDF subkeys, both wrap paths, AES-GCM
+   with AAD.~~ **Done.** `vault` in `index.html`, WebCrypto only, no
+   dependencies. Thirteen tests in `tests/vault.spec.js`, most of them about
+   what a hostile server *cannot* do with the ciphertext it holds: move a
+   record into another's slot, put an old version back under a newer clock, or
+   change a byte. PBKDF2 at 600,000 rounds measures about 90ms on a desktop
+   here — a phone will be several times that, which is why it belongs in a
+   worker before it sits behind a button.
 4. The server: schema, vault and auth routes, invites, sync endpoints.
 5. The sync client: pull/merge/push loop, cursor persistence, full-reset path.
 6. Push, now with encrypted payloads, plus the sync nudge.

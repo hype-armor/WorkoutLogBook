@@ -1719,6 +1719,167 @@ function toast(msg, action){
   t._h = setTimeout(()=>t.classList.remove('show','act'), action ? 5000 : 1400);
 }
 
+/* ---------- vault: keys, addressing and sealing ---------- */
+// Nothing calls any of this yet. It is the half of end-to-end encryption that
+// has to live on the device: a server that cannot read the log cannot merge it
+// either, so the keys, the addressing and the sealing are all here, and the
+// server's job shrinks to storing opaque blobs and comparing clocks.
+//
+// Zero dependencies on purpose. Argon2id is the better password hash, but it is
+// a wasm blob in a project whose entire build step is "open the file", and
+// PBKDF2 at 600,000 rounds is native to every browser this runs on. What it
+// guards is ciphertext rather than a login, and the parameters are stored
+// beside each wrapped key so they can be raised later without invalidating
+// anything.
+
+const utf8 = new TextEncoder(), utf8d = new TextDecoder();
+// Every call goes through this rather than touching crypto.subtle directly, so
+// a browser without it fails once, by name, instead of throwing "cannot read
+// properties of undefined" from six different places.
+const webcrypto = () => {
+  const s = globalThis.crypto?.subtle;
+  if(!s) throw new Error('WebCrypto unavailable');
+  return s;
+};
+
+// base64url, because these strings travel in JSON and URLs.
+const b64u = buf => {
+  let s = '';
+  for(const x of new Uint8Array(buf)) s += String.fromCharCode(x);
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
+const unb64u = str => {
+  const s = atob(String(str).replace(/-/g, '+').replace(/_/g, '/'));
+  const out = new Uint8Array(s.length);
+  for(let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+  return out;
+};
+
+const KDF = {name: 'pbkdf2-sha256', iterations: 600000};
+const MK_AAD = 'logbook/mk/1';
+
+const vault = {
+  // 256 bits from the platform generator. It never leaves the device and is
+  // never sent anywhere: only wrapped copies of it are.
+  newKey: () => crypto.getRandomValues(new Uint8Array(32)),
+
+  // One key per job, derived rather than reused, so a bug that leaks the
+  // addressing key does not also hand over what the records say.
+  async subkeys(mk){
+    const base = await webcrypto().importKey('raw', mk, 'HKDF', false, ['deriveKey']);
+    const derive = (info, algo, usages) => webcrypto().deriveKey(
+      {name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: utf8.encode(info)},
+      base, algo, false, usages);
+    return {
+      data:  await derive('logbook/data/1',  {name: 'AES-GCM', length: 256}, ['encrypt', 'decrypt']),
+      addr:  await derive('logbook/addr/1',  {name: 'HMAC', hash: 'SHA-256', length: 256}, ['sign']),
+      alert: await derive('logbook/alert/1', {name: 'AES-GCM', length: 256}, ['encrypt', 'decrypt'])
+    };
+  },
+
+  // A key-encrypting key from something a person can produce. NFKC first: the
+  // same passphrase typed on two keyboards can arrive as two different byte
+  // strings, and deriving two different keys from it would lock someone out of
+  // their own vault with the right answer in their hands.
+  async passphraseKek(passphrase, salt, iterations = KDF.iterations){
+    const base = await webcrypto().importKey(
+      'raw', utf8.encode(String(passphrase).normalize('NFKC')), 'PBKDF2', false, ['deriveKey']);
+    return webcrypto().deriveKey({name: 'PBKDF2', salt, iterations, hash: 'SHA-256'},
+      base, {name: 'AES-GCM', length: 256}, false, ['encrypt', 'decrypt']);
+  },
+
+  // A passkey authenticates; it does not hand over a key. The WebAuthn PRF
+  // extension is the bridge — stable bytes for a given credential and salt.
+  async prfKek(prfOutput){
+    const base = await webcrypto().importKey('raw', new Uint8Array(prfOutput), 'HKDF', false, ['deriveKey']);
+    return webcrypto().deriveKey(
+      {name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: utf8.encode('logbook/passkey/1')},
+      base, {name: 'AES-GCM', length: 256}, false, ['encrypt', 'decrypt']);
+  },
+
+  // What to ask the authenticator to evaluate. Per vault, so one passkey used
+  // on two instances does not derive one key for both.
+  async prfSalt(vaultId){
+    return new Uint8Array(await webcrypto().digest('SHA-256', utf8.encode('logbook/prf/1:' + vaultId)));
+  },
+
+  // Whether it is worth offering a passkey at all. Whether PRF actually works
+  // cannot be known until a credential exists — it comes back in
+  // getClientExtensionResults() — and where it does not, there is no passkey
+  // unlock to offer: one that only proves presence while the passphrase still
+  // holds the key is a login button pretending to be a factor.
+  async canTryPasskey(){
+    try{
+      return !!(window.PublicKeyCredential?.isUserVerifyingPlatformAuthenticatorAvailable
+        && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable());
+    }catch(e){ return false; }
+  },
+  prfBytes: cred => cred?.getClientExtensionResults?.()?.prf?.results?.first || null,
+
+  async wrapKey(mk, kek){
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await webcrypto().encrypt(
+      {name: 'AES-GCM', iv, additionalData: utf8.encode(MK_AAD)}, kek, mk);
+    const out = new Uint8Array(12 + ct.byteLength);
+    out.set(iv); out.set(new Uint8Array(ct), 12);
+    return b64u(out);
+  },
+  async unwrapKey(blob, kek){
+    const raw = unb64u(blob);
+    return new Uint8Array(await webcrypto().decrypt(
+      {name: 'AES-GCM', iv: raw.slice(0, 12), additionalData: utf8.encode(MK_AAD)},
+      kek, raw.slice(12)));
+  },
+
+  // The rows the server would hold. Both wrap the same master key, which is
+  // why enrolling a passkey two years from now re-encrypts nothing.
+  async factorFromPassphrase(mk, passphrase){
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    return {kind: 'passphrase', kdf: KDF.name, iter: KDF.iterations, salt: b64u(salt),
+            mk: await vault.wrapKey(mk, await vault.passphraseKek(passphrase, salt))};
+  },
+  async openWithPassphrase(row, passphrase){
+    return vault.unwrapKey(row.mk,
+      await vault.passphraseKek(passphrase, unb64u(row.salt), row.iter || KDF.iterations));
+  },
+  async factorFromPrf(mk, prfOutput){
+    return {kind: 'passkey', mk: await vault.wrapKey(mk, await vault.prfKek(prfOutput))};
+  },
+  async openWithPrf(row, prfOutput){
+    return vault.unwrapKey(row.mk, await vault.prfKek(prfOutput));
+  },
+
+  // The same record key on two devices has to produce the same address, and
+  // the server must not be able to tell a set from a setting. An HMAC under a
+  // key it does not have does both at once.
+  async addr(addrKey, recordKey){
+    const mac = await webcrypto().sign('HMAC', addrKey, utf8.encode(recordKey));
+    return b64u(new Uint8Array(mac).slice(0, 16));
+  },
+
+  // The address and the clock are authenticated but not encrypted. A server
+  // holding every ciphertext can otherwise move one record's contents into
+  // another's slot, or put an old version back under a newer clock, and the
+  // client would decrypt both without complaint. Binding them as additional
+  // data means either edit fails to open at all.
+  async seal(key, addr, hlc, value){
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await webcrypto().encrypt(
+      {name: 'AES-GCM', iv, additionalData: utf8.encode(addr + '|' + hlc)},
+      key, utf8.encode(JSON.stringify(value ?? null)));
+    const out = new Uint8Array(12 + ct.byteLength);
+    out.set(iv); out.set(new Uint8Array(ct), 12);
+    return b64u(out);
+  },
+  async unseal(key, addr, hlc, blob){
+    const raw = unb64u(blob);
+    const pt = await webcrypto().decrypt(
+      {name: 'AES-GCM', iv: raw.slice(0, 12), additionalData: utf8.encode(addr + '|' + hlc)},
+      key, raw.slice(12));
+    return JSON.parse(utf8d.decode(pt));
+  }
+};
+
 /* ---------- storage ---------- */
 // window.storage exists only inside some hosted sandboxes. In a browser — which
 // is where this app actually lives — it is undefined, so localStorage is the
