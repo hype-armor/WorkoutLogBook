@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.21.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.20.0...logbook-v1.21.0) (2026-09-12)
+
+
+### Features
+
+* text size, program templates, a session filter, and an honest rest timer ([929bb24](https://github.com/hype-armor/WorkoutLogBook/commit/929bb2442b85de712e13e4f2eec527433fa2288c))
+
 ## [1.20.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.19.0...logbook-v1.20.0) (2026-09-11)
 
 
