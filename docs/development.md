@@ -17,13 +17,17 @@ it behaves the way it does, see the [README](../README.md).
 
 An optional self-hosted server — end-to-end encrypted sync between devices,
 and the push notifications that are the only way to wake a suspended phone
-when a rest timer ends — is designed in [server.md](server.md). None of the
-server now exists too, in `server/` — zero dependencies, `node:sqlite`, its
-own suite under `node --test`. Three things the design needs from the app are
-done as well: alerts are raised through the service worker; every record
-carries a clock and leaves a mark when it is deleted (`db.rev`, schema v5);
-and `vault` holds the key hierarchy, record addressing and sealing
-(`tests/vault.spec.js`). Nothing in the app talks to the server yet.
+when a rest timer ends — is designed in [server.md](server.md).
+
+The server exists, in `server/`: zero dependencies, `node:sqlite`, its own
+suite under `node --test`. So does the app's half — alerts raised through the
+service worker; a clock on every record and a mark where one was deleted
+(`db.rev`, schema v5); `vault`, holding the key hierarchy, record addressing
+and sealing; and the sync client that merges, pulls and pushes. Two browsers
+converge through the real server in `tests/sync.spec.js`.
+
+What is missing is the settings screen that switches it on: nothing in the app
+calls `syncStart()` yet, and notifications are still unbuilt.
 
 ```sh
 npm run test:server     # the server, no browser needed
@@ -71,7 +75,7 @@ scroll-leak wheel check (`mouse.wheel` is unsupported in mobile WebKit), and
 the persistent-storage request (WebKit has no `StorageManager.persist` — which
 is the real state of affairs on an iPhone).
 
-316 tests in `tests/`, 307 of them on WebKit too, run on every pull request
+330 tests in `tests/`, 321 of them on WebKit too, run on every pull request
 and again before any deploy.
 They cover the things that actually broke: that a logged set survives a reload
 and a service-worker update, that `Log set` and the RIR selector are never

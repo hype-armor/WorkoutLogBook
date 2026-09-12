@@ -547,7 +547,38 @@ which is what the leakage list above is for.
    That directory is a git checkout: it holds `.git`, the tests, the server's
    own source, and, if `LOGBOOK_DB` is ever set to a relative path, the vault
    database. All of it was reachable until a test asked for `/package.json`.
-5. The sync client: pull/merge/push loop, cursor persistence, full-reset path.
+5. ~~The sync client: pull/merge/push loop, cursor persistence, full-reset
+   path.~~ **Done**, apart from the settings screen that switches it on.
+   Fourteen tests, most of them two browsers converging through the real
+   server rather than a stub.
+
+   Two things the design did not account for:
+
+   - **The service worker was caching the API.** Its fetch handler matches with
+     `ignoreSearch: true`, so the first `/v1/sync?since=0` — answered while the
+     vault was still empty — was served back for every later pull at every
+     cursor. Sync stopped dead after one request and said nothing, because an
+     empty answer is a valid one. `/v1/` is now excluded from the cache
+     entirely: the API is not the app, and none of it is useful offline.
+   - **A tombstone has to name itself.** An address is an HMAC and cannot be
+     read backwards, so a pulled delete could not say which record it deleted.
+     Every record now carries a sealed envelope holding its own key — a
+     tombstone seals the key and nothing else, which is still worth sealing,
+     since a record key is `ex:<an exercise name>`.
+
+   Two decisions worth recording. Unpushed records are tracked as a **dirty
+   set** rather than a high-water clock: a record arriving from the server also
+   carries a clock above anything this device issued, so a watermark either
+   pushes them back in a loop or, advanced past them, skips a local record that
+   was stamped earlier and never sent. And the **master key is persisted in the
+   clear** beside the sync state, because the log itself is in localStorage in
+   the clear — a device that can read the key can already read everything it
+   protects. The encryption is against the server, and the server never sees it.
+
+   The reset is the sharp edge: it drops local records the server does not
+   have, which is right for a delete whose tombstone was purged and
+   catastrophic for a session logged on a plane. The dirty set is what tells
+   those apart, and there is a test named after exactly that.
 6. Push, now with encrypted payloads, plus the sync nudge.
 7. The container and the three deployment targets.
 8. A real phone, in a pocket, for three minutes — and a second device.
