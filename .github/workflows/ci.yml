@@ -24,6 +24,10 @@ jobs:
 
       - run: npm ci
 
+      # No dependencies and no browser, so it runs first: a broken server is
+      # known in seconds rather than after four minutes of Playwright.
+      - run: npm run test:server
+
       # Both engines. WebKit is the one the app is actually used on, and it
       # differs in every way that matters on a phone.
       - run: npx playwright install --with-deps chromium webkit

@@ -523,7 +523,30 @@ which is what the leakage list above is for.
    change a byte. PBKDF2 at 600,000 rounds measures about 90ms on a desktop
    here — a phone will be several times that, which is why it belongs in a
    worker before it sits behind a button.
-4. The server: schema, vault and auth routes, invites, sync endpoints.
+4. ~~The server: schema, vault and auth routes, invites, sync endpoints.~~
+   **Done.** `server/`, zero dependencies — `node:sqlite` and `node:http`, no
+   framework — with 46 tests under `node --test`. Three things the design above
+   did not say, found by building it:
+
+   - **"Unlocked" had to be defined.** `POST /v1/devices` is documented as
+     needing an unlocked vault, but a server that cannot read the log cannot
+     check a passphrase either. So `vault.authSecret()` derives a secret from
+     the master key that every factor produces and none reveals; the server
+     keeps its hash. Without it, naming a handle was enough to mint a token
+     that could not read one record and could delete every one of them.
+   - **The rate limiter cannot live at module scope.** Two servers in one
+     process throttled each other. It belongs to the app, and the limits belong
+     in config.
+   - **`x-forwarded-for` is whatever the client says it is.** Trusting it
+     unasked hands every caller a fresh limit; ignoring it behind the proxy
+     that terminates TLS puts every caller in one bucket. It is a deployment
+     question, so `LOGBOOK_TRUST_PROXY` makes the deployment answer it.
+
+   The static handler serves an **allowlist** of the app's own files — the same
+   list the service worker precaches — rather than the directory it sits in.
+   That directory is a git checkout: it holds `.git`, the tests, the server's
+   own source, and, if `LOGBOOK_DB` is ever set to a relative path, the vault
+   database. All of it was reachable until a test asked for `/package.json`.
 5. The sync client: pull/merge/push loop, cursor persistence, full-reset path.
 6. Push, now with encrypted payloads, plus the sync nudge.
 7. The container and the three deployment targets.

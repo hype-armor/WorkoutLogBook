@@ -205,6 +205,32 @@ test.describe('vault keys and sealing', () => {
     expect(r.opaque).toBe(true);
   });
 
+  // A server that cannot read the log cannot check a password either, so
+  // "unlocked" has to be something derived from the key itself.
+  test('every factor proves unlocked with the same secret, and it gives nothing away', async () => {
+    const r = await run(async () => {
+      const mk = vault.newKey();
+      const prf = crypto.getRandomValues(new Uint8Array(32));
+      const byPhrase = await vault.factorFromPassphrase(mk, 'a passphrase');
+      const byKey = await vault.factorFromPrf(mk, prf);
+      const want = await vault.authSecret(mk);
+      const viaPhrase = await vault.authSecret(await vault.openWithPassphrase(byPhrase, 'a passphrase'));
+      const viaKey = await vault.authSecret(await vault.openWithPrf(byKey, prf));
+      return {
+        agree: viaPhrase === want && viaKey === want,
+        // A different vault is a different secret.
+        unique: want !== await vault.authSecret(vault.newKey()),
+        // One-way: what the server stores is not the key, and not a subkey.
+        notTheKey: want !== b64u(mk),
+        notASubkey: want !== await vault.addr((await vault.subkeys(mk)).addr, 'set:x1')
+      };
+    });
+    expect(r.agree).toBe(true);
+    expect(r.unique).toBe(true);
+    expect(r.notTheKey).toBe(true);
+    expect(r.notASubkey).toBe(true);
+  });
+
   // Every record the app already knows how to name can be sealed and read back.
   test('the whole record space seals and opens', async () => {
     const r = await run(async () => {

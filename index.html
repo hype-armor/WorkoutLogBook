@@ -1849,6 +1849,20 @@ const vault = {
     return vault.unwrapKey(row.mk, await vault.prfKek(prfOutput));
   },
 
+  // How a device proves it unlocked the vault to a server that cannot check.
+  // The server holds no passphrase and no master key, so "unlocked" has to be
+  // something derived from the key and one-way: every factor that opens the
+  // vault produces the same secret, the server keeps only its hash, and
+  // nothing about the master key can be recovered from either. Without it,
+  // naming a handle would be enough to mint a device token — which could not
+  // read a single record, and could delete all of them.
+  async authSecret(mk){
+    const base = await webcrypto().importKey('raw', mk, 'HKDF', false, ['deriveBits']);
+    return b64u(await webcrypto().deriveBits(
+      {name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: utf8.encode('logbook/auth/1')},
+      base, 256));
+  },
+
   // The same record key on two devices has to produce the same address, and
   // the server must not be able to tell a set from a setting. An HMAC under a
   // key it does not have does both at once.
