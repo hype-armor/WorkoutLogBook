@@ -286,8 +286,13 @@ export function routes(ctx) {
         if (have && have.hlc >= rec.hlc) { superseded.push(rec.recId); continue; }
         bump.run(me.vault_id);
         const seq = cursor.get(me.vault_id).seq;
+        // A tombstone carries a sealed envelope too. The client cannot invert
+        // an address to learn which record a delete refers to, so the envelope
+        // names it — the record key and nothing else, still sealed. Whether it
+        // holds a value is the client's business; the server stores what it is
+        // given and could not tell the difference.
         put.run(me.vault_id, rec.recId, seq, rec.hlc,
-                rec.deleted ? null : String(rec.ciphertext ?? ''),
+                rec.ciphertext == null ? null : String(rec.ciphertext),
                 rec.deleted ? 1 : 0, me.id, now());
         accepted.push(rec.recId);
       }

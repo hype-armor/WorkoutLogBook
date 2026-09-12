@@ -115,6 +115,14 @@ self.addEventListener('fetch', event => {
   const url = new URL(req.url);
   if(url.origin !== self.location.origin) return; // nothing external to cache
 
+  // The API is not the app, and must never be answered from cache. Every one of
+  // these is specific to the moment it was asked — and the lookup below ignores
+  // the query string, so a cached `/v1/sync?since=0` from an empty vault was
+  // being handed back for a pull at every later cursor. Sync stopped dead after
+  // the first request and said nothing, because an empty answer is a valid one.
+  if(url.pathname.startsWith('/v1/') || url.pathname === '/healthz'
+     || url.pathname === '/readyz') return;
+
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
     // Across every cache, so a photo in the media cache is found too.

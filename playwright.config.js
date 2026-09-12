@@ -1,6 +1,7 @@
 const { defineConfig } = require('@playwright/test');
 
 const PORT = Number(process.env.PORT || 8117);
+const SYNC_PORT = Number(process.env.SYNC_PORT || PORT + 1);
 
 module.exports = defineConfig({
   testDir: './tests',
@@ -48,10 +49,35 @@ module.exports = defineConfig({
     // than Safari's service worker, which is a different implementation again.
     testIgnore: /pwa\.spec\.js/
   }],
-  webServer: {
+  webServer: [{
     command: `node tests/server.js ${PORT}`,
     url: `http://127.0.0.1:${PORT}/`,
     reuseExistingServer: !process.env.CI,
     timeout: 30_000
-  }
+  }, {
+    // The real sync server, serving the app from its own origin — which is how
+    // it is meant to be deployed, and the only way to exercise the client
+    // against something that actually enforces the clocks.
+    //
+    // In memory, so every run starts empty; registration is open, because
+    // minting an invite per test would be testing the invite rather than the
+    // sync.
+    command: 'node server/src/index.js',
+    url: `http://127.0.0.1:${SYNC_PORT}/healthz`,
+    env: {
+      LOGBOOK_PORT: String(SYNC_PORT),
+      LOGBOOK_DB: ':memory:',
+      LOGBOOK_OPEN_REGISTRATION: 'true',
+      LOGBOOK_SERVE_STATIC: 'true',
+      // Every simulated phone here shares one address, and the real limits are
+      // five unlocks an hour. Raised rather than removed: the limiter still
+      // runs, and its own tests are in the server suite where they can hold it
+      // to something tight.
+      LOGBOOK_LIMIT_UNLOCK_PER_HOUR: '100000',
+      LOGBOOK_LIMIT_CREATE_PER_HOUR: '100000',
+      LOGBOOK_LIMIT_WRITE_PER_MIN: '100000'
+    },
+    reuseExistingServer: !process.env.CI,
+    timeout: 30_000
+  }]
 });

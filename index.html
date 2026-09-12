@@ -1678,13 +1678,24 @@ function stampRev(){
   let h = null;
   const clock = () => (h ||= hlcNext());
 
+  // A record this device changed is one the server has not seen. Tracked here
+  // rather than by comparing clocks at push time, because a clock cannot say
+  // whether it has been sent: a record pulled from the server also carries a
+  // clock above anything this device issued, and pushing those back would be a
+  // loop with a watermark for a brake.
+  const touched = [];
   for(const [k, ser] of now){
-    if(shadow.get(k) !== ser || db.rev[k]?.del) db.rev[k] = {h: clock()};
+    if(shadow.get(k) !== ser || db.rev[k]?.del){ db.rev[k] = {h: clock()}; touched.push(k); }
   }
   for(const k of shadow.keys()){
-    if(!now.has(k)) db.rev[k] = {h: clock(), del: true};
+    if(!now.has(k)){ db.rev[k] = {h: clock(), del: true}; touched.push(k); }
   }
   shadow = now;
+  if(touched.length && syncOn()){
+    for(const k of touched) syncState.dirty[k] = 1;
+    saveSync();
+  }
+  return touched.length;
 }
 
 const $ = s => document.querySelector(s);
@@ -1893,6 +1904,332 @@ const vault = {
     return JSON.parse(utf8d.decode(pt));
   }
 };
+
+/* ---------- sync ---------- */
+// The client half. A server that cannot read the log cannot merge it either,
+// so the merge is here: pull what changed, keep whichever version has the
+// higher clock, push what this device changed and the server has not seen.
+//
+// Sync state is device-local and lives in its own key, like the device id and
+// for the same reason: it is about this phone's relationship to a server, not
+// about training, and a backup restored onto a second phone must not hand it
+// the first one's cursor or its token.
+//
+// The master key is kept here too, in the clear. That is not a lapse: the log
+// itself is in localStorage in the clear, so a device that can read the key can
+// already read everything the key protects. What the encryption defends against
+// is the server, and the server never sees this.
+const SYNC_KEY = 'logbook-sync';
+const blankSync = () => ({on: false, base: '', handle: '', vaultId: '', token: '',
+                          mk: '', cursor: 0, dirty: {}, at: 0, err: ''});
+let syncState = blankSync();
+let syncKeys = null;          // the subkeys, derived once per load
+try{
+  const raw = localStorage.getItem(SYNC_KEY);
+  if(raw) syncState = Object.assign(blankSync(), JSON.parse(raw));
+}catch(e){ /* unreadable or blocked: sync is simply off */ }
+
+function saveSync(){
+  try{ localStorage.setItem(SYNC_KEY, JSON.stringify(syncState)); }
+  catch(e){ /* the app works without it */ }
+}
+
+const syncOn = () => !!(syncState.on && syncState.token && syncState.mk);
+
+async function syncSubkeys(){
+  if(syncKeys) return syncKeys;
+  return (syncKeys = await vault.subkeys(unb64u(syncState.mk)));
+}
+
+async function api(method, path, body, token = syncState.token){
+  const res = await fetch((syncState.base || '') + path, {
+    method,
+    headers: {
+      ...(body ? {'Content-Type': 'application/json'} : {}),
+      ...(token ? {Authorization: 'Bearer ' + token} : {})
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const text = await res.text();
+  let json = null;
+  try{ json = text ? JSON.parse(text) : null; }catch(e){ /* not json */ }
+  if(!res.ok){
+    const err = new Error(json?.error || ('http_' + res.status));
+    err.status = res.status;
+    err.detail = json?.detail ?? null;
+    throw err;
+  }
+  return json;
+}
+
+/* ---------- putting a record back ---------- */
+// The inverse of records(). An unknown kind is ignored rather than refused: a
+// newer version of the app may sync a kind this one has never heard of, and
+// dropping that on the floor is recoverable where throwing is not.
+const splitKey = key => {
+  const i = key.indexOf(':');
+  return i < 0 ? [key, ''] : [key.slice(0, i), key.slice(i + 1)];
+};
+const byDate = (a, b) => String(a.d || '').localeCompare(String(b.d || ''));
+
+function putRecord(d, key, value){
+  const [kind, id] = splitKey(key);
+  if(kind === 'set'){
+    if(!value || typeof value !== 'object') return;
+    const i = d.sets.findIndex(x => x.id === id);
+    if(i < 0) d.sets.push({...value, id}); else d.sets[i] = {...value, id};
+    d.sets.sort(byDate);
+  }
+  else if(kind === 'day')  d.days[id] = value;
+  else if(kind === 'ex')   d.ex[id] = value;
+  else if(kind === 'pair') d.pairs[id] = value;
+  else if(kind === 'bw'){
+    if(!value || typeof value !== 'object') return;
+    const list = Array.isArray(d.bw) ? d.bw : (d.bw = []);
+    const i = list.findIndex(x => x.d === id);
+    if(i < 0) list.push({...value, d: id}); else list[i] = {...value, d: id};
+    list.sort(byDate);
+  }
+  else if(kind === 'cfg')     d.settings[id] = value;
+  else if(kind === 'program') d.program = value;
+}
+
+function dropRecord(d, key){
+  const [kind, id] = splitKey(key);
+  if(kind === 'set'){
+    const i = d.sets.findIndex(x => x.id === id);
+    if(i >= 0) d.sets.splice(i, 1);
+  }
+  else if(kind === 'day')  delete d.days[id];
+  else if(kind === 'ex')   delete d.ex[id];
+  else if(kind === 'pair') delete d.pairs[id];
+  else if(kind === 'bw' && Array.isArray(d.bw)){
+    const i = d.bw.findIndex(x => x.d === id);
+    if(i >= 0) d.bw.splice(i, 1);
+  }
+  else if(kind === 'cfg')     delete d.settings[id];
+  else if(kind === 'program') d.program = null;
+}
+
+/* ---------- the merge ---------- */
+// Last writer wins, per record, on the clock rather than on arrival order.
+// Everything this touches came from the server, so the shadow is refreshed
+// afterwards: without that the next save would see the incoming values as
+// local edits, stamp them with this device's clock, and push them straight
+// back as though this phone had just typed them.
+function mergeIncoming(list){
+  let applied = 0, skipped = 0;
+  for(const r of list){
+    if(!r || typeof r.key !== 'string' || typeof r.hlc !== 'string') continue;
+    const mine = db.rev[r.key];
+    // Equal is not newer. Two writes with the same clock are the same write,
+    // because the clock carries the device that made it.
+    if(mine && mine.h >= r.hlc){ skipped++; continue; }
+    if(r.deleted) dropRecord(db, r.key); else putRecord(db, r.key, r.value);
+    db.rev[r.key] = r.deleted ? {h: r.hlc, del: true} : {h: r.hlc};
+    // Whatever this device had is now the older version. Pushing it would
+    // only be told it lost.
+    delete syncState.dirty[r.key];
+    applied++;
+  }
+  if(applied){
+    hlcSeed(db);          // never issue a clock below one already accepted
+    shadow = snapshot(db);
+  }
+  return {applied, skipped};
+}
+
+/* ---------- pull and push ---------- */
+async function syncPull(){
+  const keys = await syncSubkeys();
+  let moved = 0;
+  for(let page = 0; page < 40; page++){
+    const res = await api('GET', `/v1/sync?since=${syncState.cursor}&limit=500`);
+    if(!res.records.length){ syncState.cursor = res.latest ?? syncState.cursor; break; }
+    const list = [];
+    for(const r of res.records){
+      try{
+        // Every record names itself, because an address is an HMAC and cannot
+        // be read backwards — including a tombstone, which is why a delete
+        // carries an envelope with the key in it and nothing else.
+        const env = r.ciphertext == null
+          ? null
+          : await vault.unseal(keys.data, r.recId, r.hlc, r.ciphertext);
+        if(!env || typeof env.k !== 'string') continue;
+        list.push({key: env.k, hlc: r.hlc, value: env.v, deleted: !!r.deleted});
+      }catch(e){
+        // A record that will not open is one this key cannot read: a rotated
+        // vault, or a server that moved a ciphertext into another slot. Skip
+        // it rather than abandon the whole pull.
+        continue;
+      }
+    }
+    moved += mergeIncoming(list).applied;
+    syncState.cursor = res.next;
+    if(res.records.length < 500) break;
+  }
+  return moved;
+}
+
+async function syncPush(){
+  const keys = await syncSubkeys();
+  let sent = 0;
+  for(let round = 0; round < 40; round++){
+    const pending = Object.keys(syncState.dirty).slice(0, 200);
+    if(!pending.length) break;
+    const values = records(db);
+    const batch = [], addrOf = new Map();
+    for(const key of pending){
+      const rev = db.rev[key];
+      if(!rev){ delete syncState.dirty[key]; continue; }
+      const addr = await vault.addr(keys.addr, key);
+      addrOf.set(addr, key);
+      // A tombstone seals the name alone. The record key is `set:<id>` or
+      // `ex:<an exercise name>`, which is exactly the sort of thing the server
+      // is not supposed to learn, so it is sealed like everything else.
+      const envelope = rev.del ? {k: key} : {k: key, v: values.get(key) ?? null};
+      batch.push({
+        recId: addr, hlc: rev.h, deleted: !!rev.del,
+        ciphertext: await vault.seal(keys.data, addr, rev.h, envelope)
+      });
+    }
+    if(!batch.length) break;
+    const res = await api('POST', '/v1/sync', {records: batch});
+    for(const addr of [...(res.accepted || []), ...(res.superseded || [])]){
+      const key = addrOf.get(addr);
+      if(key) delete syncState.dirty[key];
+    }
+    sent += (res.accepted || []).length;
+    // A record the server said nothing about stays dirty; stopping here rather
+    // than looping forever on it is the difference between a retry and a spin.
+    if(batch.length < 200) break;
+  }
+  return sent;
+}
+
+/**
+ * Everything local is unpushed as far as the server is concerned. Used when
+ * sync is first switched on, and after a reset.
+ */
+function markAllDirty(){
+  for(const key of Object.keys(db.rev)) syncState.dirty[key] = 1;
+}
+
+/**
+ * The answer to a cursor older than the server's tombstones. Those deletes are
+ * gone, so a plain merge would hand every one of them back — this device still
+ * holds the records, and nothing would arrive to say otherwise.
+ *
+ * So: pull the whole vault, then drop anything local that the server does not
+ * have *and this device has already pushed*. A record that is still dirty has
+ * never been to the server, which makes it new rather than deleted, and it is
+ * kept and pushed. That distinction is the only thing standing between a reset
+ * and losing a session logged on a plane.
+ */
+async function syncReset(){
+  const keys = await syncSubkeys();
+  syncState.cursor = 0;
+  const onServer = new Set();
+  for(let page = 0; page < 200; page++){
+    const res = await api('GET', `/v1/sync?since=${syncState.cursor}&limit=500`);
+    const list = [];
+    for(const r of res.records){
+      try{
+        const env = r.ciphertext == null
+          ? null
+          : await vault.unseal(keys.data, r.recId, r.hlc, r.ciphertext);
+        if(!env || typeof env.k !== 'string') continue;
+        onServer.add(env.k);
+        list.push({key: env.k, hlc: r.hlc, value: env.v, deleted: !!r.deleted});
+      }catch(e){ continue; }
+    }
+    mergeIncoming(list);
+    if(!res.records.length){ syncState.cursor = res.latest ?? syncState.cursor; break; }
+    syncState.cursor = res.next;
+    if(res.records.length < 500) break;
+  }
+
+  let dropped = 0;
+  for(const key of [...records(db).keys()]){
+    if(onServer.has(key) || syncState.dirty[key]) continue;
+    dropRecord(db, key);
+    delete db.rev[key];
+    dropped++;
+  }
+  if(dropped) shadow = snapshot(db);
+  markAllDirty();
+  await syncPush();
+  return dropped;
+}
+
+/** One cycle. Pull first: pushing over a newer version only earns a refusal. */
+async function syncOnce(){
+  if(!syncOn() || syncState.busy) return null;
+  syncState.busy = true;
+  try{
+    let pulled = 0;
+    try{
+      pulled = await syncPull();
+    }catch(e){
+      if(e.status === 409){ await syncReset(); }
+      else throw e;
+    }
+    const pushed = await syncPush();
+    syncState.at = Date.now();
+    syncState.err = '';
+    await save();
+    saveSync();
+    return {pulled, pushed};
+  }catch(e){
+    // Never surfaced as a failure of the app: a gym with no signal is the
+    // normal case, and the log is on the phone either way.
+    syncState.err = e.message || 'offline';
+    saveSync();
+    return null;
+  }finally{
+    syncState.busy = false;
+  }
+}
+
+/** Create a vault, or join one that exists. Both end with a first full push. */
+async function syncStart({base = '', handle, passphrase, invite, join = false}){
+  const mk = join ? null : vault.newKey();
+  let state;
+  const was = syncState;
+  syncState = {...blankSync(), base, handle};
+  try{
+    if(join){
+      const got = await api('POST', '/v1/auth/passphrase', {handle}, null);
+      const key = await vault.openWithPassphrase(got.factor, passphrase);
+      state = {vaultId: got.vaultId, mk: b64u(key), authSecret: await vault.authSecret(key)};
+    }else{
+      const factor = await vault.factorFromPassphrase(mk, passphrase);
+      const authSecret = await vault.authSecret(mk);
+      const made = await api('POST', '/v1/vaults', {handle, authSecret, factor, invite}, null);
+      state = {vaultId: made.vaultId, mk: b64u(mk), authSecret};
+    }
+    const dev = await api('POST', '/v1/devices',
+      {vaultId: state.vaultId, authSecret: state.authSecret, label: 'logbook'}, null);
+    syncState = {...blankSync(), base, handle, on: true,
+                 vaultId: state.vaultId, token: dev.token, mk: state.mk};
+    syncKeys = null;
+    markAllDirty();
+    saveSync();
+    const out = await syncOnce();
+    return out || {pulled: 0, pushed: 0};
+  }catch(e){
+    syncState = was;          // a failed setup leaves nothing behind
+    syncKeys = null;
+    throw e;
+  }
+}
+
+/** Stop syncing on this device. The log stays; only the link goes. */
+function syncStop(){
+  syncState = blankSync();
+  syncKeys = null;
+  saveSync();
+}
 
 /* ---------- storage ---------- */
 // window.storage exists only inside some hosted sandboxes. In a browser — which

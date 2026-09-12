@@ -7,6 +7,9 @@ const SW_PATH = path.join(__dirname, '..', 'sw.js');
 // to use the app, and it keeps the service worker out of tests that are not
 // about the service worker.
 const FILE_URL = 'file://' + APP_PATH;
+// The sync server, serving the app from its own origin. Same origin is how the
+// API is meant to be reached, and it is what the client assumes by default.
+const SYNC_URL = `http://127.0.0.1:${Number(process.env.SYNC_PORT || Number(process.env.PORT || 8117) + 1)}/`;
 
 const PHONE = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 };
 
@@ -107,4 +110,4 @@ async function chooseDay(page, id) {
 }
 
 module.exports = {
-  chooseDay, APP_PATH, SW_PATH, FILE_URL, PHONE, phone, watchErrors, seed, blankDb, set, overlaps, rects, settle };
+  chooseDay, APP_PATH, SW_PATH, FILE_URL, SYNC_URL, PHONE, phone, watchErrors, seed, blankDb, set, overlaps, rects, settle };

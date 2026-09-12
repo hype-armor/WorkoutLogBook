@@ -77,17 +77,33 @@ describe('sync', () => {
     assert.deepEqual(back.body.records.map(r => r.recId), ['tablet-set']);
   });
 
-  test('a delete travels as a record, and carries no ciphertext', async () => {
+  test('a delete travels as a record and replaces what was there', async () => {
     const v = await vault('sync5');
-    await s.post('/v1/sync', { records: [rec('gone', 100)] }, { token: v.token });
+    const before = rec('gone', 100);
+    await s.post('/v1/sync', { records: [before] }, { token: v.token });
+    // A tombstone carries a sealed envelope of its own: the client cannot
+    // invert an address, so a delete has to name the record it refers to.
+    // What that envelope holds is the client's business — the server stores
+    // what it is given and could not tell a name from a value.
+    const marker = opaque(16);
     await s.post('/v1/sync',
-      { records: [{ recId: 'gone', hlc: hlc(200), deleted: true }] }, { token: v.token });
+      { records: [{ recId: 'gone', hlc: hlc(200), deleted: true, ciphertext: marker }] },
+      { token: v.token });
 
     const pull = await s.get('/v1/sync?since=0', { token: v.token });
     const row = pull.body.records.find(r => r.recId === 'gone');
     assert.equal(row.deleted, true);
-    // The contents go when the record does: a tombstone that still carries the
-    // set is a delete that kept a copy.
+    assert.equal(row.ciphertext, marker);
+    assert.notEqual(row.ciphertext, before.ciphertext, 'the old version is gone');
+  });
+
+  test('a delete with no envelope at all is still a delete', async () => {
+    const v = await vault('sync5b');
+    await s.post('/v1/sync', { records: [rec('x', 100)] }, { token: v.token });
+    await s.post('/v1/sync',
+      { records: [{ recId: 'x', hlc: hlc(200), deleted: true }] }, { token: v.token });
+    const row = (await s.get('/v1/sync?since=0', { token: v.token })).body.records[0];
+    assert.equal(row.deleted, true);
     assert.equal(row.ciphertext, null);
   });
 

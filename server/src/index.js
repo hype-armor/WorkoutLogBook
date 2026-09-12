@@ -11,6 +11,14 @@ import { rid, sha256, inviteCode, normaliseCode } from './ids.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const bool = (v, dflt) => (v == null || v === '' ? dflt : /^(1|true|yes|on)$/i.test(String(v)));
+const perHour = (v, dflt) => {
+  const n = Number(v) > 0 ? Number(v) : dflt;
+  return { capacity: n, perSecond: n / 3600 };
+};
+const perMinute = (v, dflt) => {
+  const n = Number(v) > 0 ? Number(v) : dflt;
+  return { capacity: n, perSecond: n / 60 };
+};
 
 export function configure(env = process.env) {
   return {
@@ -32,10 +40,14 @@ export function configure(env = process.env) {
     // whatever the client claims, and trusting it unasked hands every caller a
     // fresh rate limit for free.
     trustProxy: bool(env.LOGBOOK_TRUST_PROXY, false),
+    // Per address, and every phone in a house shares one address, so these are
+    // configurable rather than fixed: five unlocks an hour is right for a
+    // server on the open internet and wrong for a family behind one NAT. The
+    // burst is the allowance — spend it at once or spread it out.
     limits: {
-      unlock: { capacity: 5, perSecond: 5 / 3600 },
-      create: { capacity: 3, perSecond: 3 / 3600 },
-      write: { capacity: 120, perSecond: 2 }
+      unlock: perHour(env.LOGBOOK_LIMIT_UNLOCK_PER_HOUR, 5),
+      create: perHour(env.LOGBOOK_LIMIT_CREATE_PER_HOUR, 3),
+      write: perMinute(env.LOGBOOK_LIMIT_WRITE_PER_MIN, 120)
     }
   };
 }
