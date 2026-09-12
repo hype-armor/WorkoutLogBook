@@ -60,6 +60,41 @@ one you are now; see below.
 A card whose sessions did not all qualify says so: `1 of 2 sessions counted`
 rather than `first session`, which contradicted the rows listed underneath it.
 
+## Text size
+
+Four sizes, under **Settings → Text size**. Every font size in the stylesheet is
+in `rem` off a root the setting scales, so one number moves all of them together.
+
+This exists because of the other decision: zooming is off, and iOS does not
+apply Dynamic Type to a web page, so without it there is no way left to make the
+text bigger at all. The masthead is capped rather than scaled — it is already
+the largest thing on screen, and its growth is what pushed the gear off the
+header instead of helping anyone read. A test drives all four sizes at 375×667
+and fails on any horizontal overflow.
+
+## Starting from a template
+
+The default four-day split is one opinion about how to train, and it used to be
+the only one on offer: anyone training three days had to build it a row at a
+time. **Edit → Start from a template** offers full body (3 days), upper/lower
+(4, the default) and push/pull/legs (6).
+
+It replaces the days and their exercises and **keeps everything you have
+logged** — switching usually means the last few weeks did not work, which is a
+reason to keep them rather than lose them. The default is itself a template
+rather than a second copy of the same list, so the two cannot drift. Every lift
+in every template is one the guide knows, so the ⓘ works from the first session.
+
+## Finding a session
+
+Thirty at a time behind *Show 30 more* was the whole of the navigation, so "when
+did I last squat heavy" meant scrolling until you found it. The Sessions list
+now has a filter that matches an exercise name, a day name, a note or the date
+as it is written on the card, and says how far it has narrowed — `12 of 40` —
+so a filter that hides everything reads as a filter rather than as an app that
+has lost your training. Changing the query starts the paging over, since page
+two of the old list is nowhere in the new one.
+
 ## Bodyweight
 
 A dated series, not a setting. It used to be one number applied to every set
@@ -298,6 +333,21 @@ session still open, or a day whose targets carry no set count (`max` rather
 than `3 × max`), since without one there is no way to know how many sets are
 coming.
 
+## When the rest timer outlives the app
+
+The alert fires from a 250 ms interval on the page, so a phone that suspended
+the app did not get one — which the notification toggle already admits it cannot
+fix. What the app can stop doing is pretending on the way back: firing "Rest
+complete" ten minutes late says the timer just finished, which is the one thing
+that is not true.
+
+A rest that finished while you were away now says how long ago and does not
+sound the alert, because ringing on the way back in is an alarm for something
+that already happened. One left running well past its target belongs to a
+session that is over, and is cleared **out loud** rather than dropped in
+silence — including one that outlived the app being closed entirely, which used
+to vanish without a word.
+
 ## Pain
 
 <img src="docs/screens/pain.webp" alt="The pain chart in History: lower back rated across eight weeks of sessions on a 0 to 5 scale." width="240">
@@ -401,7 +451,7 @@ instead of failing quietly.
 ## Built like this
 
 Markup, styles and logic in one file; a service worker that precaches the shell
-and keeps the exercise photos in a cache of their own; 271 Playwright tests that
+and keeps the exercise photos in a cache of their own; 293 Playwright tests that
 read real bounding boxes at phone sizes; and Release Please, which tags the
 version and rewrites it in `sw.js` — the thing that makes an installed phone
 notice a release at all. The deploy refuses to publish a build the suite rejects.

@@ -2905,3 +2905,287 @@ test.describe('how often the weight goes up', () => {
     expect(errs).toEqual([]);
   });
 });
+
+test.describe('a rest that finished while the app was away', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('finishing under your nose still just says it is done', async () => {
+    await page.evaluate(() => {
+      startRest('Deadlift');
+      rest.target = 1;
+      rest.start = Date.now() - 1200;   // a second past, while you were looking
+      rest.alerted = false;
+      tickRest();
+    });
+    await expect(page.locator('#rest')).toHaveClass(/ready/);
+    // no "ago" for a rest that finished in front of you
+    await expect(page.locator('#toast')).not.toContainText(/ago/);
+  });
+
+  test('finishing while away says how long ago, and does not sound an alarm', async () => {
+    const chimed = await page.evaluate(() => {
+      let rang = false;
+      const realChime = window.chime;
+      window.chime = () => { rang = true; };
+      stopRest();
+      startRest('Deadlift');
+      rest.target = 180;
+      rest.start = Date.now() - 600 * 1000;   // 7 minutes past target
+      rest.alerted = false;
+      tickRest();
+      window.chime = realChime;
+      return rang;
+    });
+    // ringing on the way back in is an alarm for something that already happened
+    expect(chimed).toBe(false);
+    await expect(page.locator('#toast')).toContainText('Rest finished 7 min ago');
+  });
+
+  test('one left running far too long is cleared out loud, not in silence', async () => {
+    await page.evaluate(() => {
+      stopRest();
+      startRest('Leg press');
+      rest.target = 180;
+      rest.start = Date.now() - 1500 * 1000;   // well past the 15-minute cutoff
+      rest.alerted = true;
+      tickRest();
+    });
+    await expect(page.locator('#toast')).toContainText(/Rest after Leg press finished 22 min ago/);
+    await expect(page.locator('#rest')).not.toHaveClass(/show/);
+    expect(await page.evaluate(() => db.rest)).toBe(null);
+  });
+
+  test('and one that outlived the app being closed is reported on the way in', async () => {
+    await page.evaluate(() => {
+      db.rest = { ex: 'Front squat', target: 180, start: Date.now() - 2000 * 1000, mode: 'rest' };
+      save();
+    });
+    await page.reload();
+    await page.waitForSelector('.ex');
+    // it used to be dropped without a word, which is how you come back to a
+    // phone that has quietly forgotten what it was counting
+    await expect(page.locator('#toast')).toContainText(/Rest after Front squat finished 30 min ago/);
+    expect(await page.evaluate(() => db.rest)).toBe(null);
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
+
+test.describe('text size', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+  const bodySize = () => page.evaluate(() =>
+    parseFloat(getComputedStyle(document.querySelector('.ex .name')).fontSize));
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('settings offers it, and marks the size you are on', async () => {
+    await page.click('#gear');
+    await expect(page.locator('#tssel button')).toHaveCount(4);
+    await expect(page.locator('#tssel [data-ts="1"]')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('choosing a bigger one actually makes the text bigger', async () => {
+    // pinching is off and iOS does not apply Dynamic Type to a web page, so
+    // this control is the only way left to enlarge anything
+    const before = await bodySize();
+    await page.click('#tssel [data-ts="1.3"]');
+    const after = await bodySize();
+    expect(after / before).toBeCloseTo(1.3, 1);
+    await expect(page.locator('#tssel [data-ts="1.3"]')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('and it is applied before the first paint, like the theme', async () => {
+    await page.addInitScript(() => {
+      window.__tsAtParse = null;
+      const watch = () => new MutationObserver(ms => {
+        for (const m of ms) {
+          if (m.attributeName === 'style' && window.__tsAtParse === null) {
+            window.__tsAtParse = { ts: document.documentElement.style.getPropertyValue('--ts'),
+                                   beforeBody: !document.body };
+          }
+        }
+      }).observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+      if (document.documentElement) watch();
+      else new MutationObserver((_, o) => {
+        if (document.documentElement) { o.disconnect(); watch(); }
+      }).observe(document, { childList: true, subtree: true });
+    });
+    await page.reload();
+    await page.waitForSelector('.ex');
+    expect(await page.evaluate(() => window.__tsAtParse))
+      .toEqual({ ts: '1.3', beforeBody: true });
+  });
+
+  test('the masthead is capped rather than scaled with everything else', async () => {
+    // it is already the largest thing on the screen, and its growth is what
+    // pushed the gear off the header instead of helping anyone read
+    const h1 = await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector('h1')).fontSize));
+    expect(h1).toBeLessThanOrEqual(34);
+    await page.click('#gear');
+    await page.click('#tssel [data-ts="1"]');
+    await page.click('#setdone');
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
+
+test.describe('finding things in History', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.evaluate(() => {
+      const iso = n => { const t = new Date(); t.setDate(t.getDate() - n);
+        return new Date(t.getTime() - t.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+      db.sets = [];
+      // 40 sessions, so the list pages and a filter is the only way through
+      for (let i = 40; i >= 1; i--) {
+        const d = iso(i);
+        const [e, dy] = i % 2 ? ['Deadlift', 'A'] : ['Overhead press', 'B'];
+        for (let s = 0; s < 3; s++) {
+          db.sets.push({ id: `s${i}-${s}`, t: Date.parse(d) + s, d, e, dy,
+                         w: 200, r: 5, rir: 2, rest: 180, u: 'lb' });
+        }
+      }
+      save(); rerenderAll();
+    });
+    await page.click('#tab-history');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('the list pages, as it always did', async () => {
+    await expect(page.locator('#sessions .card')).toHaveCount(30);
+    await expect(page.locator('#moresessions')).toBeVisible();
+  });
+
+  test('an exercise name narrows it, and says how far', async () => {
+    await page.fill('#sessfilter', 'overhead');
+    await expect(page.locator('#sessfound')).toHaveText('20 of 40');
+    await expect(page.locator('#sessions .card')).toHaveCount(20);
+    await expect(page.locator('#sessions')).not.toContainText('Deadlift');
+  });
+
+  test('so does a day name', async () => {
+    await page.fill('#sessfilter', 'lower a');
+    await expect(page.locator('#sessions .card')).toHaveCount(20);
+    // the cards are collapsed, so the day name is what is on screen to match
+    await expect(page.locator('#sessions .card').first()).toContainText('Lower A');
+    await expect(page.locator('#sessions')).not.toContainText('Upper A');
+  });
+
+  test('nothing matching reads as a filter, not as lost training', async () => {
+    await page.fill('#sessfilter', 'zercher');
+    await expect(page.locator('#sessions')).toContainText('Nothing matches');
+    await expect(page.locator('#sessfound')).toHaveText('0 of 40');
+  });
+
+  test('and paging starts over when the query changes', async () => {
+    await page.fill('#sessfilter', '');
+    await page.click('#moresessions');
+    await expect(page.locator('#sessions .card')).toHaveCount(40);
+    // page 2 of the old list is nowhere in the new one
+    await page.fill('#sessfilter', 'overhead');
+    await expect(page.locator('#sessions .card')).toHaveCount(20);
+    await page.fill('#sessfilter', '');
+    await expect(page.locator('#sessions .card')).toHaveCount(30);
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
+
+test.describe('starting from a template', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    page.on('dialog', d => d.accept());
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('the templates are offered from the program editor', async () => {
+    await page.click('#editprog');
+    await page.click('#usetemplate');
+    await expect(page.locator('#tpl')).toHaveClass(/open/);
+    await expect(page.locator('#tpllist [data-tpl]')).toHaveCount(3);
+    await expect(page.locator('[data-tpl="ppl6"]')).toContainText('6 days');
+  });
+
+  test('choosing one replaces the days and leaves the logging alone', async () => {
+    await page.evaluate(() => {
+      db.sets.push({ id: 'keep-me', t: Date.now(), d: todayISO(), e: 'Deadlift', dy: 'A',
+                     w: 225, r: 5, rir: 2, u: 'lb' });
+      save();
+    });
+    await page.click('[data-tpl="fullbody3"]');
+    await expect(page.locator('#tpl')).not.toHaveClass(/open/);
+    await expect(page.locator('#exlabeltext')).toContainText('Full body A');
+    // switching usually means the last few weeks did not work, which is a
+    // reason to keep them rather than lose them
+    expect(await page.evaluate(() => db.sets.some(s => s.id === 'keep-me'))).toBe(true);
+    // and it leaves edit mode, because the next thing you do is train
+    await expect(page.locator('#dayedit')).toBeHidden();
+  });
+
+  test('every day it lands on is a day you can open', async () => {
+    const days = await page.evaluate(() => program().map(d => d.id));
+    expect(days).toEqual(['A', 'B', 'C']);
+    for (const id of days) {
+      await chooseDay(page, id);
+      await expect(page.locator('#exlist .ex').first()).toBeVisible();
+    }
+  });
+
+  test('and every lift in one has a guide, so the info button works from day one', async () => {
+    const missing = await page.evaluate(() =>
+      TEMPLATES.flatMap(t => t.days.flatMap(d => d.ex.map(([n]) => n)))
+        .filter((n, i, a) => a.indexOf(n) === i)
+        .filter(n => !guideFor(n)));
+    expect(missing).toEqual([]);
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
