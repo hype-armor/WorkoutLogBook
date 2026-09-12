@@ -14,6 +14,11 @@ it behaves the way it does, see the [README](../README.md).
 | `img/*.webp` | exercise photos, start and finish, 44 files |
 | `version.txt`, `release-please-config.json` | release automation, see below |
 
+A design for waking a suspended phone when a rest timer ends — which nothing
+in the browser can do — is in [notifications.md](notifications.md). Nothing in
+it is built yet.
+
+
 ## Running it
 
 Open `index.html` directly and it works — logging, plate math and history all
