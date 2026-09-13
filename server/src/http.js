@@ -33,15 +33,24 @@ export function readJson(req, limit) {
     const declared = Number(req.headers['content-length'] || 0);
     if (declared > limit) return reject(new HttpError(413, 'too_large'));
     let size = 0;
+    let over = false;
     const chunks = [];
     req.on('data', c => {
+      if (over) return;
       size += c.length;
       if (size > limit) {
+        over = true;
+        chunks.length = 0;
+        // Paused, not destroyed. Destroying the request tears down the socket,
+        // and if the 413 has not flushed yet the client sees a network error
+        // instead of the reason it was refused — so a body a little too large
+        // reads as "the server is down". Pausing stops reading, lets the
+        // response out, and leaves the sender stalled on backpressure.
+        req.pause();
         reject(new HttpError(413, 'too_large'));
-        req.destroy();
-        return;
+      } else {
+        chunks.push(c);
       }
-      chunks.push(c);
     });
     req.on('end', () => {
       if (!chunks.length) return resolve({});

@@ -548,7 +548,31 @@ which is what the leakage list above is for.
    own source, and, if `LOGBOOK_DB` is ever set to a relative path, the vault
    database. All of it was reachable until a test asked for `/package.json`.
 5. ~~The sync client: pull/merge/push loop, cursor persistence, full-reset
-   path.~~ **Done**, apart from the settings screen that switches it on.
+   path.~~ **Done**, and **Settings → Sync** now switches it on: start fresh
+   with a generated passphrase, or add a device with the name and that
+   passphrase. It syncs on launch, on coming back to the app, and a few seconds
+   after a set is logged — never on a timer, because a phone in a gym has
+   better things to do with its radio.
+
+   The passphrase is generated rather than typed, and the app will not go on
+   until the box saying it has been written down is ticked. That is the one
+   place this app stands in its user's way, and it is there because there is no
+   reset: what it guards is a wrapped key anyone who can reach the server can
+   ask for and grind against offline.
+
+   Three bugs the screen had, all of which would have shipped:
+
+   - **Sheets stacked by the order they appear in the markup**, not the order
+     they were opened, so the Settings footer sat on top of the sheet opened
+     from it and took the tap meant for its button. Stacking now follows the
+     open order.
+   - **The error line was cleared in the same tick it was set**, by the render
+     that puts the button label back after a failed attempt. No message from
+     the server was ever on screen long enough to read.
+   - **A mistyped passphrase reported "could not reach the server"**, because a
+     failed unwrap is a WebCrypto error rather than a server code. It is the
+     one failure whose cause is known exactly, and it was sending people off to
+     check their wifi.
    Fourteen tests, most of them two browsers converging through the real
    server rather than a stub.
 

@@ -524,7 +524,7 @@
     display:block;font-size:0.7188rem;font-weight:620;letter-spacing:.05em;
     text-transform:uppercase;color:var(--ink-3);margin-bottom:5px;
   }
-  input[type=number],input[type=text],select,textarea{
+  input[type=number],input[type=text],input[type=url],input[type=password],select,textarea{
     width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-md);
     color:var(--ink);font-family:inherit;font-size:1.625rem;font-weight:640;letter-spacing:-.03em;
     padding:9px;text-align:center;
@@ -533,7 +533,7 @@
      field takes focus, which is the zoom you actually notice — tap the
      exercise search and the whole screen lurches. Nothing above can stop
      that one; only the type size can. */
-  input[type=text],textarea,select{font-size:1rem;font-weight:450;text-align:left;letter-spacing:-.01em}
+  input[type=text],input[type=url],input[type=password],textarea,select{font-size:1rem;font-weight:450;text-align:left;letter-spacing:-.01em}
   select{padding:13px 12px;min-height:48px}
   textarea{line-height:1.45}
   input:focus,textarea:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -813,6 +813,19 @@
     font-variant-numeric:tabular-nums;white-space:nowrap}
   .empty{color:var(--ink-3);font-size:0.9062rem;padding:22px 2px;line-height:1.55;letter-spacing:-.005em}
   .hint{color:var(--ink-3);font-size:0.8125rem;margin-top:10px;line-height:1.5;letter-spacing:-.005em}
+
+  /* A passphrase shown once, to be copied onto paper. Monospaced and spaced out
+     because it will be read back character by character, and selectable because
+     the other half of the readers will paste it into a password manager — this
+     is the one string in the app that is meant to leave it. */
+  .code{
+    margin-top:10px;padding:14px 12px;border-radius:var(--r-md);
+    background:var(--surface-2);border:1px solid var(--line-2);
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:1.0625rem;letter-spacing:.08em;text-align:center;
+    color:var(--ink);word-break:break-all;
+    -webkit-user-select:text;user-select:text;-webkit-touch-callout:default
+  }
 
   nav{
     position:fixed;bottom:0;left:0;right:0;z-index:30;background:var(--nav-bg);
@@ -1194,6 +1207,68 @@
 </section>
 
 <!-- ============ SETTINGS ============ -->
+<!-- ============ SYNC SETUP ============ -->
+<section class="sheet" id="syncsheet" role="dialog" aria-modal="true" aria-labelledby="syncsheet-title" inert aria-hidden="true">
+  <div class="sheethead">
+    <div class="txt"><h2 id="syncsheet-title" tabindex="-1">Sync</h2>
+      <div class="sub">Your log, on more than one device. The server stores it
+        encrypted and cannot read any of it.</div></div>
+    <button class="icon" id="syncclose" aria-label="Close">&#215;</button>
+  </div>
+  <div class="sheetbody">
+    <div class="bars" id="syncmode" style="justify-content:flex-start">
+      <button data-mode="new" aria-pressed="true">Start fresh</button>
+      <button data-mode="join" aria-pressed="false">Add this device</button>
+    </div>
+
+    <label class="f" style="margin-top:16px"><span class="lab">Server</span>
+      <input type="url" id="syncbase" inputmode="url" autocomplete="off"
+             placeholder="This one" aria-label="Server address"></label>
+    <div class="hint">Blank uses the server this app was opened from, which is
+      the usual case. A full address is for running the app from one place and
+      the server from another.</div>
+
+    <label class="f" style="margin-top:16px"><span class="lab">Name</span>
+      <input type="text" id="synchandle" autocomplete="off" autocapitalize="none"
+             spellcheck="false" aria-label="Vault name"></label>
+    <div class="hint">How the server finds your log. Not secret, and not shown
+      to anyone.</div>
+
+    <div id="syncnewbox">
+      <div class="eyebrow">Your passphrase</div>
+      <div class="code" id="syncphrase" aria-live="polite">&#8203;</div>
+      <div class="hint"><strong>Write this down.</strong> It unlocks the log on
+        your next phone, the server does not have it in any form, and there is
+        no reset. Losing it costs the copy on the server, not the one here.</div>
+      <label class="toggle" style="margin-top:14px">
+        <input type="checkbox" id="syncwrote">
+        <span>I have written it down somewhere safe</span>
+      </label>
+      <button class="btn ghost small wide" id="syncreroll" style="margin-top:14px">Give me another</button>
+    </div>
+
+    <div id="syncjoinbox" class="hide">
+      <label class="f" style="margin-top:16px"><span class="lab">Passphrase</span>
+        <input type="password" id="syncpass" autocomplete="current-password"
+               autocapitalize="none" spellcheck="false" aria-label="Passphrase"></label>
+      <div class="hint">The one you wrote down when you set the first device up.</div>
+    </div>
+
+    <label class="f" id="syncinvitebox" style="margin-top:16px"><span class="lab">Invite code</span>
+      <input type="text" id="syncinvite" autocomplete="off" autocapitalize="characters"
+             spellcheck="false" aria-label="Invite code"></label>
+    <div class="hint" id="syncinvitehint">Only when starting fresh, and only if the
+      server asks for one.</div>
+
+    <div class="hint" id="syncerr" role="alert"></div>
+  </div>
+  <div class="restdock"></div>
+  <div class="sheetfoot">
+    <button class="btn ghost" id="synccancel">Cancel</button>
+    <button class="btn" id="syncgo">Turn on sync</button>
+  </div>
+</section>
+
 <section class="sheet" id="settings" role="dialog" aria-modal="true" aria-labelledby="set-title" inert aria-hidden="true">
   <div class="sheethead">
     <div class="txt"><h2 id="set-title" tabindex="-1">Settings</h2>
@@ -1263,6 +1338,12 @@
     <button class="btn ghost small wide" id="restore" style="margin-top:8px">Restore from backup</button>
     <input type="file" id="restorefile" accept="application/json,.json" class="sr-only">
     <div class="hint" id="datastat"></div>
+
+    <div class="eyebrow">Sync</div>
+    <div class="hint" id="syncstat"></div>
+    <button class="btn ghost small wide" id="syncsetup">Set up sync</button>
+    <button class="btn ghost small wide hide" id="syncnow">Sync now</button>
+    <button class="btn danger small wide hide" id="syncoff" style="margin-top:8px">Stop syncing on this device</button>
 
     <div class="eyebrow">Program</div>
     <button class="btn danger small wide" id="resetprog">Reset program to default</button>
@@ -2200,7 +2281,16 @@ async function syncStart({base = '', handle, passphrase, invite, join = false}){
   try{
     if(join){
       const got = await api('POST', '/v1/auth/passphrase', {handle}, null);
-      const key = await vault.openWithPassphrase(got.factor, passphrase);
+      let key;
+      try{
+        key = await vault.openWithPassphrase(got.factor, passphrase);
+      }catch(err){
+        // The wrapped key came back and would not open. This is the one failure
+        // the app knows the exact cause of — a mistyped passphrase, which is
+        // also the likeliest — and reporting it as "could not reach the server"
+        // sends someone off to check their wifi.
+        throw new Error('bad_passphrase');
+      }
       state = {vaultId: got.vaultId, mk: b64u(key), authSecret: await vault.authSecret(key)};
     }else{
       const factor = await vault.factorFromPassphrase(mk, passphrase);
@@ -2437,6 +2527,7 @@ async function save(){
   try{
     await store.set(KEY, JSON.stringify(db));
     if(saveFails){ saveFails = 0; storageBroken = false; renderBanners(); }
+    syncLater();
   }catch(e){
     saveFails++;
     // Say so on the first failure and keep retrying quietly behind the notice.
@@ -3914,6 +4005,12 @@ function openPanel(el, focusEl){
   }
   el.removeAttribute('inert');
   el.removeAttribute('aria-hidden');
+  // Sheets share one z-index, so which one is on top was decided by the order
+  // they appear in the markup. A sheet opened from another sheet is above it by
+  // intent and below it by accident of where it was written, and the footers
+  // are what collide: the button underneath takes the tap. Stack by the order
+  // they were opened in, which is the order they are actually in.
+  el.style.zIndex = String(50 + sheetStack.indexOf(el));
   $('#scrim').classList.add('open');
   el.classList.add('open');
   document.body.classList.add('sheetopen');
@@ -3929,6 +4026,7 @@ function closePanel(el, pickFocus){
   el.classList.remove('open');
   el.setAttribute('inert', '');
   el.setAttribute('aria-hidden', 'true');
+  el.style.zIndex = '';
   const i = sheetStack.indexOf(el);
   if(i >= 0) sheetStack.splice(i, 1);
   if(!sheetStack.length){
@@ -4708,6 +4806,9 @@ document.addEventListener('visibilitychange', ()=>{
   if(document.hidden) return;
   tickRest();
   if(rest.start) requestWake();
+  // Back in the app: whatever the other device did while this one was away is
+  // worth having before the next set is logged against it.
+  syncLater(400);
 });
 
 /* ---------- events: pain and notes ---------- */
@@ -4957,6 +5058,7 @@ function openSettings(){
       ? (since ? `${since} session${since===1?'':'s'} since your last backup.` : 'Backed up.')
       : 'Never backed up.');
   $('#appversion').textContent = `v${APP_VERSION}`;
+  renderSyncStatus();
   openPanel($('#settings'), $('#set-title'));
 }
 
@@ -5031,6 +5133,186 @@ $('#testalert').addEventListener('click', ()=>{
   const label = (ALERT_OPTIONS.find(([v]) => v === alertMode()) || [])[1] || '';
   toast(alertMode() === 'silent' ? 'Alerts are silent' : label);
 });
+
+/* ---------- sync, on screen ---------- */
+// A generated passphrase rather than a typed one. What it guards is a wrapped
+// key that anyone who can reach the server can ask for and grind against
+// offline, and "the dog's name and a year" does not survive that. Read off a
+// screen and typed into a second phone, so no character that can be mistaken
+// for another: the same alphabet as an invite code.
+const PHRASE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function newPassphrase(groups = 5){
+  const bytes = crypto.getRandomValues(new Uint8Array(groups * 4));
+  const out = [];
+  for(let g = 0; g < groups; g++){
+    let word = '';
+    for(let i = 0; i < 4; i++) word += PHRASE_ALPHABET[bytes[g * 4 + i] % PHRASE_ALPHABET.length];
+    out.push(word);
+  }
+  return out.join('-');
+}
+
+let syncSetupMode = 'new';
+
+function renderSyncSetup(){
+  const fresh = syncSetupMode === 'new';
+  for(const b of $('#syncmode').querySelectorAll('[data-mode]')){
+    b.setAttribute('aria-pressed', String(b.dataset.mode === syncSetupMode));
+  }
+  $('#syncnewbox').classList.toggle('hide', !fresh);
+  $('#syncjoinbox').classList.toggle('hide', fresh);
+  // An invite lets a vault be created; adding a device to one that exists is
+  // gated by the passphrase, which is the stronger gate of the two.
+  $('#syncinvitebox').classList.toggle('hide', !fresh);
+  $('#syncinvitehint').classList.toggle('hide', !fresh);
+  $('#syncgo').textContent = fresh ? 'Turn on sync' : 'Add this device';
+  // Deliberately not clearing the error here. This runs again the moment a
+  // failed attempt finishes, to put the button label back — and it used to wipe
+  // the reason for the failure in the same tick, so no message from the server
+  // was ever on screen long enough to read. Clearing is for starting over.
+}
+
+function openSyncSetup(){
+  syncSetupMode = 'new';
+  $('#syncbase').value = syncState.base || '';
+  $('#synchandle').value = '';
+  $('#syncpass').value = '';
+  $('#syncinvite').value = '';
+  $('#syncwrote').checked = false;
+  $('#syncphrase').textContent = newPassphrase();
+  $('#syncerr').textContent = '';
+  renderSyncSetup();
+  openPanel($('#syncsheet'), $('#syncsheet-title'));
+}
+
+// "Never" rather than a date nobody can read, and a relative time after that:
+// what matters is whether it has been recently, not exactly when.
+function syncAgo(){
+  if(!syncState.at) return 'not yet';
+  const secs = (Date.now() - syncState.at) / 1000;
+  if(secs < 90) return 'just now';
+  if(secs < 5400) return `${Math.round(secs / 60)} min ago`;
+  if(secs < 172800) return `${Math.round(secs / 3600)} h ago`;
+  return `${Math.round(secs / 86400)} days ago`;
+}
+
+function renderSyncStatus(){
+  const on = syncOn();
+  $('#syncsetup').classList.toggle('hide', on);
+  $('#syncnow').classList.toggle('hide', !on);
+  $('#syncoff').classList.toggle('hide', !on);
+  if(!on){
+    $('#syncstat').textContent = 'Off. This log is on this device only, which is '
+      + 'the only copy unless you have made a backup.';
+    return;
+  }
+  const waiting = Object.keys(syncState.dirty).length;
+  $('#syncstat').textContent = `On as “${syncState.handle}”. Last synced ${syncAgo()}`
+    + (waiting ? `, ${waiting} change${waiting === 1 ? '' : 's'} still to send.` : '.')
+    + (syncState.err ? ` Last try: ${syncState.err}.` : '');
+}
+
+$('#syncmode').addEventListener('click', e=>{
+  const b = e.target.closest('[data-mode]'); if(!b) return;
+  syncSetupMode = b.dataset.mode;
+  $('#syncerr').textContent = '';
+  renderSyncSetup();
+});
+$('#syncreroll').addEventListener('click', ()=>{
+  $('#syncphrase').textContent = newPassphrase();
+  $('#syncwrote').checked = false;
+});
+$('#syncclose').addEventListener('click', ()=>closePanel($('#syncsheet')));
+$('#synccancel').addEventListener('click', ()=>closePanel($('#syncsheet')));
+
+$('#syncgo').addEventListener('click', async ()=>{
+  const fresh = syncSetupMode === 'new';
+  const handle = $('#synchandle').value.trim().toLowerCase();
+  const passphrase = fresh ? $('#syncphrase').textContent.trim() : $('#syncpass').value.trim();
+  const say = m => { $('#syncerr').textContent = m; };
+
+  if(!/^[a-z0-9][a-z0-9._-]{1,31}$/.test(handle)){
+    return say('A name is 2 to 32 characters: letters, numbers, dot, dash or underscore.');
+  }
+  if(!passphrase) return say('The passphrase is missing.');
+  // The one place this app stands in the way of its user: there is no reset,
+  // so "I will write it down later" is a decision to lose the server copy.
+  if(fresh && !$('#syncwrote').checked) return say('Write the passphrase down first.');
+
+  const btn = $('#syncgo');
+  btn.disabled = true;
+  btn.textContent = 'Working…';
+  try{
+    await syncStart({
+      base: $('#syncbase').value.trim().replace(/\/+$/, ''),
+      handle, passphrase, join: !fresh,
+      invite: $('#syncinvite').value.trim()
+    });
+    closePanel($('#syncsheet'));
+    renderSyncStatus();
+    toast(fresh ? 'Sync is on' : 'This device is on your log');
+  }catch(e){
+    say(syncSaid(e));
+  }finally{
+    btn.disabled = false;
+    renderSyncSetup();
+  }
+});
+
+// The server answers in codes. None of them is worth showing as-is.
+function syncSaid(e){
+  const said = {
+    invite_required: 'This server needs an invite code.',
+    handle_taken: 'That name is taken on this server. Pick another, or add this device to it instead.',
+    no_such_vault: 'No log by that name on this server.',
+    bad_passphrase: 'That passphrase does not open it.',
+    unauthorized: 'That passphrase does not open it.',
+    slow_down: 'Too many tries. Wait a few minutes.',
+    passphrase_required: 'This server needs a passphrase, not just a passkey.',
+    bad_handle: 'That name is not one the server will take.'
+  }[e.message];
+  if(said) return said;
+  // A name that does not resolve, a server that is not running, a phone with no
+  // signal: all the same thing from here, and none of them the user's fault.
+  return 'Could not reach the server.';
+}
+
+$('#syncsetup').addEventListener('click', openSyncSetup);
+
+$('#syncnow').addEventListener('click', async ()=>{
+  const btn = $('#syncnow');
+  btn.disabled = true;
+  const before = btn.textContent;
+  btn.textContent = 'Syncing…';
+  const out = await syncOnce();
+  btn.disabled = false;
+  btn.textContent = before;
+  renderSyncStatus();
+  rerenderAll();
+  toast(out ? `Synced — ${out.pulled} in, ${out.pushed} out` : 'Could not reach the server');
+});
+
+$('#syncoff').addEventListener('click', ()=>{
+  if(!confirm('Stop syncing on this device? The log stays here, and the copy on '
+    + 'the server stays there. Nothing is deleted.')) return;
+  syncStop();
+  renderSyncStatus();
+  toast('Sync is off on this device');
+});
+
+// When to sync without being asked. Each of these is a moment where the app is
+// already doing something and a few hundred milliseconds of network costs
+// nobody anything: opening it, coming back to it, and finishing with it.
+// Never on a timer — a phone in a gym has better things to do with its radio.
+let syncSoon = null;
+function syncLater(ms = 4000){
+  // A sync ends by saving, and a save schedules a sync: without this the two
+  // would hand off to each other every four seconds for as long as the app is
+  // open, which is a poll loop wearing the clothes of an event.
+  if(!syncOn() || syncState.busy) return;
+  clearTimeout(syncSoon);
+  syncSoon = setTimeout(()=>{ syncOnce().then(renderSyncStatus); }, ms);
+}
 
 $('#transel').addEventListener('change', e=>{
   db.settings.transition = +e.target.value; save();
@@ -5454,6 +5736,10 @@ let persistentStorage = null;
   // finished while the app was closed is not resumed — but it is not thrown
   // away in silence either, which is what used to happen to every rest that
   // outlasted a phone going to sleep for a quarter of an hour.
+  // Opening the app is the other moment worth a sync: this is usually the
+  // first thing that happens after the other device logged something.
+  syncLater(1200);
+
   const r = db.rest;
   if(r && r.start){
     const el = (Date.now() - r.start) / 1000;

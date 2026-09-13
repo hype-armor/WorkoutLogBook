@@ -307,3 +307,206 @@ test.describe('two devices', () => {
     await a.close();
   });
 });
+
+// The screen that switches all of the above on. Driven through the real
+// controls, against the real server, because "the engine works" and "a person
+// can turn it on" are different claims.
+test.describe('turning sync on', () => {
+  test.describe.configure({ mode: 'serial' });
+  const handle = () => 'u' + Math.random().toString(36).slice(2, 10);
+
+  // An exception thrown inside a click handler is logged and forgotten: the
+  // sheet simply does not open, and every assertion after it fails somewhere
+  // else entirely. Collected here so the failure names itself.
+  const open = async (browser) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    const errs = [];
+    page.on('pageerror', e => errs.push(e.message));
+    await page.goto(SYNC_URL);
+    await page.waitForSelector('.ex');
+    await page.click('#gear');
+    return { ctx, page, errs, quiet: () => expect(errs, 'page errors').toEqual([]) };
+  };
+
+  test('off is said plainly, and set-up is the only thing offered', async ({ browser }) => {
+    const { ctx, page } = await open(browser);
+    await expect(page.locator('#syncstat')).toContainText('Off');
+    await expect(page.locator('#syncsetup')).toBeVisible();
+    await expect(page.locator('#syncnow')).toBeHidden();
+    await expect(page.locator('#syncoff')).toBeHidden();
+    await ctx.close();
+  });
+
+  test('a passphrase is generated, and cannot be skipped past', async ({ browser }) => {
+    const { ctx, page, quiet } = await open(browser);
+    await page.click('#syncsetup');
+    const phrase = await page.locator('#syncphrase').textContent();
+    // Read off a screen and typed into another phone: no character that can be
+    // mistaken for another, and enough of them to survive an offline grind.
+    expect(phrase).toMatch(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}(-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}){4}$/);
+    expect(phrase).not.toMatch(/[OI10]/);
+    quiet();
+
+    await page.fill('#synchandle', handle());
+    await page.click('#syncgo');
+    // There is no reset, so "I'll write it down later" is a decision to lose
+    // the server copy. The app refuses to take it for them.
+    await expect(page.locator('#syncerr')).toContainText('Write the passphrase down');
+    // Refused, not merely complained about: the sheet is still open and nothing
+    // was sent anywhere.
+    await expect(page.locator('#syncsheet')).toHaveClass(/open/);
+    expect(await page.evaluate(() => syncOn())).toBe(false);
+    await expect(page.locator('#syncstat')).toContainText('Off');
+
+    await page.click('#syncreroll');
+    expect(await page.locator('#syncphrase').textContent()).not.toBe(phrase);
+    // A new one is a new thing to write down.
+    await expect(page.locator('#syncwrote')).not.toBeChecked();
+    await ctx.close();
+  });
+
+  test('a bad name is refused before anything is sent', async ({ browser }) => {
+    const { ctx, page } = await open(browser);
+    await page.click('#syncsetup');
+    await page.check('#syncwrote');
+    for (const bad of ['', 'A', 'has space', 'x']) {
+      await page.fill('#synchandle', bad);
+      await page.click('#syncgo');
+      await expect(page.locator('#syncerr')).toContainText('2 to 32 characters');
+    }
+    await ctx.close();
+  });
+
+  test('a vault is created from the screen, and the status says so', async ({ browser }) => {
+    const name = handle();
+    const { ctx, page } = await open(browser);
+    await page.evaluate(() => {
+      db.sets.push({ id: 'ui-1', t: Date.now(), d: todayISO(), e: 'Deadlift', dy: 'A',
+                     w: 245, r: 5, rir: 2, rest: null, u: 'lb' });
+      return save();
+    });
+    await page.click('#syncsetup');
+    const phrase = await page.locator('#syncphrase').textContent();
+    await page.fill('#synchandle', name);
+    await page.check('#syncwrote');
+    await page.click('#syncgo');
+
+    await expect(page.locator('#syncsheet')).not.toHaveClass(/open/);
+    await expect(page.locator('#syncstat')).toContainText(`On as “${name}”`);
+    await expect(page.locator('#syncnow')).toBeVisible();
+    await expect(page.locator('#syncsetup')).toBeHidden();
+
+    // And a second device joins with the name and the passphrase alone.
+    const two = await open(browser);
+    await two.page.click('#syncsetup');
+    await two.page.click('[data-mode="join"]');
+    await expect(two.page.locator('#syncphrase')).toBeHidden();
+    await two.page.fill('#synchandle', name);
+    await two.page.fill('#syncpass', phrase);
+    await two.page.click('#syncgo');
+    await expect(two.page.locator('#syncstat')).toContainText('On as');
+    expect(await two.page.evaluate(() => db.sets.map(s => s.w))).toEqual([245]);
+
+    await ctx.close(); await two.ctx.close();
+  });
+
+  test('the wrong passphrase is told apart from a name that is not there',
+    async ({ browser }) => {
+      const name = handle();
+      const a = await open(browser);
+      await a.page.click('#syncsetup');
+      await a.page.fill('#synchandle', name);
+      await a.page.check('#syncwrote');
+      await a.page.click('#syncgo');
+      await expect(a.page.locator('#syncstat')).toContainText('On as');
+
+      const b = await open(browser);
+      await b.page.click('#syncsetup');
+      await b.page.click('[data-mode="join"]');
+      await b.page.fill('#synchandle', name);
+      await b.page.fill('#syncpass', 'WRNG-WRNG-WRNG-WRNG-WRNG');
+      await b.page.click('#syncgo');
+      await expect(b.page.locator('#syncerr')).toContainText('does not open it');
+
+      await b.page.fill('#synchandle', handle());
+      await b.page.click('#syncgo');
+      await expect(b.page.locator('#syncerr')).toContainText('No log by that name');
+      await a.ctx.close(); await b.ctx.close();
+    });
+
+  test('a taken name says what to do about it', async ({ browser }) => {
+    const name = handle();
+    const a = await open(browser);
+    await a.page.click('#syncsetup');
+    await a.page.fill('#synchandle', name);
+    await a.page.check('#syncwrote');
+    await a.page.click('#syncgo');
+    await expect(a.page.locator('#syncstat')).toContainText('On as');
+
+    const b = await open(browser);
+    await b.page.click('#syncsetup');
+    await b.page.fill('#synchandle', name);
+    await b.page.check('#syncwrote');
+    await b.page.click('#syncgo');
+    await expect(b.page.locator('#syncerr')).toContainText('add this device to it instead');
+    await a.ctx.close(); await b.ctx.close();
+  });
+
+  test('stopping leaves the log alone', async ({ browser }) => {
+    const name = handle();
+    const { ctx, page } = await open(browser);
+    await page.evaluate(() => {
+      db.sets.push({ id: 'keep-me', t: Date.now(), d: todayISO(), e: 'Deadlift', dy: 'A',
+                     w: 185, r: 5, rir: 2, rest: null, u: 'lb' });
+      return save();
+    });
+    await page.click('#syncsetup');
+    await page.fill('#synchandle', name);
+    await page.check('#syncwrote');
+    await page.click('#syncgo');
+    await expect(page.locator('#syncstat')).toContainText('On as');
+
+    page.on('dialog', d => d.accept());
+    await page.click('#syncoff');
+    await expect(page.locator('#syncstat')).toContainText('Off');
+    await expect(page.locator('#syncsetup')).toBeVisible();
+    // Nothing is deleted by turning it off — not here, and not on the server.
+    expect(await page.evaluate(() => db.sets.map(s => s.id))).toContain('keep-me');
+    expect(await page.evaluate(() => localStorage.getItem('logbook-sync'))).not.toContain('keep-me');
+    await ctx.close();
+  });
+
+  test('a set logged on one phone reaches the other without being asked',
+    async ({ browser }) => {
+      const name = handle();
+      const a = await open(browser);
+      await a.page.click('#syncsetup');
+      const phrase = await a.page.locator('#syncphrase').textContent();
+      await a.page.fill('#synchandle', name);
+      await a.page.check('#syncwrote');
+      await a.page.click('#syncgo');
+
+      const b = await open(browser);
+      await b.page.click('#syncsetup');
+      await b.page.click('[data-mode="join"]');
+      await b.page.fill('#synchandle', name);
+      await b.page.fill('#syncpass', phrase);
+      await b.page.click('#syncgo');
+      await expect(b.page.locator('#syncstat')).toContainText('On as');
+      await b.page.click('#setdone');
+
+      // Logged on A the ordinary way, with nobody tapping "sync now" anywhere.
+      await a.page.click('#setdone');
+      await a.page.click('.ex[data-ex="Deadlift"]');
+      await a.page.fill('#wt', '335');
+      await a.page.fill('#reps', '3');
+      await a.page.click('#logset');
+
+      await expect.poll(
+        () => b.page.evaluate(() => syncOnce().then(() => db.sets.map(s => s.w))),
+        { timeout: 20000, intervals: [500, 1000, 2000] }
+      ).toEqual([335]);
+      await a.ctx.close(); await b.ctx.close();
+    });
+});
