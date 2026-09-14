@@ -8,6 +8,9 @@ import { open } from './db.js';
 import { routes } from './routes.js';
 import { HttpError, json, serveStatic } from './http.js';
 import { rid, sha256, inviteCode, normaliseCode } from './ids.js';
+import { scheduler } from './scheduler.js';
+import { newVapidKeys } from './push.js';
+import { defaultHosts } from './hosts.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const bool = (v, dflt) => (v == null || v === '' ? dflt : /^(1|true|yes|on)$/i.test(String(v)));
@@ -36,6 +39,15 @@ export function configure(env = process.env) {
     maxRecordBytes: Number(env.LOGBOOK_MAX_RECORD_BYTES || 65536),
     maxVaultBytes: Number(env.LOGBOOK_MAX_VAULT_BYTES || 52428800),
     vapidPublic: env.LOGBOOK_VAPID_PUBLIC || null,
+    vapidPrivate: env.LOGBOOK_VAPID_PRIVATE || null,
+    vapidSubject: env.LOGBOOK_VAPID_SUBJECT || 'mailto:nobody@example.invalid',
+    // Every host this server will POST to. Narrow by default; a self-hoster
+    // testing against something of their own has to say so out loud.
+    pushHosts: String(env.LOGBOOK_PUSH_HOSTS || '').split(',').map(h => h.trim()).filter(Boolean)
+      .concat(env.LOGBOOK_PUSH_HOSTS ? [] : defaultHosts()),
+    maxPending: Number(env.LOGBOOK_MAX_PENDING || 5),
+    maxHorizonMs: Number(env.LOGBOOK_MAX_HORIZON_S || 86400) * 1000,
+    alertTtl: Number(env.LOGBOOK_ALERT_TTL_S || 3600),
     // Off unless the deployment says otherwise: an x-forwarded-for header is
     // whatever the client claims, and trusting it unasked hands every caller a
     // fresh rate limit for free.
@@ -56,6 +68,9 @@ export function createApp(config) {
   const db = open(config.dbPath);
   const ctx = { db, config };
   const r = routes(ctx);
+  const clock = scheduler({ db, config });
+  ctx.scheduler = clock;
+  if (config.vapidPrivate) clock.start();
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
@@ -102,13 +117,25 @@ export function createApp(config) {
     json(res, 404, { error: 'not_found' });
   });
 
-  server.on('close', () => { try { db.close(); } catch { /* already closed */ } });
-  return { server, db, config };
+  server.on('close', () => {
+    clock.stop();
+    try { db.close(); } catch { /* already closed */ }
+  });
+  return { server, db, config, scheduler: clock };
 }
 
 /** `invite` mints a code; without a subcommand the server starts. */
 async function main(argv) {
   const config = configure();
+  if (argv[0] === 'vapid') {
+    // Printed once. The private half is a secret, and rotating it silently
+    // invalidates every subscription with no error reported anywhere, so this
+    // is a thing to generate and then back up rather than to regenerate.
+    const keys = newVapidKeys();
+    process.stdout.write(`LOGBOOK_VAPID_PUBLIC=${keys.publicKey}\n`
+      + `LOGBOOK_VAPID_PRIVATE=${keys.privateKey}\n`);
+    return;
+  }
   if (argv[0] === 'invite') {
     const db = open(config.dbPath);
     const uses = Number(argv[argv.indexOf('--uses') + 1]) || 1;
@@ -127,7 +154,10 @@ async function main(argv) {
   const { server } = createApp(config);
   server.listen(config.port, config.host, () => {
     console.log(JSON.stringify({ at: 'listening', port: config.port, db: config.dbPath,
-      static: !!config.staticRoot, openRegistration: config.openRegistration }));
+      static: !!config.staticRoot, openRegistration: config.openRegistration,
+      // Said out loud, because a server with no keys accepts subscriptions and
+      // schedules alerts and never delivers one, which looks like nothing.
+      push: config.vapidPrivate ? 'on' : 'off (no LOGBOOK_VAPID_PRIVATE)' }));
   });
 
   // Finish what is in flight, then go. Nothing is held in memory that a

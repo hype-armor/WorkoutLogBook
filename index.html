@@ -1343,6 +1343,13 @@
     <div class="hint" id="syncstat"></div>
     <button class="btn ghost small wide" id="syncsetup">Set up sync</button>
     <button class="btn ghost small wide hide" id="syncnow">Sync now</button>
+    <label class="toggle hide" id="pushbox-wrap" style="margin-top:14px">
+      <input type="checkbox" id="pushbox">
+      <span>Wake this phone when a rest timer ends
+        <span class="sub">The only alert that reaches a phone in a pocket. The
+          server is told when, and a sealed line of text it cannot read.</span></span>
+    </label>
+    <div class="hint" id="pusherr" role="alert"></div>
     <button class="btn danger small wide hide" id="syncoff" style="margin-top:8px">Stop syncing on this device</button>
 
     <div class="eyebrow">Program</div>
@@ -1985,6 +1992,136 @@ const vault = {
     return JSON.parse(utf8d.decode(pt));
   }
 };
+
+/* ---------- waking a suspended phone ---------- */
+// The one thing no page can do for itself. The rest timer fires from an
+// interval, and a phone that has suspended the app is running no intervals —
+// so the alert has to arrive from outside, which means the deadline has to be
+// left with a server before the phone goes quiet.
+//
+// What the server is left with is a time and a sealed envelope. The text inside
+// it — "Rest complete — Romanian deadlift" — is encrypted under a subkey of the
+// vault master key, and the service worker is what opens it. An earlier draft
+// of this sent nothing at all and had the worker compose the text locally; the
+// key hierarchy made that unnecessary, and a notification that can say which
+// lift it is beats one that cannot.
+
+// A store of its own, because a service worker cannot reach localStorage:
+// it is synchronous, and workers are not given it.
+const IDB_NAME = 'logbook-keys';
+function idbOpen(){
+  return new Promise((resolve, reject)=>{
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = ()=> req.result.createObjectStore('kv');
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+async function idbSet(key, value){
+  const d = await idbOpen();
+  await new Promise((resolve, reject)=>{
+    const t = d.transaction('kv', 'readwrite');
+    t.objectStore('kv').put(value, key);
+    t.oncomplete = resolve; t.onerror = ()=> reject(t.error);
+  });
+  d.close();
+}
+async function idbDel(key){
+  const d = await idbOpen();
+  await new Promise((resolve, reject)=>{
+    const t = d.transaction('kv', 'readwrite');
+    t.objectStore('kv').delete(key);
+    t.oncomplete = resolve; t.onerror = ()=> reject(t.error);
+  });
+  d.close();
+}
+
+// Push needs somewhere to send to, and "somewhere" is a device on a vault. So
+// this is only offered once sync is on — not an arbitrary restriction, but the
+// shape of the thing: a server cannot wake a phone it has never been told about.
+const pushSupported = () =>
+  typeof Notification !== 'undefined' && 'PushManager' in window && !!swReg;
+const pushOn = () => !!syncState.push;
+
+async function pushEnable(){
+  if(!syncOn()) return {ok: false, why: 'Sync has to be on first.'};
+  if(!pushSupported()){
+    // On iOS the API exists only for an app on the Home Screen, so in a tab
+    // this is not a browser that cannot do it — it is this copy of the app.
+    return {ok: false, why: isStandalone()
+      ? 'This browser cannot wake the phone.'
+      : 'Add the app to your Home Screen first.'};
+  }
+  let perm = Notification.permission;
+  if(perm === 'default') perm = await Notification.requestPermission();
+  if(perm !== 'granted') return {ok: false, why: 'Notifications are blocked.'};
+
+  try{
+    const conf = await api('GET', '/v1/config', null, null);
+    if(!conf.vapidPublicKey) return {ok: false, why: 'This server does not send notifications.'};
+    const sub = await swReg.pushManager.subscribe({
+      // Required, and on iOS not optional in any sense: every push has to put
+      // something on screen. It is also why there is no quiet "new data" push
+      // to make the other device pull — that would be a notification saying
+      // nothing, several times a session.
+      userVisibleOnly: true,
+      applicationServerKey: unb64u(conf.vapidPublicKey)
+    });
+    const raw = sub.toJSON();
+    await api('POST', '/v1/push/subscribe',
+      {endpoint: raw.endpoint, keys: {p256dh: raw.keys.p256dh, auth: raw.keys.auth}});
+    // The worker needs the master key to open what it is sent. It is already in
+    // localStorage in the clear beside the log; this is the same secret in the
+    // one store a worker can read.
+    await idbSet('mk', syncState.mk);
+    syncState.push = true;
+    saveSync();
+    return {ok: true};
+  }catch(e){
+    return {ok: false, why: 'Could not set up notifications.'};
+  }
+}
+
+async function pushDisable(){
+  syncState.push = false;
+  syncState.alertId = '';
+  saveSync();
+  try{ await idbDel('mk'); }catch(e){ /* nothing to clean up */ }
+  try{
+    const sub = await swReg?.pushManager.getSubscription();
+    await sub?.unsubscribe();
+  }catch(e){ /* the browser end is gone either way */ }
+  try{ await api('DELETE', '/v1/push/subscribe'); }catch(e){ /* offline: it prunes on 410 */ }
+}
+
+/**
+ * Leave the deadline with the server. Called when a rest timer starts, moved
+ * when its target changes, cancelled when it stops — all fire-and-forget, so a
+ * phone with no signal logs its set exactly as before.
+ */
+async function alertSchedule(fireAt, title, body){
+  if(!pushOn()) return;
+  try{
+    const keys = await syncSubkeys();
+    // The address and clock that bind a record to its slot have no meaning
+    // here, so a constant stands in: what it binds is the alert format.
+    const payload = await vault.seal(keys.alert, 'alert', 'v1',
+      {t: title, b: body, at: fireAt});
+    await alertCancel();
+    const made = await api('POST', '/v1/alerts', {fireAt, payload});
+    syncState.alertId = made.alertId;
+    saveSync();
+  }catch(e){ /* the timer on screen is unaffected */ }
+}
+
+async function alertCancel(){
+  const id = syncState.alertId;
+  if(!id) return;
+  syncState.alertId = '';
+  saveSync();
+  try{ await api('DELETE', '/v1/alerts/' + encodeURIComponent(id)); }
+  catch(e){ /* it will fire and say how late it is, which is the honest answer */ }
+}
 
 /* ---------- sync ---------- */
 // The client half. A server that cannot read the log cannot merge it either,
@@ -3792,6 +3929,10 @@ function startRest(ex){
   requestWake();
   showRest();
   persistRest();
+  // The phone may be in a pocket before this timer ends, and nothing on it will
+  // be running when it does.
+  alertSchedule(rest.start + rest.target * 1000,
+    midRound ? 'Go now' : 'Rest complete', rest.ex || 'Next set');
 }
 
 function showRest(){
@@ -3815,6 +3956,7 @@ function stopRest(){
   $('#rest').classList.remove('show','ready','transition');
   releaseWake();
   persistRest();
+  alertCancel();
 }
 
 // The alert fires from a 250ms interval on this page, so a phone that suspended
@@ -4795,6 +4937,8 @@ $('#resttarget').addEventListener('click', ()=>{
   (db.ex[base] ||= {}).rest = rest.target;
   rest.alerted = (Date.now() - rest.start)/1000 >= rest.target;
   persistRest(); tickRest();
+  // Otherwise the phone still buzzes at the old deadline, which is now a lie.
+  alertSchedule(rest.start + rest.target * 1000, 'Rest complete', rest.ex || 'Next set');
 });
 $('#restmid').addEventListener('click', ()=>{
   if(!rest.jump) return;
@@ -5206,6 +5350,9 @@ function renderSyncStatus(){
       + 'the only copy unless you have made a backup.';
     return;
   }
+  $('#pushbox-wrap').classList.toggle('hide', !on);
+  $('#pushbox').checked = pushOn()
+    && typeof Notification !== 'undefined' && Notification.permission === 'granted';
   const waiting = Object.keys(syncState.dirty).length;
   $('#syncstat').textContent = `On as “${syncState.handle}”. Last synced ${syncAgo()}`
     + (waiting ? `, ${waiting} change${waiting === 1 ? '' : 's'} still to send.` : '.')
@@ -5292,9 +5439,19 @@ $('#syncnow').addEventListener('click', async ()=>{
   toast(out ? `Synced — ${out.pulled} in, ${out.pushed} out` : 'Could not reach the server');
 });
 
+$('#pushbox').addEventListener('change', async e=>{
+  $('#pusherr').textContent = '';
+  if(!e.target.checked){ await pushDisable(); renderSyncStatus(); return; }
+  const out = await pushEnable();
+  e.target.checked = out.ok;
+  if(!out.ok) $('#pusherr').textContent = out.why;
+  renderSyncStatus();
+});
+
 $('#syncoff').addEventListener('click', ()=>{
   if(!confirm('Stop syncing on this device? The log stays here, and the copy on '
     + 'the server stays there. Nothing is deleted.')) return;
+  pushDisable();      // nowhere left to send to, and no key left to read it
   syncStop();
   renderSyncStatus();
   toast('Sync is off on this device');

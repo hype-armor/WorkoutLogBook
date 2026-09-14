@@ -70,6 +70,36 @@ const MIGRATIONS = [
     note       TEXT,
     created_at INTEGER NOT NULL
   );
+  `,
+
+  // 2 — the only thing a browser can do that a page cannot: wake a phone that
+  // has suspended the app. A subscription belongs to a device, so revoking the
+  // device takes the subscription with it.
+  `
+  CREATE TABLE push_subs (
+    id         TEXT PRIMARY KEY,
+    device_id  TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    endpoint   TEXT NOT NULL UNIQUE,
+    p256dh     TEXT NOT NULL,
+    auth       TEXT NOT NULL,
+    fail_count INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX push_subs_device ON push_subs(device_id);
+
+  CREATE TABLE alerts (
+    id         TEXT PRIMARY KEY,
+    sub_id     TEXT NOT NULL REFERENCES push_subs(id) ON DELETE CASCADE,
+    fire_at    INTEGER NOT NULL,
+    -- Ciphertext under a key derived from the vault's master key. The server
+    -- relays it; the service worker is what can read it.
+    payload    TEXT NOT NULL,
+    state      TEXT NOT NULL,          -- 'pending' | 'sent' | 'failed' | 'cancelled'
+    attempts   INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    sent_at    INTEGER
+  );
+  CREATE INDEX alerts_due ON alerts(state, fire_at);
   `
 ];
 

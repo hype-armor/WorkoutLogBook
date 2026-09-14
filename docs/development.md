@@ -26,8 +26,10 @@ service worker; a clock on every record and a mark where one was deleted
 and sealing; and the sync client that merges, pulls and pushes. Two browsers
 converge through the real server in `tests/sync.spec.js`.
 
-**Settings → Sync** switches it on. What is left is notifications, and the
-container to run the server in.
+**Settings → Sync** switches it on, and **Wake this phone when a rest timer
+ends** beneath it turns on notifications. The server speaks Web Push itself —
+RFC 8188, 8291 and 8292, no dependency — and its 78 tests include the vectors
+those specifications publish. What is left is the container to run it in.
 
 ```sh
 npm run test:server     # the server, no browser needed
@@ -75,7 +77,7 @@ scroll-leak wheel check (`mouse.wheel` is unsupported in mobile WebKit), and
 the persistent-storage request (WebKit has no `StorageManager.persist` — which
 is the real state of affairs on an iPhone).
 
-338 tests in `tests/`, 329 of them on WebKit too, run on every pull request
+344 tests in `tests/`, 335 of them on WebKit too, run on every pull request
 and again before any deploy.
 They cover the things that actually broke: that a logged set survives a reload
 and a service-worker update, that `Log set` and the RIR selector are never

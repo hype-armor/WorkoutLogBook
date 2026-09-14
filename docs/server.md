@@ -399,6 +399,14 @@ structured logs to stdout, graceful `SIGTERM`.
 | `LOGBOOK_TOMBSTONE_DAYS` | `90` | purge horizon |
 | `LOGBOOK_MAX_RECORD_BYTES` | `65536` | |
 | `LOGBOOK_MAX_VAULT_BYTES` | `52428800` | 50 MB is roughly a lifetime of lifting |
+| `LOGBOOK_PUSH_HOSTS` | the four vendors | comma-separated; replaces the list rather than adding to it |
+| `LOGBOOK_MAX_PENDING` | `5` | scheduled alerts per subscription |
+| `LOGBOOK_MAX_HORIZON_S` | `86400` | how far ahead an alert may be scheduled |
+| `LOGBOOK_ALERT_TTL_S` | `3600` | how long a push service should hold an undelivered alert |
+| `LOGBOOK_TRUST_PROXY` | `false` | whether `x-forwarded-for` is believed |
+| `LOGBOOK_LIMIT_UNLOCK_PER_HOUR` | `5` | per address, and a household shares one |
+| `LOGBOOK_LIMIT_CREATE_PER_HOUR` | `3` | |
+| `LOGBOOK_LIMIT_WRITE_PER_MIN` | `120` | |
 
 Generate the VAPID keypair once (`docker run --rm IMAGE vapid`) and back up the
 private key. Rotating it silently invalidates every subscription with no error
@@ -603,7 +611,34 @@ which is what the leakage list above is for.
    have, which is right for a delete whose tombstone was purged and
    catastrophic for a session logged on a plane. The dirty set is what tells
    those apart, and there is a test named after exactly that.
-6. Push, now with encrypted payloads, plus the sync nudge.
+6. ~~Push, now with encrypted payloads, plus the sync nudge.~~ **Done, minus
+   the nudge.** Web Push is implemented from the specifications rather than
+   around a library — RFC 8188 for the `aes128gcm` content coding, RFC 8291 for
+   the key agreement, RFC 8292 for VAPID — which keeps the server at zero
+   dependencies and, more to the point, means it can be checked against
+   something other than itself. All three publish test vectors: **RFC 8291 §5
+   reproduces byte for byte**, and a receiver written separately from the sender
+   opens what it produces.
+
+   **The sync nudge is dropped, and the specification is why.** A push
+   subscription is `userVisibleOnly` — not optional on iOS — so every push must
+   put something on screen. A silent "there is new data, pull it" push would
+   either be a notification saying nothing several times a session, or the
+   browser's own "this site was updated in the background". Sync already runs on
+   launch, on return, and after a set is logged, which covers the same ground
+   without a banner.
+
+   Two consequences worth stating. **Notifications need sync**: the server
+   cannot wake a phone it has never been told about, so the toggle only appears
+   once a vault exists. And **the master key is copied into IndexedDB**, because
+   a service worker cannot reach `localStorage` and has to open the payload
+   itself; the key derivation is written a second time in `sw.js` for the same
+   reason, which is why a test runs the real bytes of that file against a
+   payload sealed by the page.
+
+   `docker run --rm IMAGE vapid` prints the key pair. A server without
+   `LOGBOOK_VAPID_PRIVATE` accepts subscriptions, schedules alerts, and delivers
+   nothing — so it says which it is doing on startup.
 7. The container and the three deployment targets.
 8. A real phone, in a pocket, for three minutes — and a second device.
 

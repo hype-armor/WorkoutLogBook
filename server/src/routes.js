@@ -10,6 +10,7 @@ import { fail, json, readJson, router } from './http.js';
 import { rid, sha256, sameSecret, mintToken, splitToken, normaliseCode } from './ids.js';
 import { tx } from './db.js';
 import { limiter } from './limit.js';
+import { hostAllowed } from './hosts.js';
 
 const now = () => Date.now();
 const HANDLE = /^[a-z0-9][a-z0-9._-]{1,31}$/;
@@ -299,6 +300,94 @@ export function routes(ctx) {
       return { accepted, superseded, latest: cursor.get(me.vault_id).seq };
     });
     json(res, 200, out);
+  });
+
+  /* ---------- notifications ---------- */
+
+  r.post('/v1/push/subscribe', async (req, res) => {
+    const me = device(req);
+    const body = await readJson(req, 8 * 1024);
+    const endpoint = str(body.endpoint, 2048);
+    const keys = body.keys && typeof body.keys === 'object' ? body.keys : {};
+    if (!endpoint || !str(keys.p256dh, 256) || !str(keys.auth, 256)) fail(400, 'bad_subscription');
+    // The check that stops this server being used as a way into the network it
+    // runs on. A push endpoint belongs to a browser vendor and nowhere else.
+    if (!hostAllowed(endpoint, config.pushHosts)) fail(400, 'endpoint_not_allowed');
+
+    const id = rid();
+    tx(db, () => {
+      // One subscription per device: a browser that re-subscribes replaces the
+      // old one rather than collecting them, and the endpoint is unique so a
+      // device restored from a backup cannot claim another's.
+      db.prepare('DELETE FROM push_subs WHERE device_id = ? OR endpoint = ?').run(me.id, endpoint);
+      db.prepare(`INSERT INTO push_subs (id, device_id, endpoint, p256dh, auth, created_at)
+                  VALUES (?, ?, ?, ?, ?, ?)`)
+        .run(id, me.id, endpoint, keys.p256dh, keys.auth, now());
+    });
+    json(res, 201, { subscriptionId: id });
+  });
+
+  r.del('/v1/push/subscribe', async (req, res) => {
+    const me = device(req);
+    db.prepare('DELETE FROM push_subs WHERE device_id = ?').run(me.id);
+    json(res, 200, { ok: true });
+  });
+
+  const mySub = deviceId =>
+    db.prepare('SELECT * FROM push_subs WHERE device_id = ?').get(deviceId);
+
+  r.post('/v1/alerts', async (req, res) => {
+    const me = device(req);
+    throttle(limits.write, 'alert:' + me.id);
+    const body = await readJson(req, 16 * 1024);
+    const sub = mySub(me.id);
+    if (!sub) fail(409, 'not_subscribed');
+
+    const fireAt = Number(body.fireAt);
+    if (!Number.isFinite(fireAt)) fail(400, 'bad_fire_at');
+    // A horizon, so a bug or a bad actor cannot park work on this server for a
+    // year. A rest timer is minutes; a day is already generous.
+    if (fireAt > now() + config.maxHorizonMs) fail(400, 'too_far_ahead');
+    const payload = str(body.payload, config.maxRecordBytes);
+    if (!payload) fail(400, 'bad_payload');
+
+    const pending = db.prepare(`SELECT COUNT(*) n FROM alerts
+                                WHERE sub_id = ? AND state = 'pending'`).get(sub.id).n;
+    if (pending >= config.maxPending) fail(429, 'too_many_pending');
+
+    const id = rid();
+    db.prepare(`INSERT INTO alerts (id, sub_id, fire_at, payload, state, created_at)
+                VALUES (?, ?, ?, ?, 'pending', ?)`).run(id, sub.id, Math.round(fireAt), payload, now());
+    json(res, 201, { alertId: id });
+  });
+
+  // Adding time to a rest timer moves the alert rather than making a second one.
+  r.post('/v1/alerts/:id', async (req, res, params) => {
+    const me = device(req);
+    const body = await readJson(req, 16 * 1024);
+    const sub = mySub(me.id);
+    const row = sub && db.prepare('SELECT * FROM alerts WHERE id = ? AND sub_id = ?')
+      .get(params.id, sub.id);
+    if (!row) fail(404, 'no_such_alert');
+    if (row.state !== 'pending') fail(409, 'already_sent');
+    const fireAt = Number(body.fireAt);
+    if (!Number.isFinite(fireAt) || fireAt > now() + config.maxHorizonMs) fail(400, 'bad_fire_at');
+    db.prepare('UPDATE alerts SET fire_at = ?, payload = COALESCE(?, payload) WHERE id = ?')
+      .run(Math.round(fireAt), str(body.payload, config.maxRecordBytes), params.id);
+    json(res, 200, { ok: true });
+  });
+
+  r.del('/v1/alerts/:id', async (req, res, params) => {
+    const me = device(req);
+    const sub = mySub(me.id);
+    const row = sub && db.prepare('SELECT * FROM alerts WHERE id = ? AND sub_id = ?')
+      .get(params.id, sub.id);
+    if (!row) fail(404, 'no_such_alert');
+    // Cancelled rather than deleted: a timer stopped a tenth of a second before
+    // the scheduler claimed it should leave a trace of which way that race went.
+    db.prepare("UPDATE alerts SET state = 'cancelled' WHERE id = ? AND state = 'pending'")
+      .run(params.id);
+    json(res, 200, { ok: true });
   });
 
   return r;
