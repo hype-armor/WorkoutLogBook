@@ -3,3 +3,6 @@ test-results/
 playwright-report/
 blob-report/
 .playwright/
+
+# Assembled by deploy/vercel-build.mjs; never committed.
+dist/

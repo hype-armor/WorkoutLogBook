@@ -524,7 +524,7 @@
     display:block;font-size:0.7188rem;font-weight:620;letter-spacing:.05em;
     text-transform:uppercase;color:var(--ink-3);margin-bottom:5px;
   }
-  input[type=number],input[type=text],select,textarea{
+  input[type=number],input[type=text],input[type=url],input[type=password],select,textarea{
     width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-md);
     color:var(--ink);font-family:inherit;font-size:1.625rem;font-weight:640;letter-spacing:-.03em;
     padding:9px;text-align:center;
@@ -533,7 +533,7 @@
      field takes focus, which is the zoom you actually notice — tap the
      exercise search and the whole screen lurches. Nothing above can stop
      that one; only the type size can. */
-  input[type=text],textarea,select{font-size:1rem;font-weight:450;text-align:left;letter-spacing:-.01em}
+  input[type=text],input[type=url],input[type=password],textarea,select{font-size:1rem;font-weight:450;text-align:left;letter-spacing:-.01em}
   select{padding:13px 12px;min-height:48px}
   textarea{line-height:1.45}
   input:focus,textarea:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -813,6 +813,19 @@
     font-variant-numeric:tabular-nums;white-space:nowrap}
   .empty{color:var(--ink-3);font-size:0.9062rem;padding:22px 2px;line-height:1.55;letter-spacing:-.005em}
   .hint{color:var(--ink-3);font-size:0.8125rem;margin-top:10px;line-height:1.5;letter-spacing:-.005em}
+
+  /* A passphrase shown once, to be copied onto paper. Monospaced and spaced out
+     because it will be read back character by character, and selectable because
+     the other half of the readers will paste it into a password manager — this
+     is the one string in the app that is meant to leave it. */
+  .code{
+    margin-top:10px;padding:14px 12px;border-radius:var(--r-md);
+    background:var(--surface-2);border:1px solid var(--line-2);
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:1.0625rem;letter-spacing:.08em;text-align:center;
+    color:var(--ink);word-break:break-all;
+    -webkit-user-select:text;user-select:text;-webkit-touch-callout:default
+  }
 
   nav{
     position:fixed;bottom:0;left:0;right:0;z-index:30;background:var(--nav-bg);
@@ -1194,6 +1207,68 @@
 </section>
 
 <!-- ============ SETTINGS ============ -->
+<!-- ============ SYNC SETUP ============ -->
+<section class="sheet" id="syncsheet" role="dialog" aria-modal="true" aria-labelledby="syncsheet-title" inert aria-hidden="true">
+  <div class="sheethead">
+    <div class="txt"><h2 id="syncsheet-title" tabindex="-1">Sync</h2>
+      <div class="sub">Your log, on more than one device. The server stores it
+        encrypted and cannot read any of it.</div></div>
+    <button class="icon" id="syncclose" aria-label="Close">&#215;</button>
+  </div>
+  <div class="sheetbody">
+    <div class="bars" id="syncmode" style="justify-content:flex-start">
+      <button data-mode="new" aria-pressed="true">Start fresh</button>
+      <button data-mode="join" aria-pressed="false">Add this device</button>
+    </div>
+
+    <label class="f" style="margin-top:16px"><span class="lab">Server</span>
+      <input type="url" id="syncbase" inputmode="url" autocomplete="off"
+             placeholder="This one" aria-label="Server address"></label>
+    <div class="hint">Blank uses the server this app was opened from, which is
+      the usual case. A full address is for running the app from one place and
+      the server from another.</div>
+
+    <label class="f" style="margin-top:16px"><span class="lab">Name</span>
+      <input type="text" id="synchandle" autocomplete="off" autocapitalize="none"
+             spellcheck="false" aria-label="Vault name"></label>
+    <div class="hint">How the server finds your log. Not secret, and not shown
+      to anyone.</div>
+
+    <div id="syncnewbox">
+      <div class="eyebrow">Your passphrase</div>
+      <div class="code" id="syncphrase" aria-live="polite">&#8203;</div>
+      <div class="hint"><strong>Write this down.</strong> It unlocks the log on
+        your next phone, the server does not have it in any form, and there is
+        no reset. Losing it costs the copy on the server, not the one here.</div>
+      <label class="toggle" style="margin-top:14px">
+        <input type="checkbox" id="syncwrote">
+        <span>I have written it down somewhere safe</span>
+      </label>
+      <button class="btn ghost small wide" id="syncreroll" style="margin-top:14px">Give me another</button>
+    </div>
+
+    <div id="syncjoinbox" class="hide">
+      <label class="f" style="margin-top:16px"><span class="lab">Passphrase</span>
+        <input type="password" id="syncpass" autocomplete="current-password"
+               autocapitalize="none" spellcheck="false" aria-label="Passphrase"></label>
+      <div class="hint">The one you wrote down when you set the first device up.</div>
+    </div>
+
+    <label class="f" id="syncinvitebox" style="margin-top:16px"><span class="lab">Invite code</span>
+      <input type="text" id="syncinvite" autocomplete="off" autocapitalize="characters"
+             spellcheck="false" aria-label="Invite code"></label>
+    <div class="hint" id="syncinvitehint">Only when starting fresh, and only if the
+      server asks for one.</div>
+
+    <div class="hint" id="syncerr" role="alert"></div>
+  </div>
+  <div class="restdock"></div>
+  <div class="sheetfoot">
+    <button class="btn ghost" id="synccancel">Cancel</button>
+    <button class="btn" id="syncgo">Turn on sync</button>
+  </div>
+</section>
+
 <section class="sheet" id="settings" role="dialog" aria-modal="true" aria-labelledby="set-title" inert aria-hidden="true">
   <div class="sheethead">
     <div class="txt"><h2 id="set-title" tabindex="-1">Settings</h2>
@@ -1228,6 +1303,8 @@
 
     <label class="f" style="margin-top:16px"><span class="lab">When a rest timer ends</span>
       <select id="alertsel"></select></label>
+    <div class="hint hide" id="alerthint">This browser gives a web page no way to
+      vibrate the phone, so only sound is offered.</div>
     <label class="toggle" style="margin-top:14px">
       <input type="checkbox" id="notifybox">
       <span>Also notify when the app is in the background
@@ -1261,6 +1338,19 @@
     <button class="btn ghost small wide" id="restore" style="margin-top:8px">Restore from backup</button>
     <input type="file" id="restorefile" accept="application/json,.json" class="sr-only">
     <div class="hint" id="datastat"></div>
+
+    <div class="eyebrow">Sync</div>
+    <div class="hint" id="syncstat"></div>
+    <button class="btn ghost small wide" id="syncsetup">Set up sync</button>
+    <button class="btn ghost small wide hide" id="syncnow">Sync now</button>
+    <label class="toggle hide" id="pushbox-wrap" style="margin-top:14px">
+      <input type="checkbox" id="pushbox">
+      <span>Wake this phone when a rest timer ends
+        <span class="sub">The only alert that reaches a phone in a pocket. The
+          server is told when, and a sealed line of text it cannot read.</span></span>
+    </label>
+    <div class="hint" id="pusherr" role="alert"></div>
+    <button class="btn danger small wide hide" id="syncoff" style="margin-top:8px">Stop syncing on this device</button>
 
     <div class="eyebrow">Program</div>
     <button class="btn danger small wide" id="resetprog">Reset program to default</button>
@@ -1569,10 +1659,131 @@ let undoBuf = null, saveFails = 0, storageBroken = false;
 let pendingWorker = null, installPrompt = null;
 
 function blank(){
-  return {v:4, sets:[], days:{}, pairs:{}, ex:{}, program:null,
+  return {v:5, sets:[], days:{}, pairs:{}, ex:{}, program:null,
           settings:{units:'lb', plates:null, transition:30, bw:{lb:0,kg:0},
                     lastDay:'A', alert:'both', painSites:['lower-back']},
-          rest:null};
+          rest:null, rev:{}};
+}
+
+/* ---------- record identity and clocks ---------- */
+// Two devices can only be reconciled if there is something to reconcile: a name
+// for each thing that can change, a clock saying when it last changed, and a
+// mark left behind when it is deleted. None of that existed — a delete spliced
+// the array and left nothing to see, so any merge would hand the set straight
+// back. This is all local and nothing reads it yet; it is what a merge would
+// need to be written against.
+
+// This device's own id, in a key of its own rather than inside the database.
+// It is what breaks a tie between two clocks, so restoring a backup onto a
+// second phone must not hand it the first one's identity.
+const DEVICE_KEY = 'logbook-device';
+let deviceId = Math.random().toString(36).slice(2, 10).padEnd(8, '0');
+try{
+  const saved = localStorage.getItem(DEVICE_KEY);
+  if(/^[0-9a-z]{8}$/.test(saved || '')) deviceId = saved;
+  else localStorage.setItem(DEVICE_KEY, deviceId);
+}catch(e){ /* storage blocked — a per-session id still orders this device */ }
+
+// A hybrid logical clock. Wall time where it can be trusted and a counter where
+// it cannot: a phone whose clock is wrong — and gym phones are — would
+// otherwise lose the write that really was last, or win with one made in
+// January. The counter only ever moves forward, so two writes on this device
+// are ordered by this device whatever the clock does underneath them.
+//
+// Rendered so that comparing two clocks is comparing two strings. Base 36 and
+// ten digits of wall time is good for the next hundred thousand years.
+const hlcStr = (w, c, dev) =>
+  w.toString(36).padStart(10, '0') + ':' + c.toString(36).padStart(4, '0') + ':' + dev;
+// Before anything that happens from now on, which is all that can be said
+// honestly about data that was logged before there were any clocks.
+const HLC_ZERO = hlcStr(0, 0, '00000000');
+
+let hlcLast = {w: 0, c: 0};
+function hlcNext(){
+  const w = Date.now();
+  hlcLast = w > hlcLast.w ? {w, c: 0} : {w: hlcLast.w, c: hlcLast.c + 1};
+  return hlcStr(hlcLast.w, hlcLast.c, deviceId);
+}
+// Resume from the furthest the clock has already reached, so a phone that has
+// been set back an hour still issues clocks above the ones it has written.
+function hlcSeed(d){
+  for(const r of Object.values(d.rev || {})){
+    const [w, c] = String(r?.h || '').split(':');
+    const wi = parseInt(w, 36) || 0, ci = parseInt(c, 36) || 0;
+    if(wi > hlcLast.w || (wi === hlcLast.w && ci > hlcLast.c)) hlcLast = {w: wi, c: ci};
+  }
+}
+
+// Every syncable thing in the database, addressed the same way. `rest` is not
+// here on purpose: a running timer belongs to the phone in your hand, not to
+// the training log, and stamping it would bump a clock every quarter second.
+// Nor are the two backup fields, which describe this device's own backup file
+// rather than anything you lifted.
+const DEVICE_ONLY = new Set(['lastBackup', 'backupSnooze']);
+function records(d){
+  const out = new Map();
+  for(const s of d.sets || []) if(s?.id) out.set('set:' + s.id, s);
+  for(const [k, v] of Object.entries(d.days  || {})) out.set('day:' + k, v);
+  for(const [k, v] of Object.entries(d.ex    || {})) out.set('ex:' + k, v);
+  for(const [k, v] of Object.entries(d.pairs || {})) out.set('pair:' + k, v);
+  for(const e of d.bw || []) if(e?.d) out.set('bw:' + e.d, e);
+  for(const [k, v] of Object.entries(d.settings || {}))
+    if(!DEVICE_ONLY.has(k)) out.set('cfg:' + k, v);
+  // An ordered list whose order is the point. Per-day records would need a
+  // rank between two neighbours to merge, which is a lot of machinery for a
+  // thing that changes a few times a year.
+  out.set('program', d.program);
+  return out;
+}
+
+const snapshot = d => {
+  const out = new Map();
+  for(const [k, v] of records(d)) out.set(k, JSON.stringify(v ?? null));
+  return out;
+};
+
+// Anything without a clock gets the one that says "before everything".
+function fillRev(d){
+  d.rev = d.rev && typeof d.rev === 'object' ? d.rev : {};
+  for(const k of records(d).keys()) if(!d.rev[k]) d.rev[k] = {h: HLC_ZERO};
+  return d;
+}
+
+// What the database looked like at the last write. Stamping works by comparing
+// against it rather than by calling a function at each of the sixty-odd places
+// that change something: one of those call sites will be forgotten, and a
+// forgotten one is a change that syncs as though it never happened. A
+// comparison has nothing to forget, and it gets deletes and undo for free.
+let shadow = null;
+
+function stampRev(){
+  const now = snapshot(db);
+  db.rev = db.rev && typeof db.rev === 'object' ? db.rev : {};
+  if(!shadow){ shadow = now; return; }
+
+  // One action, one clock: logging a set changes the set and the day it belongs
+  // to, and those happened at the same moment because they were the same tap.
+  let h = null;
+  const clock = () => (h ||= hlcNext());
+
+  // A record this device changed is one the server has not seen. Tracked here
+  // rather than by comparing clocks at push time, because a clock cannot say
+  // whether it has been sent: a record pulled from the server also carries a
+  // clock above anything this device issued, and pushing those back would be a
+  // loop with a watermark for a brake.
+  const touched = [];
+  for(const [k, ser] of now){
+    if(shadow.get(k) !== ser || db.rev[k]?.del){ db.rev[k] = {h: clock()}; touched.push(k); }
+  }
+  for(const k of shadow.keys()){
+    if(!now.has(k)){ db.rev[k] = {h: clock(), del: true}; touched.push(k); }
+  }
+  shadow = now;
+  if(touched.length && syncOn()){
+    for(const k of touched) syncState.dirty[k] = 1;
+    saveSync();
+  }
+  return touched.length;
 }
 
 const $ = s => document.querySelector(s);
@@ -1582,6 +1793,10 @@ function todayISO(){
   const d = new Date();
   return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10);
 }
+// Installed to a home screen rather than open in a browser tab. Both spellings:
+// the media query is the standard, navigator.standalone is what iOS answers to.
+const isStandalone = () => !!(window.matchMedia?.('(display-mode: standalone)').matches
+  || navigator.standalone);
 const U = () => UNITS[db.settings.units] || UNITS.lb;
 const units = () => db.settings.units || 'lb';
 const announce = m => { $('#sr').textContent = m; };
@@ -1601,6 +1816,646 @@ function toast(msg, action){
   announce(msg);
   clearTimeout(t._h);
   t._h = setTimeout(()=>t.classList.remove('show','act'), action ? 5000 : 1400);
+}
+
+/* ---------- vault: keys, addressing and sealing ---------- */
+// Nothing calls any of this yet. It is the half of end-to-end encryption that
+// has to live on the device: a server that cannot read the log cannot merge it
+// either, so the keys, the addressing and the sealing are all here, and the
+// server's job shrinks to storing opaque blobs and comparing clocks.
+//
+// Zero dependencies on purpose. Argon2id is the better password hash, but it is
+// a wasm blob in a project whose entire build step is "open the file", and
+// PBKDF2 at 600,000 rounds is native to every browser this runs on. What it
+// guards is ciphertext rather than a login, and the parameters are stored
+// beside each wrapped key so they can be raised later without invalidating
+// anything.
+
+const utf8 = new TextEncoder(), utf8d = new TextDecoder();
+// Every call goes through this rather than touching crypto.subtle directly, so
+// a browser without it fails once, by name, instead of throwing "cannot read
+// properties of undefined" from six different places.
+const webcrypto = () => {
+  const s = globalThis.crypto?.subtle;
+  if(!s) throw new Error('WebCrypto unavailable');
+  return s;
+};
+
+// base64url, because these strings travel in JSON and URLs.
+const b64u = buf => {
+  let s = '';
+  for(const x of new Uint8Array(buf)) s += String.fromCharCode(x);
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
+const unb64u = str => {
+  const s = atob(String(str).replace(/-/g, '+').replace(/_/g, '/'));
+  const out = new Uint8Array(s.length);
+  for(let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+  return out;
+};
+
+const KDF = {name: 'pbkdf2-sha256', iterations: 600000};
+const MK_AAD = 'logbook/mk/1';
+
+const vault = {
+  // 256 bits from the platform generator. It never leaves the device and is
+  // never sent anywhere: only wrapped copies of it are.
+  newKey: () => crypto.getRandomValues(new Uint8Array(32)),
+
+  // One key per job, derived rather than reused, so a bug that leaks the
+  // addressing key does not also hand over what the records say.
+  async subkeys(mk){
+    const base = await webcrypto().importKey('raw', mk, 'HKDF', false, ['deriveKey']);
+    const derive = (info, algo, usages) => webcrypto().deriveKey(
+      {name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: utf8.encode(info)},
+      base, algo, false, usages);
+    return {
+      data:  await derive('logbook/data/1',  {name: 'AES-GCM', length: 256}, ['encrypt', 'decrypt']),
+      addr:  await derive('logbook/addr/1',  {name: 'HMAC', hash: 'SHA-256', length: 256}, ['sign']),
+      alert: await derive('logbook/alert/1', {name: 'AES-GCM', length: 256}, ['encrypt', 'decrypt'])
+    };
+  },
+
+  // A key-encrypting key from something a person can produce. NFKC first: the
+  // same passphrase typed on two keyboards can arrive as two different byte
+  // strings, and deriving two different keys from it would lock someone out of
+  // their own vault with the right answer in their hands.
+  async passphraseKek(passphrase, salt, iterations = KDF.iterations){
+    const base = await webcrypto().importKey(
+      'raw', utf8.encode(String(passphrase).normalize('NFKC')), 'PBKDF2', false, ['deriveKey']);
+    return webcrypto().deriveKey({name: 'PBKDF2', salt, iterations, hash: 'SHA-256'},
+      base, {name: 'AES-GCM', length: 256}, false, ['encrypt', 'decrypt']);
+  },
+
+  // A passkey authenticates; it does not hand over a key. The WebAuthn PRF
+  // extension is the bridge — stable bytes for a given credential and salt.
+  async prfKek(prfOutput){
+    const base = await webcrypto().importKey('raw', new Uint8Array(prfOutput), 'HKDF', false, ['deriveKey']);
+    return webcrypto().deriveKey(
+      {name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: utf8.encode('logbook/passkey/1')},
+      base, {name: 'AES-GCM', length: 256}, false, ['encrypt', 'decrypt']);
+  },
+
+  // What to ask the authenticator to evaluate. Per vault, so one passkey used
+  // on two instances does not derive one key for both.
+  async prfSalt(vaultId){
+    return new Uint8Array(await webcrypto().digest('SHA-256', utf8.encode('logbook/prf/1:' + vaultId)));
+  },
+
+  // Whether it is worth offering a passkey at all. Whether PRF actually works
+  // cannot be known until a credential exists — it comes back in
+  // getClientExtensionResults() — and where it does not, there is no passkey
+  // unlock to offer: one that only proves presence while the passphrase still
+  // holds the key is a login button pretending to be a factor.
+  async canTryPasskey(){
+    try{
+      return !!(window.PublicKeyCredential?.isUserVerifyingPlatformAuthenticatorAvailable
+        && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable());
+    }catch(e){ return false; }
+  },
+  prfBytes: cred => cred?.getClientExtensionResults?.()?.prf?.results?.first || null,
+
+  async wrapKey(mk, kek){
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await webcrypto().encrypt(
+      {name: 'AES-GCM', iv, additionalData: utf8.encode(MK_AAD)}, kek, mk);
+    const out = new Uint8Array(12 + ct.byteLength);
+    out.set(iv); out.set(new Uint8Array(ct), 12);
+    return b64u(out);
+  },
+  async unwrapKey(blob, kek){
+    const raw = unb64u(blob);
+    return new Uint8Array(await webcrypto().decrypt(
+      {name: 'AES-GCM', iv: raw.slice(0, 12), additionalData: utf8.encode(MK_AAD)},
+      kek, raw.slice(12)));
+  },
+
+  // The rows the server would hold. Both wrap the same master key, which is
+  // why enrolling a passkey two years from now re-encrypts nothing.
+  async factorFromPassphrase(mk, passphrase){
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    return {kind: 'passphrase', kdf: KDF.name, iter: KDF.iterations, salt: b64u(salt),
+            mk: await vault.wrapKey(mk, await vault.passphraseKek(passphrase, salt))};
+  },
+  async openWithPassphrase(row, passphrase){
+    return vault.unwrapKey(row.mk,
+      await vault.passphraseKek(passphrase, unb64u(row.salt), row.iter || KDF.iterations));
+  },
+  async factorFromPrf(mk, prfOutput){
+    return {kind: 'passkey', mk: await vault.wrapKey(mk, await vault.prfKek(prfOutput))};
+  },
+  async openWithPrf(row, prfOutput){
+    return vault.unwrapKey(row.mk, await vault.prfKek(prfOutput));
+  },
+
+  // How a device proves it unlocked the vault to a server that cannot check.
+  // The server holds no passphrase and no master key, so "unlocked" has to be
+  // something derived from the key and one-way: every factor that opens the
+  // vault produces the same secret, the server keeps only its hash, and
+  // nothing about the master key can be recovered from either. Without it,
+  // naming a handle would be enough to mint a device token — which could not
+  // read a single record, and could delete all of them.
+  async authSecret(mk){
+    const base = await webcrypto().importKey('raw', mk, 'HKDF', false, ['deriveBits']);
+    return b64u(await webcrypto().deriveBits(
+      {name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: utf8.encode('logbook/auth/1')},
+      base, 256));
+  },
+
+  // The same record key on two devices has to produce the same address, and
+  // the server must not be able to tell a set from a setting. An HMAC under a
+  // key it does not have does both at once.
+  async addr(addrKey, recordKey){
+    const mac = await webcrypto().sign('HMAC', addrKey, utf8.encode(recordKey));
+    return b64u(new Uint8Array(mac).slice(0, 16));
+  },
+
+  // The address and the clock are authenticated but not encrypted. A server
+  // holding every ciphertext can otherwise move one record's contents into
+  // another's slot, or put an old version back under a newer clock, and the
+  // client would decrypt both without complaint. Binding them as additional
+  // data means either edit fails to open at all.
+  async seal(key, addr, hlc, value){
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await webcrypto().encrypt(
+      {name: 'AES-GCM', iv, additionalData: utf8.encode(addr + '|' + hlc)},
+      key, utf8.encode(JSON.stringify(value ?? null)));
+    const out = new Uint8Array(12 + ct.byteLength);
+    out.set(iv); out.set(new Uint8Array(ct), 12);
+    return b64u(out);
+  },
+  async unseal(key, addr, hlc, blob){
+    const raw = unb64u(blob);
+    const pt = await webcrypto().decrypt(
+      {name: 'AES-GCM', iv: raw.slice(0, 12), additionalData: utf8.encode(addr + '|' + hlc)},
+      key, raw.slice(12));
+    return JSON.parse(utf8d.decode(pt));
+  }
+};
+
+/* ---------- waking a suspended phone ---------- */
+// The one thing no page can do for itself. The rest timer fires from an
+// interval, and a phone that has suspended the app is running no intervals —
+// so the alert has to arrive from outside, which means the deadline has to be
+// left with a server before the phone goes quiet.
+//
+// What the server is left with is a time and a sealed envelope. The text inside
+// it — "Rest complete — Romanian deadlift" — is encrypted under a subkey of the
+// vault master key, and the service worker is what opens it. An earlier draft
+// of this sent nothing at all and had the worker compose the text locally; the
+// key hierarchy made that unnecessary, and a notification that can say which
+// lift it is beats one that cannot.
+
+// A store of its own, because a service worker cannot reach localStorage:
+// it is synchronous, and workers are not given it.
+const IDB_NAME = 'logbook-keys';
+function idbOpen(){
+  return new Promise((resolve, reject)=>{
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = ()=> req.result.createObjectStore('kv');
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+async function idbSet(key, value){
+  const d = await idbOpen();
+  await new Promise((resolve, reject)=>{
+    const t = d.transaction('kv', 'readwrite');
+    t.objectStore('kv').put(value, key);
+    t.oncomplete = resolve; t.onerror = ()=> reject(t.error);
+  });
+  d.close();
+}
+async function idbDel(key){
+  const d = await idbOpen();
+  await new Promise((resolve, reject)=>{
+    const t = d.transaction('kv', 'readwrite');
+    t.objectStore('kv').delete(key);
+    t.oncomplete = resolve; t.onerror = ()=> reject(t.error);
+  });
+  d.close();
+}
+
+// Push needs somewhere to send to, and "somewhere" is a device on a vault. So
+// this is only offered once sync is on — not an arbitrary restriction, but the
+// shape of the thing: a server cannot wake a phone it has never been told about.
+const pushSupported = () =>
+  typeof Notification !== 'undefined' && 'PushManager' in window && !!swReg;
+const pushOn = () => !!syncState.push;
+
+async function pushEnable(){
+  if(!syncOn()) return {ok: false, why: 'Sync has to be on first.'};
+  if(!pushSupported()){
+    // On iOS the API exists only for an app on the Home Screen, so in a tab
+    // this is not a browser that cannot do it — it is this copy of the app.
+    return {ok: false, why: isStandalone()
+      ? 'This browser cannot wake the phone.'
+      : 'Add the app to your Home Screen first.'};
+  }
+  let perm = Notification.permission;
+  if(perm === 'default') perm = await Notification.requestPermission();
+  if(perm !== 'granted') return {ok: false, why: 'Notifications are blocked.'};
+
+  try{
+    const conf = await api('GET', '/v1/config', null, null);
+    if(!conf.vapidPublicKey) return {ok: false, why: 'This server does not send notifications.'};
+    const sub = await swReg.pushManager.subscribe({
+      // Required, and on iOS not optional in any sense: every push has to put
+      // something on screen. It is also why there is no quiet "new data" push
+      // to make the other device pull — that would be a notification saying
+      // nothing, several times a session.
+      userVisibleOnly: true,
+      applicationServerKey: unb64u(conf.vapidPublicKey)
+    });
+    const raw = sub.toJSON();
+    await api('POST', '/v1/push/subscribe',
+      {endpoint: raw.endpoint, keys: {p256dh: raw.keys.p256dh, auth: raw.keys.auth}});
+    // The worker needs the master key to open what it is sent. It is already in
+    // localStorage in the clear beside the log; this is the same secret in the
+    // one store a worker can read.
+    await idbSet('mk', syncState.mk);
+    syncState.push = true;
+    saveSync();
+    return {ok: true};
+  }catch(e){
+    return {ok: false, why: 'Could not set up notifications.'};
+  }
+}
+
+async function pushDisable(){
+  syncState.push = false;
+  syncState.alertId = '';
+  saveSync();
+  try{ await idbDel('mk'); }catch(e){ /* nothing to clean up */ }
+  try{
+    const sub = await swReg?.pushManager.getSubscription();
+    await sub?.unsubscribe();
+  }catch(e){ /* the browser end is gone either way */ }
+  try{ await api('DELETE', '/v1/push/subscribe'); }catch(e){ /* offline: it prunes on 410 */ }
+}
+
+/**
+ * Leave the deadline with the server. Called when a rest timer starts, moved
+ * when its target changes, cancelled when it stops — all fire-and-forget, so a
+ * phone with no signal logs its set exactly as before.
+ */
+async function alertSchedule(fireAt, title, body){
+  if(!pushOn()) return;
+  try{
+    const keys = await syncSubkeys();
+    // The address and clock that bind a record to its slot have no meaning
+    // here, so a constant stands in: what it binds is the alert format.
+    const payload = await vault.seal(keys.alert, 'alert', 'v1',
+      {t: title, b: body, at: fireAt});
+    await alertCancel();
+    const made = await api('POST', '/v1/alerts', {fireAt, payload});
+    syncState.alertId = made.alertId;
+    saveSync();
+  }catch(e){ /* the timer on screen is unaffected */ }
+}
+
+async function alertCancel(){
+  const id = syncState.alertId;
+  if(!id) return;
+  syncState.alertId = '';
+  saveSync();
+  try{ await api('DELETE', '/v1/alerts/' + encodeURIComponent(id)); }
+  catch(e){ /* it will fire and say how late it is, which is the honest answer */ }
+}
+
+/* ---------- sync ---------- */
+// The client half. A server that cannot read the log cannot merge it either,
+// so the merge is here: pull what changed, keep whichever version has the
+// higher clock, push what this device changed and the server has not seen.
+//
+// Sync state is device-local and lives in its own key, like the device id and
+// for the same reason: it is about this phone's relationship to a server, not
+// about training, and a backup restored onto a second phone must not hand it
+// the first one's cursor or its token.
+//
+// The master key is kept here too, in the clear. That is not a lapse: the log
+// itself is in localStorage in the clear, so a device that can read the key can
+// already read everything the key protects. What the encryption defends against
+// is the server, and the server never sees this.
+const SYNC_KEY = 'logbook-sync';
+const blankSync = () => ({on: false, base: '', handle: '', vaultId: '', token: '',
+                          mk: '', cursor: 0, dirty: {}, at: 0, err: ''});
+let syncState = blankSync();
+let syncKeys = null;          // the subkeys, derived once per load
+try{
+  const raw = localStorage.getItem(SYNC_KEY);
+  if(raw) syncState = Object.assign(blankSync(), JSON.parse(raw));
+}catch(e){ /* unreadable or blocked: sync is simply off */ }
+
+function saveSync(){
+  try{ localStorage.setItem(SYNC_KEY, JSON.stringify(syncState)); }
+  catch(e){ /* the app works without it */ }
+}
+
+const syncOn = () => !!(syncState.on && syncState.token && syncState.mk);
+
+async function syncSubkeys(){
+  if(syncKeys) return syncKeys;
+  return (syncKeys = await vault.subkeys(unb64u(syncState.mk)));
+}
+
+async function api(method, path, body, token = syncState.token){
+  const res = await fetch((syncState.base || '') + path, {
+    method,
+    headers: {
+      ...(body ? {'Content-Type': 'application/json'} : {}),
+      ...(token ? {Authorization: 'Bearer ' + token} : {})
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const text = await res.text();
+  let json = null;
+  try{ json = text ? JSON.parse(text) : null; }catch(e){ /* not json */ }
+  if(!res.ok){
+    const err = new Error(json?.error || ('http_' + res.status));
+    err.status = res.status;
+    err.detail = json?.detail ?? null;
+    throw err;
+  }
+  return json;
+}
+
+/* ---------- putting a record back ---------- */
+// The inverse of records(). An unknown kind is ignored rather than refused: a
+// newer version of the app may sync a kind this one has never heard of, and
+// dropping that on the floor is recoverable where throwing is not.
+const splitKey = key => {
+  const i = key.indexOf(':');
+  return i < 0 ? [key, ''] : [key.slice(0, i), key.slice(i + 1)];
+};
+const byDate = (a, b) => String(a.d || '').localeCompare(String(b.d || ''));
+
+function putRecord(d, key, value){
+  const [kind, id] = splitKey(key);
+  if(kind === 'set'){
+    if(!value || typeof value !== 'object') return;
+    const i = d.sets.findIndex(x => x.id === id);
+    if(i < 0) d.sets.push({...value, id}); else d.sets[i] = {...value, id};
+    d.sets.sort(byDate);
+  }
+  else if(kind === 'day')  d.days[id] = value;
+  else if(kind === 'ex')   d.ex[id] = value;
+  else if(kind === 'pair') d.pairs[id] = value;
+  else if(kind === 'bw'){
+    if(!value || typeof value !== 'object') return;
+    const list = Array.isArray(d.bw) ? d.bw : (d.bw = []);
+    const i = list.findIndex(x => x.d === id);
+    if(i < 0) list.push({...value, d: id}); else list[i] = {...value, d: id};
+    list.sort(byDate);
+  }
+  else if(kind === 'cfg')     d.settings[id] = value;
+  else if(kind === 'program') d.program = value;
+}
+
+function dropRecord(d, key){
+  const [kind, id] = splitKey(key);
+  if(kind === 'set'){
+    const i = d.sets.findIndex(x => x.id === id);
+    if(i >= 0) d.sets.splice(i, 1);
+  }
+  else if(kind === 'day')  delete d.days[id];
+  else if(kind === 'ex')   delete d.ex[id];
+  else if(kind === 'pair') delete d.pairs[id];
+  else if(kind === 'bw' && Array.isArray(d.bw)){
+    const i = d.bw.findIndex(x => x.d === id);
+    if(i >= 0) d.bw.splice(i, 1);
+  }
+  else if(kind === 'cfg')     delete d.settings[id];
+  else if(kind === 'program') d.program = null;
+}
+
+/* ---------- the merge ---------- */
+// Last writer wins, per record, on the clock rather than on arrival order.
+// Everything this touches came from the server, so the shadow is refreshed
+// afterwards: without that the next save would see the incoming values as
+// local edits, stamp them with this device's clock, and push them straight
+// back as though this phone had just typed them.
+function mergeIncoming(list){
+  let applied = 0, skipped = 0;
+  for(const r of list){
+    if(!r || typeof r.key !== 'string' || typeof r.hlc !== 'string') continue;
+    const mine = db.rev[r.key];
+    // Equal is not newer. Two writes with the same clock are the same write,
+    // because the clock carries the device that made it.
+    if(mine && mine.h >= r.hlc){ skipped++; continue; }
+    if(r.deleted) dropRecord(db, r.key); else putRecord(db, r.key, r.value);
+    db.rev[r.key] = r.deleted ? {h: r.hlc, del: true} : {h: r.hlc};
+    // Whatever this device had is now the older version. Pushing it would
+    // only be told it lost.
+    delete syncState.dirty[r.key];
+    applied++;
+  }
+  if(applied){
+    hlcSeed(db);          // never issue a clock below one already accepted
+    shadow = snapshot(db);
+  }
+  return {applied, skipped};
+}
+
+/* ---------- pull and push ---------- */
+async function syncPull(){
+  const keys = await syncSubkeys();
+  let moved = 0;
+  for(let page = 0; page < 40; page++){
+    const res = await api('GET', `/v1/sync?since=${syncState.cursor}&limit=500`);
+    if(!res.records.length){ syncState.cursor = res.latest ?? syncState.cursor; break; }
+    const list = [];
+    for(const r of res.records){
+      try{
+        // Every record names itself, because an address is an HMAC and cannot
+        // be read backwards — including a tombstone, which is why a delete
+        // carries an envelope with the key in it and nothing else.
+        const env = r.ciphertext == null
+          ? null
+          : await vault.unseal(keys.data, r.recId, r.hlc, r.ciphertext);
+        if(!env || typeof env.k !== 'string') continue;
+        list.push({key: env.k, hlc: r.hlc, value: env.v, deleted: !!r.deleted});
+      }catch(e){
+        // A record that will not open is one this key cannot read: a rotated
+        // vault, or a server that moved a ciphertext into another slot. Skip
+        // it rather than abandon the whole pull.
+        continue;
+      }
+    }
+    moved += mergeIncoming(list).applied;
+    syncState.cursor = res.next;
+    if(res.records.length < 500) break;
+  }
+  return moved;
+}
+
+async function syncPush(){
+  const keys = await syncSubkeys();
+  let sent = 0;
+  for(let round = 0; round < 40; round++){
+    const pending = Object.keys(syncState.dirty).slice(0, 200);
+    if(!pending.length) break;
+    const values = records(db);
+    const batch = [], addrOf = new Map();
+    for(const key of pending){
+      const rev = db.rev[key];
+      if(!rev){ delete syncState.dirty[key]; continue; }
+      const addr = await vault.addr(keys.addr, key);
+      addrOf.set(addr, key);
+      // A tombstone seals the name alone. The record key is `set:<id>` or
+      // `ex:<an exercise name>`, which is exactly the sort of thing the server
+      // is not supposed to learn, so it is sealed like everything else.
+      const envelope = rev.del ? {k: key} : {k: key, v: values.get(key) ?? null};
+      batch.push({
+        recId: addr, hlc: rev.h, deleted: !!rev.del,
+        ciphertext: await vault.seal(keys.data, addr, rev.h, envelope)
+      });
+    }
+    if(!batch.length) break;
+    const res = await api('POST', '/v1/sync', {records: batch});
+    for(const addr of [...(res.accepted || []), ...(res.superseded || [])]){
+      const key = addrOf.get(addr);
+      if(key) delete syncState.dirty[key];
+    }
+    sent += (res.accepted || []).length;
+    // A record the server said nothing about stays dirty; stopping here rather
+    // than looping forever on it is the difference between a retry and a spin.
+    if(batch.length < 200) break;
+  }
+  return sent;
+}
+
+/**
+ * Everything local is unpushed as far as the server is concerned. Used when
+ * sync is first switched on, and after a reset.
+ */
+function markAllDirty(){
+  for(const key of Object.keys(db.rev)) syncState.dirty[key] = 1;
+}
+
+/**
+ * The answer to a cursor older than the server's tombstones. Those deletes are
+ * gone, so a plain merge would hand every one of them back — this device still
+ * holds the records, and nothing would arrive to say otherwise.
+ *
+ * So: pull the whole vault, then drop anything local that the server does not
+ * have *and this device has already pushed*. A record that is still dirty has
+ * never been to the server, which makes it new rather than deleted, and it is
+ * kept and pushed. That distinction is the only thing standing between a reset
+ * and losing a session logged on a plane.
+ */
+async function syncReset(){
+  const keys = await syncSubkeys();
+  syncState.cursor = 0;
+  const onServer = new Set();
+  for(let page = 0; page < 200; page++){
+    const res = await api('GET', `/v1/sync?since=${syncState.cursor}&limit=500`);
+    const list = [];
+    for(const r of res.records){
+      try{
+        const env = r.ciphertext == null
+          ? null
+          : await vault.unseal(keys.data, r.recId, r.hlc, r.ciphertext);
+        if(!env || typeof env.k !== 'string') continue;
+        onServer.add(env.k);
+        list.push({key: env.k, hlc: r.hlc, value: env.v, deleted: !!r.deleted});
+      }catch(e){ continue; }
+    }
+    mergeIncoming(list);
+    if(!res.records.length){ syncState.cursor = res.latest ?? syncState.cursor; break; }
+    syncState.cursor = res.next;
+    if(res.records.length < 500) break;
+  }
+
+  let dropped = 0;
+  for(const key of [...records(db).keys()]){
+    if(onServer.has(key) || syncState.dirty[key]) continue;
+    dropRecord(db, key);
+    delete db.rev[key];
+    dropped++;
+  }
+  if(dropped) shadow = snapshot(db);
+  markAllDirty();
+  await syncPush();
+  return dropped;
+}
+
+/** One cycle. Pull first: pushing over a newer version only earns a refusal. */
+async function syncOnce(){
+  if(!syncOn() || syncState.busy) return null;
+  syncState.busy = true;
+  try{
+    let pulled = 0;
+    try{
+      pulled = await syncPull();
+    }catch(e){
+      if(e.status === 409){ await syncReset(); }
+      else throw e;
+    }
+    const pushed = await syncPush();
+    syncState.at = Date.now();
+    syncState.err = '';
+    await save();
+    saveSync();
+    return {pulled, pushed};
+  }catch(e){
+    // Never surfaced as a failure of the app: a gym with no signal is the
+    // normal case, and the log is on the phone either way.
+    syncState.err = e.message || 'offline';
+    saveSync();
+    return null;
+  }finally{
+    syncState.busy = false;
+  }
+}
+
+/** Create a vault, or join one that exists. Both end with a first full push. */
+async function syncStart({base = '', handle, passphrase, invite, join = false}){
+  const mk = join ? null : vault.newKey();
+  let state;
+  const was = syncState;
+  syncState = {...blankSync(), base, handle};
+  try{
+    if(join){
+      const got = await api('POST', '/v1/auth/passphrase', {handle}, null);
+      let key;
+      try{
+        key = await vault.openWithPassphrase(got.factor, passphrase);
+      }catch(err){
+        // The wrapped key came back and would not open. This is the one failure
+        // the app knows the exact cause of — a mistyped passphrase, which is
+        // also the likeliest — and reporting it as "could not reach the server"
+        // sends someone off to check their wifi.
+        throw new Error('bad_passphrase');
+      }
+      state = {vaultId: got.vaultId, mk: b64u(key), authSecret: await vault.authSecret(key)};
+    }else{
+      const factor = await vault.factorFromPassphrase(mk, passphrase);
+      const authSecret = await vault.authSecret(mk);
+      const made = await api('POST', '/v1/vaults', {handle, authSecret, factor, invite}, null);
+      state = {vaultId: made.vaultId, mk: b64u(mk), authSecret};
+    }
+    const dev = await api('POST', '/v1/devices',
+      {vaultId: state.vaultId, authSecret: state.authSecret, label: 'logbook'}, null);
+    syncState = {...blankSync(), base, handle, on: true,
+                 vaultId: state.vaultId, token: dev.token, mk: state.mk};
+    syncKeys = null;
+    markAllDirty();
+    saveSync();
+    const out = await syncOnce();
+    return out || {pulled: 0, pushed: 0};
+  }catch(e){
+    syncState = was;          // a failed setup leaves nothing behind
+    syncKeys = null;
+    throw e;
+  }
+}
+
+/** Stop syncing on this device. The log stays; only the link goes. */
+function syncStop(){
+  syncState = blankSync();
+  syncKeys = null;
+  saveSync();
 }
 
 /* ---------- storage ---------- */
@@ -1644,6 +2499,12 @@ async function load(){
     try{ db = migrate(JSON.parse(raw)); }
     catch(e){ toast('Saved data unreadable'); db = blank(); }
   }
+  // Before the first change, so the first save compares against what was on
+  // disk rather than restamping the whole database as if it had just been
+  // typed in.
+  fillRev(db);
+  hlcSeed(db);
+  shadow = snapshot(db);
 }
 
 function migrate(d){
@@ -1748,7 +2609,12 @@ function migrate(d){
       }
     }
   }
-  out.v = 4;
+  // v5 adds a clock per record and a mark where one was deleted. Nothing in
+  // the old data says when any of it last changed, so it all starts at the
+  // same instant — below anything done from here on, which is the only
+  // ordering that is true rather than invented.
+  fillRev(out);
+  out.v = 5;
   return out;
 }
 
@@ -1791,11 +2657,14 @@ const hasPain = date => Object.values(painsOn(date)).some(v => typeof v === 'num
 // stream: the weight and reps steppers only touch their own inputs, the rest
 // timer persists on start and stop rather than per tick, and notes are already
 // debounced upstream. Every caller is one discrete action, and a write costs
-// about 2ms at 2,000 sets — so the delay bought nothing and cost a window.
+// about 4.5ms at 2,000 sets, most of a millisecond of that the record diff —
+// so the delay bought nothing and cost a window.
 async function save(){
+  stampRev();
   try{
     await store.set(KEY, JSON.stringify(db));
     if(saveFails){ saveFails = 0; storageBroken = false; renderBanners(); }
+    syncLater();
   }catch(e){
     saveFails++;
     // Say so on the first failure and keep retrying quietly behind the notice.
@@ -2931,9 +3800,23 @@ async function requestWake(){
 }
 function releaseWake(){ try{ wakeLock?.release(); }catch(e){} wakeLock = null; }
 
+// A web page gets no vibration on iOS — navigator.vibrate is not implemented
+// there at all — so "Vibration only" was an alert that never arrived, offered
+// from a menu that promised one, and "Sound and vibration" quietly meant sound.
+// The menu now offers what the device can do, and a mode chosen on a phone that
+// can buzz is degraded rather than rewritten, so it still means what it said
+// when that phone opens the app again.
+const canVibrate = () => typeof navigator.vibrate === 'function';
+const alertOptions = () =>
+  ALERT_OPTIONS.filter(([v]) => canVibrate() || (v !== 'vibrate' && v !== 'both'));
+
 const alertMode = () => {
   const m = db.settings.alert;
-  return ALERT_OPTIONS.some(([v]) => v === m) ? m : 'both';
+  const known = ALERT_OPTIONS.some(([v]) => v === m) ? m : 'both';
+  if(canVibrate()) return known;
+  if(known === 'both')    return 'sound';   // the half of it that can happen
+  if(known === 'vibrate') return 'silent';  // none of it can
+  return known;
 };
 const wantsSound = () => alertMode() === 'both' || alertMode() === 'sound';
 const wantsBuzz  = () => alertMode() === 'both' || alertMode() === 'vibrate';
@@ -2945,26 +3828,58 @@ function fireAlert(short){
   notifyRestDone(short);
 }
 
+// The Notification constructor has never existed on iOS, which is the platform
+// this setting was written for: every call below used to throw there, caught,
+// and the toggle reported itself as on while raising nothing. Notifications on
+// an iPhone come from the service worker registration or not at all. It is also
+// the only path a pushed alert could take, so it is the one kept warm rather
+// than a second mechanism maintained for desktop alone.
+//
+// Resolved ahead of time because firing is synchronous: a rest timer is at
+// least fifteen seconds long and registration settles in milliseconds, so by
+// the time an alert is due this is set.
+let swReg = null;
+if('serviceWorker' in navigator && location.protocol.startsWith('http')){
+  navigator.serviceWorker.ready.then(r => { swReg = r; }).catch(()=>{});
+}
+
 // Only worth raising when you are looking at something else; on screen the
 // timer already turned green.
 function notifyRestDone(short){
   if(!db.settings.notify) return;
   if(typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
   if(document.visibilityState === 'visible') return;
+  const title = short ? 'Go now' : 'Rest complete';
+  const opts = {
+    body: rest.ex || 'Next set',
+    tag: 'logbook-rest',      // replaces rather than stacks
+    icon: 'icon-192.png',
+    silent: alertMode() === 'silent'
+  };
+  if(swReg?.showNotification){
+    // The tap is handled by the worker; a notification raised this way has no
+    // onclick of its own.
+    swReg.showNotification(title, opts).catch(()=>{});
+    return;
+  }
+  // No worker: opened from disk, or registration blocked. The constructor is
+  // all there is, and on the platforms where it exists it still works.
   try{
-    const n = new Notification(short ? 'Go now' : 'Rest complete', {
-      body: rest.ex || 'Next set',
-      tag: 'logbook-rest',      // replaces rather than stacks
-      icon: 'icon-192.png',
-      silent: alertMode() === 'silent'
-    });
+    const n = new Notification(title, opts);
     n.onclick = () => { window.focus(); n.close(); };
   }catch(e){ /* denied or unsupported */ }
 }
 
 async function askNotify(on){
   if(!on){ db.settings.notify = false; save(); return true; }
-  if(typeof Notification === 'undefined'){ toast('Not supported here'); return false; }
+  if(typeof Notification === 'undefined'){
+    // iOS exposes the API only to a web app installed to the Home Screen. In a
+    // tab it is not that the browser cannot notify, it is that this copy of the
+    // app cannot — which is worth saying, because there is something to do
+    // about it.
+    toast(isStandalone() ? 'Not supported here' : 'Add to Home Screen first');
+    return false;
+  }
   let perm = Notification.permission;
   if(perm === 'default') perm = await Notification.requestPermission();
   if(perm !== 'granted'){ toast('Notifications are blocked'); return false; }
@@ -3014,6 +3929,10 @@ function startRest(ex){
   requestWake();
   showRest();
   persistRest();
+  // The phone may be in a pocket before this timer ends, and nothing on it will
+  // be running when it does.
+  alertSchedule(rest.start + rest.target * 1000,
+    midRound ? 'Go now' : 'Rest complete', rest.ex || 'Next set');
 }
 
 function showRest(){
@@ -3037,6 +3956,7 @@ function stopRest(){
   $('#rest').classList.remove('show','ready','transition');
   releaseWake();
   persistRest();
+  alertCancel();
 }
 
 // The alert fires from a 250ms interval on this page, so a phone that suspended
@@ -3227,6 +4147,12 @@ function openPanel(el, focusEl){
   }
   el.removeAttribute('inert');
   el.removeAttribute('aria-hidden');
+  // Sheets share one z-index, so which one is on top was decided by the order
+  // they appear in the markup. A sheet opened from another sheet is above it by
+  // intent and below it by accident of where it was written, and the footers
+  // are what collide: the button underneath takes the tap. Stack by the order
+  // they were opened in, which is the order they are actually in.
+  el.style.zIndex = String(50 + sheetStack.indexOf(el));
   $('#scrim').classList.add('open');
   el.classList.add('open');
   document.body.classList.add('sheetopen');
@@ -3242,6 +4168,7 @@ function closePanel(el, pickFocus){
   el.classList.remove('open');
   el.setAttribute('inert', '');
   el.setAttribute('aria-hidden', 'true');
+  el.style.zIndex = '';
   const i = sheetStack.indexOf(el);
   if(i >= 0) sheetStack.splice(i, 1);
   if(!sheetStack.length){
@@ -4010,6 +4937,8 @@ $('#resttarget').addEventListener('click', ()=>{
   (db.ex[base] ||= {}).rest = rest.target;
   rest.alerted = (Date.now() - rest.start)/1000 >= rest.target;
   persistRest(); tickRest();
+  // Otherwise the phone still buzzes at the old deadline, which is now a lie.
+  alertSchedule(rest.start + rest.target * 1000, 'Rest complete', rest.ex || 'Next set');
 });
 $('#restmid').addEventListener('click', ()=>{
   if(!rest.jump) return;
@@ -4021,6 +4950,9 @@ document.addEventListener('visibilitychange', ()=>{
   if(document.hidden) return;
   tickRest();
   if(rest.start) requestWake();
+  // Back in the app: whatever the other device did while this one was away is
+  // worth having before the next set is logged against it.
+  syncLater(400);
 });
 
 /* ---------- events: pain and notes ---------- */
@@ -4252,9 +5184,10 @@ function openSettings(){
   $('#transel').innerHTML = TRANSITION_OPTIONS.map(v =>
     `<option value="${v}">${v}s</option>`).join('');
   $('#transel').value = String(db.settings.transition ?? TRANSITION);
-  $('#alertsel').innerHTML = ALERT_OPTIONS.map(([v,label]) =>
+  $('#alertsel').innerHTML = alertOptions().map(([v,label]) =>
     `<option value="${v}">${esc(label)}</option>`).join('');
   $('#alertsel').value = alertMode();
+  $('#alerthint').classList.toggle('hide', canVibrate());
   $('#notifybox').checked = !!db.settings.notify &&
     typeof Notification !== 'undefined' && Notification.permission === 'granted';
   $('#storagesub').textContent = storageBroken
@@ -4269,6 +5202,7 @@ function openSettings(){
       ? (since ? `${since} session${since===1?'':'s'} since your last backup.` : 'Backed up.')
       : 'Never backed up.');
   $('#appversion').textContent = `v${APP_VERSION}`;
+  renderSyncStatus();
   openPanel($('#settings'), $('#set-title'));
 }
 
@@ -4343,6 +5277,203 @@ $('#testalert').addEventListener('click', ()=>{
   const label = (ALERT_OPTIONS.find(([v]) => v === alertMode()) || [])[1] || '';
   toast(alertMode() === 'silent' ? 'Alerts are silent' : label);
 });
+
+/* ---------- sync, on screen ---------- */
+// A generated passphrase rather than a typed one. What it guards is a wrapped
+// key that anyone who can reach the server can ask for and grind against
+// offline, and "the dog's name and a year" does not survive that. Read off a
+// screen and typed into a second phone, so no character that can be mistaken
+// for another: the same alphabet as an invite code.
+const PHRASE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function newPassphrase(groups = 5){
+  const bytes = crypto.getRandomValues(new Uint8Array(groups * 4));
+  const out = [];
+  for(let g = 0; g < groups; g++){
+    let word = '';
+    for(let i = 0; i < 4; i++) word += PHRASE_ALPHABET[bytes[g * 4 + i] % PHRASE_ALPHABET.length];
+    out.push(word);
+  }
+  return out.join('-');
+}
+
+let syncSetupMode = 'new';
+
+function renderSyncSetup(){
+  const fresh = syncSetupMode === 'new';
+  for(const b of $('#syncmode').querySelectorAll('[data-mode]')){
+    b.setAttribute('aria-pressed', String(b.dataset.mode === syncSetupMode));
+  }
+  $('#syncnewbox').classList.toggle('hide', !fresh);
+  $('#syncjoinbox').classList.toggle('hide', fresh);
+  // An invite lets a vault be created; adding a device to one that exists is
+  // gated by the passphrase, which is the stronger gate of the two.
+  $('#syncinvitebox').classList.toggle('hide', !fresh);
+  $('#syncinvitehint').classList.toggle('hide', !fresh);
+  $('#syncgo').textContent = fresh ? 'Turn on sync' : 'Add this device';
+  // Deliberately not clearing the error here. This runs again the moment a
+  // failed attempt finishes, to put the button label back — and it used to wipe
+  // the reason for the failure in the same tick, so no message from the server
+  // was ever on screen long enough to read. Clearing is for starting over.
+}
+
+function openSyncSetup(){
+  syncSetupMode = 'new';
+  $('#syncbase').value = syncState.base || '';
+  $('#synchandle').value = '';
+  $('#syncpass').value = '';
+  $('#syncinvite').value = '';
+  $('#syncwrote').checked = false;
+  $('#syncphrase').textContent = newPassphrase();
+  $('#syncerr').textContent = '';
+  renderSyncSetup();
+  openPanel($('#syncsheet'), $('#syncsheet-title'));
+}
+
+// "Never" rather than a date nobody can read, and a relative time after that:
+// what matters is whether it has been recently, not exactly when.
+function syncAgo(){
+  if(!syncState.at) return 'not yet';
+  const secs = (Date.now() - syncState.at) / 1000;
+  if(secs < 90) return 'just now';
+  if(secs < 5400) return `${Math.round(secs / 60)} min ago`;
+  if(secs < 172800) return `${Math.round(secs / 3600)} h ago`;
+  return `${Math.round(secs / 86400)} days ago`;
+}
+
+function renderSyncStatus(){
+  const on = syncOn();
+  $('#syncsetup').classList.toggle('hide', on);
+  $('#syncnow').classList.toggle('hide', !on);
+  $('#syncoff').classList.toggle('hide', !on);
+  if(!on){
+    $('#syncstat').textContent = 'Off. This log is on this device only, which is '
+      + 'the only copy unless you have made a backup.';
+    return;
+  }
+  $('#pushbox-wrap').classList.toggle('hide', !on);
+  $('#pushbox').checked = pushOn()
+    && typeof Notification !== 'undefined' && Notification.permission === 'granted';
+  const waiting = Object.keys(syncState.dirty).length;
+  $('#syncstat').textContent = `On as “${syncState.handle}”. Last synced ${syncAgo()}`
+    + (waiting ? `, ${waiting} change${waiting === 1 ? '' : 's'} still to send.` : '.')
+    + (syncState.err ? ` Last try: ${syncState.err}.` : '');
+}
+
+$('#syncmode').addEventListener('click', e=>{
+  const b = e.target.closest('[data-mode]'); if(!b) return;
+  syncSetupMode = b.dataset.mode;
+  $('#syncerr').textContent = '';
+  renderSyncSetup();
+});
+$('#syncreroll').addEventListener('click', ()=>{
+  $('#syncphrase').textContent = newPassphrase();
+  $('#syncwrote').checked = false;
+});
+$('#syncclose').addEventListener('click', ()=>closePanel($('#syncsheet')));
+$('#synccancel').addEventListener('click', ()=>closePanel($('#syncsheet')));
+
+$('#syncgo').addEventListener('click', async ()=>{
+  const fresh = syncSetupMode === 'new';
+  const handle = $('#synchandle').value.trim().toLowerCase();
+  const passphrase = fresh ? $('#syncphrase').textContent.trim() : $('#syncpass').value.trim();
+  const say = m => { $('#syncerr').textContent = m; };
+
+  if(!/^[a-z0-9][a-z0-9._-]{1,31}$/.test(handle)){
+    return say('A name is 2 to 32 characters: letters, numbers, dot, dash or underscore.');
+  }
+  if(!passphrase) return say('The passphrase is missing.');
+  // The one place this app stands in the way of its user: there is no reset,
+  // so "I will write it down later" is a decision to lose the server copy.
+  if(fresh && !$('#syncwrote').checked) return say('Write the passphrase down first.');
+
+  const btn = $('#syncgo');
+  btn.disabled = true;
+  btn.textContent = 'Working…';
+  try{
+    await syncStart({
+      base: $('#syncbase').value.trim().replace(/\/+$/, ''),
+      handle, passphrase, join: !fresh,
+      invite: $('#syncinvite').value.trim()
+    });
+    closePanel($('#syncsheet'));
+    renderSyncStatus();
+    toast(fresh ? 'Sync is on' : 'This device is on your log');
+  }catch(e){
+    say(syncSaid(e));
+  }finally{
+    btn.disabled = false;
+    renderSyncSetup();
+  }
+});
+
+// The server answers in codes. None of them is worth showing as-is.
+function syncSaid(e){
+  const said = {
+    invite_required: 'This server needs an invite code.',
+    handle_taken: 'That name is taken on this server. Pick another, or add this device to it instead.',
+    no_such_vault: 'No log by that name on this server.',
+    bad_passphrase: 'That passphrase does not open it.',
+    unauthorized: 'That passphrase does not open it.',
+    slow_down: 'Too many tries. Wait a few minutes.',
+    // Something answered and it was not a Logbook server. Usually this copy of
+    // the app is on a host that only serves files — the app works, it just has
+    // no server of its own, and the address of one goes in the field above.
+    http_404: 'No Logbook server at that address.',
+    passphrase_required: 'This server needs a passphrase, not just a passkey.',
+    bad_handle: 'That name is not one the server will take.'
+  }[e.message];
+  if(said) return said;
+  // A name that does not resolve, a server that is not running, a phone with no
+  // signal: all the same thing from here, and none of them the user's fault.
+  return 'Could not reach the server.';
+}
+
+$('#syncsetup').addEventListener('click', openSyncSetup);
+
+$('#syncnow').addEventListener('click', async ()=>{
+  const btn = $('#syncnow');
+  btn.disabled = true;
+  const before = btn.textContent;
+  btn.textContent = 'Syncing…';
+  const out = await syncOnce();
+  btn.disabled = false;
+  btn.textContent = before;
+  renderSyncStatus();
+  rerenderAll();
+  toast(out ? `Synced — ${out.pulled} in, ${out.pushed} out` : 'Could not reach the server');
+});
+
+$('#pushbox').addEventListener('change', async e=>{
+  $('#pusherr').textContent = '';
+  if(!e.target.checked){ await pushDisable(); renderSyncStatus(); return; }
+  const out = await pushEnable();
+  e.target.checked = out.ok;
+  if(!out.ok) $('#pusherr').textContent = out.why;
+  renderSyncStatus();
+});
+
+$('#syncoff').addEventListener('click', ()=>{
+  if(!confirm('Stop syncing on this device? The log stays here, and the copy on '
+    + 'the server stays there. Nothing is deleted.')) return;
+  pushDisable();      // nowhere left to send to, and no key left to read it
+  syncStop();
+  renderSyncStatus();
+  toast('Sync is off on this device');
+});
+
+// When to sync without being asked. Each of these is a moment where the app is
+// already doing something and a few hundred milliseconds of network costs
+// nobody anything: opening it, coming back to it, and finishing with it.
+// Never on a timer — a phone in a gym has better things to do with its radio.
+let syncSoon = null;
+function syncLater(ms = 4000){
+  // A sync ends by saving, and a save schedules a sync: without this the two
+  // would hand off to each other every four seconds for as long as the app is
+  // open, which is a poll loop wearing the clothes of an event.
+  if(!syncOn() || syncState.busy) return;
+  clearTimeout(syncSoon);
+  syncSoon = setTimeout(()=>{ syncOnce().then(renderSyncStatus); }, ms);
+}
 
 $('#transel').addEventListener('change', e=>{
   db.settings.transition = +e.target.value; save();
@@ -4454,21 +5585,28 @@ $('#restore').addEventListener('click', ()=>$('#restorefile').click());
 // anything only the device has is kept. Settings and the program stay as they
 // are on the device, because they are what you are looking at and a merge
 // cannot ask.
+// A record this device deleted is not one it is missing. Without the mark a
+// delete leaves, a backup taken before it reads as "has something you do not"
+// and hands it straight back — so the one thing restore could not do was
+// restore a database you had tidied.
+const wasDeleted = key => !!db.rev?.[key]?.del;
+
 function mergeBackup(incoming){
   const have = new Set(db.sets.map(s => s.id));
-  const added = incoming.sets.filter(s => s && s.id && !have.has(s.id));
+  const added = incoming.sets.filter(s =>
+    s && s.id && !have.has(s.id) && !wasDeleted('set:' + s.id));
   db.sets = db.sets.concat(added).sort((a, b) => (a.d || '').localeCompare(b.d || ''));
 
   let days = 0;
   for(const [d, v] of Object.entries(incoming.days || {})){
-    if(db.days[d]) continue;
+    if(db.days[d] || wasDeleted('day:' + d)) continue;
     db.days[d] = v; days++;
   }
   // Bodyweight readings merge by date the same way.
   const seen = new Set(bwLog().map(e => e.d));
   let weighs = 0;
   for(const e of incoming.bw || []){
-    if(!e || seen.has(e.d)) continue;
+    if(!e || seen.has(e.d) || wasDeleted('bw:' + e.d)) continue;
     bwLog().push(e); weighs++;
   }
   bwLog().sort((a, b) => a.d.localeCompare(b.d));
@@ -4759,6 +5897,10 @@ let persistentStorage = null;
   // finished while the app was closed is not resumed — but it is not thrown
   // away in silence either, which is what used to happen to every rest that
   // outlasted a phone going to sleep for a quarter of an hour.
+  // Opening the app is the other moment worth a sync: this is usually the
+  // first thing that happens after the other device logged something.
+  syncLater(1200);
+
   const r = db.rest;
   if(r && r.start){
     const el = (Date.now() - r.start) / 1000;

@@ -2,8 +2,9 @@
 
 A lifting logbook that works with no signal, in a gym, on a phone that is
 face-down between sets. Sets, plate math, a rest timer, superset pairing and
-pain tracking by site. Data lives in the browser on your device — nothing is
-uploaded anywhere.
+pain tracking by site. Data lives in the browser on your device, and stays
+there unless you decide otherwise — and if you do, it leaves as ciphertext a
+server cannot read.
 
 **[Open the app](https://hype-armor.github.io/WorkoutLogBook/)** · [Add it to your home screen](#install-it) ·
 [How it is built and shipped](docs/development.md)
@@ -20,9 +21,17 @@ uploaded anywhere.
 ## What it is
 
 One `index.html` — markup, styles and logic in a single file — with a service
-worker that precaches it. There is no account, no server and no sync. Open the
-file straight from disk and it works; serve it over HTTP and it installs to a
-home screen and opens full-screen with the network off.
+worker that precaches it. Open the file straight from disk and it works; serve
+it over HTTP and it installs to a home screen and opens full-screen with the
+network off.
+
+There is no account and no server unless you go and run one. That used to read
+"there is no account, no server and no sync", which was simpler and is no longer
+true — so here is the sharper version instead: the app is complete without any
+of it, the server is one container you host yourself, and it holds ciphertext
+it has no key for. What it can and cannot see is
+[written down precisely](docs/server.md#what-the-server-learns) rather than
+promised.
 
 Everything below is what the app does and, mostly, why: the rules it applies to
 your numbers are opinionated, and an opinion you cannot see is just a surprise.
@@ -34,6 +43,30 @@ on the phone, then use the browser's *Add to Home Screen*. After that it
 launches full-screen and works offline, including the exercise photos.
 
 To run your own copy, see [docs/development.md](docs/development.md).
+
+## Sync, if you want it
+
+The app needs no server and never will. There is one available for the two
+things a single device cannot do: keep two of them in agreement, and wake a
+phone that has suspended the app when a rest timer ends.
+
+It is self-hosted, one container, and it **cannot read your log** — everything
+is encrypted on the device under a key derived from a passphrase the server
+never sees. What it holds is ciphertext, a clock per record, and a push address.
+
+```sh
+docker compose -f deploy/compose.yml run --rm logbook vapid    # notification keys
+docker compose -f deploy/compose.yml run --rm logbook invite --uses 1
+docker compose -f deploy/compose.yml up -d
+```
+
+Then **Settings → Sync** on the phone. Swarm and Kubernetes manifests are in
+`deploy/`; the design, and precisely what the server can and cannot see, is in
+[docs/server.md](docs/server.md).
+
+Put TLS in front of it. A service worker needs a secure context, so without it
+the app will not install, will not work offline, and will not receive a
+notification.
 
 ## Estimated max
 
@@ -341,6 +374,18 @@ fix. What the app can stop doing is pretending on the way back: firing "Rest
 complete" ten minutes late says the timer just finished, which is the one thing
 that is not true.
 
+The alert it does raise while the app is merely backgrounded comes from the
+service worker, not the `Notification` constructor — which has never existed on
+iOS, so every one of these used to be thrown away on the phone the setting was
+written for while the toggle still read as on.
+
+For the same reason the menu under **When a rest timer ends** is shorter on an
+iPhone. A web page cannot vibrate one, so "Vibration only" there was silence
+wearing the name of an alert, and "Sound and vibration" was sound. The choices
+offered are the ones the device can honour; a mode picked on a phone that can
+buzz is kept, not rewritten, so it still means what it said when that phone
+comes back.
+
 A rest that finished while you were away now says how long ago and does not
 sound the alert, because ringing on the way back in is an alarm for something
 that already happened. One left running well past its target belongs to a
@@ -445,13 +490,18 @@ left alone, and anything only the device has is kept. It reports both halves,
 because a merge that says nothing is as unnerving as a replace that says
 everything.
 
+A set you *deleted* is not one the device is missing, and it no longer comes
+back. A delete now leaves a mark where the set was, so a backup taken before it
+reads as answered rather than as new — otherwise the one database restore could
+not restore was a tidied one, and every restore quietly undid the tidying.
+
 If a device blocks storage (private mode, a full disk), a banner says so
 instead of failing quietly.
 
 ## Built like this
 
 Markup, styles and logic in one file; a service worker that precaches the shell
-and keeps the exercise photos in a cache of their own; 293 Playwright tests that
+and keeps the exercise photos in a cache of their own; 344 Playwright tests that
 read real bounding boxes at phone sizes; and Release Please, which tags the
 version and rewrites it in `sw.js` — the thing that makes an installed phone
 notice a release at all. The deploy refuses to publish a build the suite rejects.

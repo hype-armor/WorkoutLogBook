@@ -1,0 +1,26 @@
+# TLS is not optional for this app: a service worker needs a secure context,
+# and without one the app cannot install, cannot go offline, and cannot receive
+# a notification. cert-manager is assumed here because it is what most clusters
+# already run; any issuer that terminates TLS will do.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: logbook
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  tls:
+    - hosts:
+        - logbook.example.com
+      secretName: logbook-tls
+  rules:
+    - host: logbook.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: logbook
+                port:
+                  name: http

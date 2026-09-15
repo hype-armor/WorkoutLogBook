@@ -24,6 +24,10 @@ jobs:
 
       - run: npm ci
 
+      # No dependencies and no browser, so it runs first: a broken server is
+      # known in seconds rather than after four minutes of Playwright.
+      - run: npm run test:server
+
       # Both engines. WebKit is the one the app is actually used on, and it
       # differs in every way that matters on a phone.
       - run: npx playwright install --with-deps chromium webkit
@@ -38,3 +42,75 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 14
+
+  # The deployment manifests are asserted by the server suite, but a Dockerfile
+  # is only really checked by building it. Both architectures, because k3s on a
+  # Raspberry Pi is a likely home for this and an image that only exists for
+  # amd64 fails there at `docker run` rather than here.
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build for amd64 and arm64
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: server/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: false
+          load: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Loading a multi-arch image is not possible, so the one that can run here
+      # is built again for this architecture alone and actually started.
+      - name: Build for this runner
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: server/Dockerfile
+          load: true
+          tags: logbook-server:ci
+          cache-from: type=gha
+
+      - name: Start it and ask it for the app
+        run: |
+          # The same shape compose and the manifests run it in, or the two
+          # assertions below would be checking nothing.
+          docker run -d --name logbook -p 8080:8080 \
+            --read-only --tmpfs /tmp:size=16m \
+            --cap-drop ALL --security-opt no-new-privileges:true \
+            -v logbook-ci-data:/data \
+            -e LOGBOOK_OPEN_REGISTRATION=true logbook-server:ci
+          for i in $(seq 1 30); do
+            curl -fsS localhost:8080/healthz >/dev/null 2>&1 && break
+            sleep 1
+          done
+          set -e
+          curl -fsS localhost:8080/healthz    >/dev/null && echo "healthz ok"
+          curl -fsS localhost:8080/readyz     >/dev/null && echo "readyz ok"
+          curl -fsS localhost:8080/v1/config  >/dev/null && echo "config ok"
+          # To a file rather than a pipe: grep -q closes early, curl reports a
+          # write failure, and with pipefail that reads as the app being broken.
+          curl -fsS localhost:8080/ -o /tmp/served.html
+          grep -q "<title>" /tmp/served.html && echo "the app is served"
+          curl -fsS localhost:8080/sw.js      >/dev/null && echo "the worker is served"
+          # The static handler serves an allowlist; these are on the other side of it.
+          ! curl -fsS localhost:8080/package.json          >/dev/null 2>&1 && echo "package.json withheld"
+          ! curl -fsS localhost:8080/server/src/routes.js  >/dev/null 2>&1 && echo "server source withheld"
+          # Runs as a user, with nothing writable but the volume.
+          test "$(docker exec logbook id -u)" != "0" && echo "not running as root"
+          ! docker exec logbook touch /app/nope 2>/dev/null && echo "root filesystem is read-only"
+          docker exec logbook sh -c 'touch /data/ok && rm /data/ok' && echo "the volume is writable"
+          # The subcommands a self-hoster runs before the first start.
+          docker run --rm logbook-server:ci vapid | grep -q LOGBOOK_VAPID_PRIVATE= \
+            && echo "vapid subcommand ok"
+
+      - name: What it said
+        if: ${{ always() }}
+        run: docker logs logbook || true

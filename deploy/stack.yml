@@ -1,0 +1,77 @@
+# Docker Swarm. `docker stack deploy -c deploy/stack.yml logbook`
+#
+# Two things here are not defaults and both matter.
+#
+# `replicas: 1`, because the database is SQLite: two writers over one file
+# corrupt it, and two schedulers send every notification twice.
+#
+# `order: stop-first`, because Swarm's default is start-first — which briefly
+# runs the old task and the new one together, and briefly is all it takes.
+
+version: "3.8"
+
+services:
+  logbook:
+    image: logbook-server:latest
+    ports:
+      - target: 8080
+        published: 8080
+        protocol: tcp
+        mode: host
+    environment:
+      LOGBOOK_PORT: "8080"
+      LOGBOOK_DB: /data/logbook.db
+      LOGBOOK_SERVE_STATIC: "true"
+      LOGBOOK_OPEN_REGISTRATION: "false"
+      LOGBOOK_TRUST_PROXY: "true"
+      LOGBOOK_VAPID_SUBJECT: mailto:you@example.com
+      LOGBOOK_VAPID_PUBLIC: "${LOGBOOK_VAPID_PUBLIC:-}"
+      # A file, not a variable: a secret in the environment is one
+      # `docker inspect` away from being on someone's screen.
+      LOGBOOK_VAPID_PRIVATE_FILE: /run/secrets/logbook_vapid_private
+    secrets:
+      - logbook_vapid_private
+    volumes:
+      - logbook-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    stop_grace_period: 15s
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    deploy:
+      replicas: 1
+      endpoint_mode: dnsrr
+      update_config:
+        order: stop-first
+        parallelism: 1
+        failure_action: rollback
+      rollback_config:
+        order: stop-first
+        parallelism: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+      placement:
+        # The volume is local to whichever node holds it, so the task has to
+        # keep going back to that node. Label it: `docker node update
+        # --label-add logbook=true <node>`
+        constraints:
+          - node.labels.logbook == true
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 32M
+
+volumes:
+  logbook-data:
+
+secrets:
+  logbook_vapid_private:
+    # docker secret create logbook_vapid_private -    (then paste the key)
+    external: true

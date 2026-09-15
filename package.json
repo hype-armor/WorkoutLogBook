@@ -4,9 +4,12 @@
   "private": true,
   "description": "A lifting logbook that works offline",
   "scripts": {
-    "test": "playwright test",
+    "test": "npm run test:server && playwright test",
     "test:ui": "playwright test --ui",
-    "serve": "node tests/server.js"
+    "serve": "node tests/server.js",
+    "test:app": "playwright test",
+    "test:server": "npm --prefix server test",
+    "serve:sync": "node server/src/index.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0"

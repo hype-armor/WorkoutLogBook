@@ -415,6 +415,173 @@ test('a v1 database migrates', async ({ browser }) => {
   await ctx.close();
 });
 
+// Nothing reads these yet. They are what a merge between two devices would have
+// to be written against: a name for each thing that can change, a clock saying
+// when it last changed, and a mark where one was deleted.
+test.describe('record clocks', () => {
+  const stored = page => page.evaluate(() => JSON.parse(localStorage.getItem('logbook-v1')));
+  const ZERO = '0000000000:0000:00000000';
+
+  const logASet = async page => {
+    await page.click('.ex[data-ex="Deadlift"]');
+    await page.fill('#wt', '225');
+    await page.fill('#reps', '5');
+    await page.click('#logset');
+    await expect(page.locator('#rest')).toBeVisible();
+  };
+
+  test('older data is stamped below everything that happens next', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seed(page, blankDb({ v: 4, sets: [set('2026-08-01', 'Deadlift', 315, 3, 1)] }));
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.evaluate(() => { db.days[todayISO()] = { notes: 'today' }; save(); });
+
+    const db = await stored(page);
+    expect(db.v).toBe(5);
+    // A v4 database says nothing about when any of it last changed, so it all
+    // starts at the same instant rather than at an invented one.
+    expect(db.rev['set:Deadlift-2026-08-01-315-3-1']).toEqual({ h: ZERO });
+    // and anything done since sorts above it
+    const today = Object.keys(db.rev).find(k => k.startsWith('day:'));
+    expect(db.rev[today].h > ZERO).toBe(true);
+    await ctx.close();
+  });
+
+  test('changes written together share one clock', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seed(page, blankDb());
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    // Two records, one write. They happened at the same moment because they
+    // were the same action, and a merge that put them in separate instants
+    // could take one without the other.
+    await page.evaluate(() => {
+      db.days[todayISO()] = { notes: 'felt strong' };
+      db.ex.Deadlift = { ...(db.ex.Deadlift || {}), rest: 240 };
+      save();
+    });
+
+    const db = await stored(page);
+    const day = await page.evaluate(() => todayISO());
+    expect(db.rev['day:' + day].h).toBe(db.rev['ex:Deadlift'].h);
+    expect(db.rev['ex:Deadlift'].h > ZERO).toBe(true);
+    await ctx.close();
+  });
+
+  test('a delete leaves a mark, and undo takes it back', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seed(page, blankDb());
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await logASet(page);
+    const id = await page.evaluate(() => db.sets[0].id);
+
+    await page.evaluate(() => { const i = db.sets.findIndex(s => s.id); db.sets.splice(i, 1); save(); });
+    await expect.poll(async () => (await stored(page)).rev['set:' + id])
+      .toEqual({ h: expect.any(String), del: true });
+
+    // Put it back the way undo does. A record that returns is live again, not
+    // a deletion that happens to have something sitting in its place.
+    await page.evaluate(i => {
+      db.sets.push({ id: i, t: Date.now(), d: todayISO(), e: 'Deadlift', dy: 'A',
+                     w: 225, r: 5, rir: 2, rest: null, u: 'lb' });
+      save();
+    }, id);
+    const back = (await stored(page)).rev['set:' + id];
+    expect(back.del).toBeUndefined();
+    await ctx.close();
+  });
+
+  test('a save that changed nothing moves no clock', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seed(page, blankDb());
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await logASet(page);
+
+    const before = (await stored(page)).rev;
+    await page.evaluate(() => save());
+    await page.evaluate(() => save());
+    expect((await stored(page)).rev).toEqual(before);
+    await ctx.close();
+  });
+
+  // Gym phones have wrong clocks, and a clock that goes backwards would
+  // otherwise issue a stamp below one it has already written — losing the
+  // write that really was last.
+  test('the clock rises even when the wall clock is set back', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seed(page, blankDb());
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await logASet(page);
+
+    const first = await page.evaluate(() => db.rev[Object.keys(db.rev).find(k => k.startsWith('set:'))].h);
+    const second = await page.evaluate(() => {
+      const real = Date.now;
+      Date.now = () => real() - 3600 * 1000;      // an hour into the past
+      db.days[todayISO()] = { ...(db.days[todayISO()] || {}), notes: 'clock is wrong' };
+      save();
+      Date.now = real;
+      return db.rev['day:' + todayISO()].h;
+    });
+    expect(second > first).toBe(true);
+    await ctx.close();
+  });
+
+  // The one merge the app already does. Without the mark a delete leaves, a
+  // backup taken before it reads as "has a set you do not" and hands it back,
+  // so the one database restore could not restore was a tidied one.
+  test('a restore does not hand back a set you deleted', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seed(page, blankDb({ sets: [set('2026-08-01', 'Deadlift', 315, 3, 1),
+                                      set('2026-08-02', 'Deadlift', 320, 3, 1)] }));
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+
+    const out = await page.evaluate(() => {
+      const backup = JSON.parse(JSON.stringify(db));      // taken before the delete
+      const gone = db.sets[0].id, kept = db.sets[1].id;
+      db.sets.splice(0, 1);
+      save();
+      mergeBackup(migrate(backup));
+      return { ids: db.sets.map(s => s.id), gone, kept };
+    });
+
+    expect(out.ids).toEqual([out.kept]);
+    // and the mark is still there, so the next restore says no as well
+    expect(await page.evaluate(i => db.rev['set:' + i].del, out.gone)).toBe(true);
+    await ctx.close();
+  });
+
+  test('this device id is not part of the database it stamps', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seed(page, blankDb());
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await logASet(page);
+
+    // Kept out of the blob on purpose: it is what breaks a tie between two
+    // clocks, so a backup restored onto a second phone must not hand it the
+    // first one's identity.
+    const id = await page.evaluate(() => localStorage.getItem('logbook-device'));
+    expect(id).toMatch(/^[0-9a-z]{8}$/);
+    expect(JSON.stringify(await stored(page))).not.toContain('"logbook-device"');
+    const key = Object.keys((await stored(page)).rev).find(k => k.startsWith('set:'));
+    expect((await stored(page)).rev[key].h.endsWith(':' + id)).toBe(true);
+    await ctx.close();
+  });
+});
+
 test.describe('data durability', () => {
   // addInitScript runs on every navigation, so without this guard a reload
   // re-seeds storage and silently undoes whatever the test just did.
@@ -701,7 +868,7 @@ test.describe.serial('pain sites', () => {
 
     // rate something so the migrated shape is written back
     await page.click('.painsite[data-site="lower-back"] [data-pain="2"]');
-    await expect.poll(async () => (await stored(page)).v).toBe(4);
+    await expect.poll(async () => (await stored(page)).v).toBe(5);
     const db = await stored(page);
     // 6 on the old 0-10 scale is 3 on the current one
     expect(db.days['2026-08-01'].pains).toEqual({ 'lower-back': 3 });
@@ -734,7 +901,7 @@ test.describe.serial('pain sites', () => {
     await touch();
     const want = [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5];
     await expect.poll(async () => (await vals()).pains).toEqual(want);
-    expect((await vals()).v).toBe(4);
+    expect((await vals()).v).toBe(5);
 
     // Every 0-5 rating is also a valid 0-10 one, so a migration that sniffed
     // the values instead of the version would halve this again on every load

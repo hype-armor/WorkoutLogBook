@@ -1,0 +1,20 @@
+# The image holds the app and the server, and nothing else the repository
+# happens to contain. The static handler serves an allowlist, so none of this
+# would be reachable anyway — but the smallest image is the one that never had
+# it, and a .git directory in a published image is a history nobody asked for.
+.git
+.github
+node_modules
+test-results
+playwright-report
+docs
+tests
+playwright.config.js
+package-lock.json
+CHANGELOG.md
+release-please-config.json
+.release-please-manifest.json
+server/test
+deploy
+Dockerfile
+.dockerignore

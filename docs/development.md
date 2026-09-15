@@ -13,6 +13,59 @@ it behaves the way it does, see the [README](../README.md).
 | `icon-*.png`, `apple-touch-icon.png`, `favicon-32.png` | app icons |
 | `img/*.webp` | exercise photos, start and finish, 44 files |
 | `version.txt`, `release-please-config.json` | release automation, see below |
+| `server/` | the optional sync server — nothing the app needs to run |
+| `deploy/` | Compose, a Swarm stack and Kustomize manifests for the above |
+
+An optional self-hosted server — end-to-end encrypted sync between devices,
+and the push notifications that are the only way to wake a suspended phone
+when a rest timer ends — is designed in [server.md](server.md).
+
+The server exists, in `server/`: zero dependencies, `node:sqlite`, its own
+suite under `node --test`. So does the app's half — alerts raised through the
+service worker; a clock on every record and a mark where one was deleted
+(`db.rev`, schema v5); `vault`, holding the key hierarchy, record addressing
+and sealing; and the sync client that merges, pulls and pushes. Two browsers
+converge through the real server in `tests/sync.spec.js`.
+
+**Settings → Sync** switches it on, and **Wake this phone when a rest timer
+ends** beneath it turns on notifications. The server speaks Web Push itself —
+RFC 8188, 8291 and 8292, no dependency — and its 88 tests include the vectors
+those specifications publish. `server/Dockerfile` and `deploy/` package it for
+Compose, Swarm and Kubernetes; CI builds the image for amd64 and arm64 on every
+pull request and starts it.
+
+The one thing left is a real phone, which no suite can stand in for.
+
+```sh
+npm run test:server     # the server, no browser needed
+npm run test:app        # the app, both engines
+npm test                # both
+npm run serve:sync      # the server itself; see docs/server.md for the environment
+```
+
+
+## Hosting the app
+
+GitHub Pages serves it from `main`, and there is a Vercel project linked to the
+same repository. Both are static hosts, which is all the app needs: there is no
+server in this half of it.
+
+Vercel builds with `deploy/vercel-build.mjs`, which assembles `dist/` from the
+allowlist the server's static handler exports — the same list the service worker
+precaches. Without it a static deployment of this repository publishes the whole
+of it at the app's own domain, test suite included; none of that is secret,
+since the repository is public, but the app is the app.
+
+**The sync server cannot run on Vercel**, and not for want of configuration.
+It keeps a SQLite file on a disk that has to still be there next week, and it
+polls once a second for alerts that come due — neither of which a serverless
+function has. It wants the container in `server/Dockerfile`, on something that
+stays running: a VPS, a home server, a Raspberry Pi under k3s.
+
+Pointing the two at each other is what the **Server** field in the sync setup
+sheet is for. Put the server's address in it, and set `LOGBOOK_ALLOWED_ORIGINS`
+on the server to the host the app is served from — same-origin needs neither,
+which is why the single container is the simpler deployment.
 
 ## Running it
 
@@ -52,7 +105,7 @@ scroll-leak wheel check (`mouse.wheel` is unsupported in mobile WebKit), and
 the persistent-storage request (WebKit has no `StorageManager.persist` — which
 is the real state of affairs on an iPhone).
 
-293 tests in `tests/`, 284 of them on WebKit too, run on every pull request
+344 tests in `tests/`, 335 of them on WebKit too, run on every pull request
 and again before any deploy.
 They cover the things that actually broke: that a logged set survives a reload
 and a service-worker update, that `Log set` and the RIR selector are never

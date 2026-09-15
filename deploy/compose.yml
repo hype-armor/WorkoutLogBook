@@ -1,0 +1,60 @@
+# One container, one volume. `docker compose -f deploy/compose.yml up -d` from
+# the repository root.
+#
+# Before the first start:
+#   docker compose -f deploy/compose.yml run --rm logbook vapid
+#   docker compose -f deploy/compose.yml run --rm logbook invite --uses 1
+#
+# The first prints two lines for your .env; the second prints a code, once.
+#
+# TLS is not here on purpose. A service worker needs a secure context and
+# browsers refuse mixed content, so anything reachable from outside a LAN wants
+# Caddy or Traefik in front — which is a choice about the rest of the machine,
+# not about this container.
+
+services:
+  logbook:
+    image: logbook-server:latest
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      LOGBOOK_PORT: "8080"
+      LOGBOOK_DB: /data/logbook.db
+      LOGBOOK_SERVE_STATIC: "true"
+      # An invite is needed to create a vault. Turning this on means anyone who
+      # finds the address can put a vault on your disk, and it is encrypted, so
+      # you cannot even tell what you are storing.
+      LOGBOOK_OPEN_REGISTRATION: "false"
+      # Behind a reverse proxy this has to be true or every client shares one
+      # rate-limit bucket; exposed directly it has to be false, or anyone can
+      # invent an address and get a fresh one.
+      LOGBOOK_TRUST_PROXY: "false"
+      LOGBOOK_VAPID_SUBJECT: mailto:you@example.com
+      LOGBOOK_VAPID_PUBLIC: "${LOGBOOK_VAPID_PUBLIC:-}"
+      LOGBOOK_VAPID_PRIVATE: "${LOGBOOK_VAPID_PRIVATE:-}"
+    volumes:
+      - logbook-data:/data
+    # Everything except the database is immutable at runtime.
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    # Nothing is held in memory that a restart would lose, so ten seconds is
+    # politeness rather than correctness.
+    stop_grace_period: 15s
+
+volumes:
+  logbook-data:

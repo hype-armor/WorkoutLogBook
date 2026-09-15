@@ -115,6 +115,14 @@ self.addEventListener('fetch', event => {
   const url = new URL(req.url);
   if(url.origin !== self.location.origin) return; // nothing external to cache
 
+  // The API is not the app, and must never be answered from cache. Every one of
+  // these is specific to the moment it was asked — and the lookup below ignores
+  // the query string, so a cached `/v1/sync?since=0` from an empty vault was
+  // being handed back for a pull at every later cursor. Sync stopped dead after
+  // the first request and said nothing, because an empty answer is a valid one.
+  if(url.pathname.startsWith('/v1/') || url.pathname === '/healthz'
+     || url.pathname === '/readyz') return;
+
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
     // Across every cache, so a photo in the media cache is found too.
@@ -148,6 +156,109 @@ self.addEventListener('fetch', event => {
       statusText: 'Offline',
       headers: {'Content-Type': 'text/plain'}
     });
+  })());
+});
+
+/* ---------- push ---------- */
+// What arrives here is a sealed envelope. The server scheduled it and relayed
+// it and could not read a word of it; this is the only place with the key.
+//
+// The key derivation is repeated here rather than shared with the page: a
+// service worker has its own global scope and cannot borrow one function out of
+// index.html. Twenty lines, and the alternative is a payload the server has to
+// compose — which would mean telling it which lift you are resting from.
+const utf8 = new TextEncoder(), utf8d = new TextDecoder();
+const unb64u = str => {
+  const s = atob(String(str).replace(/-/g, '+').replace(/_/g, '/'));
+  const out = new Uint8Array(s.length);
+  for(let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+  return out;
+};
+
+// The page writes the master key here when notifications are turned on, because
+// localStorage is synchronous and a worker is never given it.
+function masterKey(){
+  return new Promise(resolve => {
+    let req;
+    try{ req = indexedDB.open('logbook-keys', 1); }catch(e){ return resolve(null); }
+    req.onupgradeneeded = () => req.result.createObjectStore('kv');
+    req.onerror = () => resolve(null);
+    req.onsuccess = () => {
+      const d = req.result;
+      try{
+        const get = d.transaction('kv', 'readonly').objectStore('kv').get('mk');
+        get.onsuccess = () => { resolve(get.result || null); d.close(); };
+        get.onerror = () => { resolve(null); d.close(); };
+      }catch(e){ resolve(null); d.close(); }
+    };
+  });
+}
+
+async function openAlert(data){
+  const mk = await masterKey();
+  if(!mk || !data) return null;
+  const base = await crypto.subtle.importKey('raw', unb64u(mk), 'HKDF', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey(
+    {name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: utf8.encode('logbook/alert/1')},
+    base, {name: 'AES-GCM', length: 256}, false, ['decrypt']);
+  const raw = unb64u(data);
+  const plain = await crypto.subtle.decrypt(
+    {name: 'AES-GCM', iv: raw.slice(0, 12), additionalData: utf8.encode('alert|v1')},
+    key, raw.slice(12));
+  return JSON.parse(utf8d.decode(plain));
+}
+
+// Ten seconds, the same window the page uses. A notification that arrives long
+// after the timer ended says the timer just ended, which is the one thing that
+// is not true — and an alert relayed through a push service is exactly the
+// thing that can arrive late.
+const LATE_GRACE = 10;
+function lateLabel(secs){
+  if(secs < LATE_GRACE) return '';
+  if(secs < 90) return `${Math.round(secs)} sec ago`;
+  if(secs < 5400) return `${Math.round(secs / 60)} min ago`;
+  const h = Math.floor(secs / 3600), m = Math.round((secs % 3600) / 60);
+  return `${h} h${m ? ' ' + m : ''} ago`;
+}
+
+self.addEventListener('push', event => {
+  event.waitUntil((async () => {
+    let title = 'Rest complete', body = 'Next set';
+    try{
+      const alert = await openAlert(event.data && event.data.text());
+      if(alert){
+        title = alert.t || title;
+        const late = lateLabel((Date.now() - (alert.at || Date.now())) / 1000);
+        body = late ? `${alert.b || 'Next set'} — ended ${late}` : (alert.b || body);
+      }
+    }catch(e){
+      // Locked, rotated, or not ours to read. A generic alert is still the
+      // right thing to raise: the timer did end, and that is what was promised.
+    }
+    // On screen already: the timer went green, and a banner over it is noise.
+    const open = await self.clients.matchAll({type: 'window', includeUncontrolled: true});
+    if(open.some(c => c.visibilityState === 'visible')) return;
+    await self.registration.showNotification(title, {
+      body,
+      tag: 'logbook-rest',        // replaces rather than stacks
+      icon: './icon-192.png',
+      badge: './icon-192.png'
+    });
+  })());
+});
+
+// A notification raised through the registration — which on iOS is the only
+// kind there is — has no onclick of its own: the worker handles the tap. Focus
+// a window that is already open rather than adding a second copy of an app
+// whose whole state is in one tab.
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const open = await self.clients.matchAll({type: 'window', includeUncontrolled: true});
+    for(const c of open){
+      if('focus' in c) return c.focus();
+    }
+    if(self.clients.openWindow) return self.clients.openWindow('./');
   })());
 });
 
