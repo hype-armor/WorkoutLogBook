@@ -80,6 +80,23 @@ describe('what the deployment must not lose', () => {
     }
   });
 
+  test('the static deployment ships the same app the image does', async () => {
+    // Vercel, left alone, publishes the whole repository at the app's own
+    // domain. The build borrows the server's allowlist so that three things —
+    // the image, the static host, and what the service worker precaches —
+    // cannot disagree about what "the app" is.
+    const vercel = JSON.parse(read('vercel.json'));
+    assert.equal(vercel.outputDirectory, 'dist');
+    assert.match(vercel.buildCommand, /deploy\/vercel-build\.mjs/);
+    assert.match(read('deploy/vercel-build.mjs'), /import \{ APP_FILE \}/);
+    // The worker is the one file that must never be served stale: a cached one
+    // is an app that cannot be updated.
+    const sw = vercel.headers.find(h => h.source === '/sw.js');
+    assert.ok(sw, 'sw.js has its own cache header');
+    assert.match(sw.headers[0].value, /max-age=0/);
+    assert.ok(read('.gitignore').split('\n').includes('dist/'), 'the build output is not committed');
+  });
+
   test('the image does not ship what the repository keeps to itself', () => {
     const ignore = read('.dockerignore');
     for (const path of ['.git', 'tests', 'server/test', 'node_modules']) {

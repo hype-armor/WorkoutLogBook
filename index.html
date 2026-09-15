@@ -5415,6 +5415,10 @@ function syncSaid(e){
     bad_passphrase: 'That passphrase does not open it.',
     unauthorized: 'That passphrase does not open it.',
     slow_down: 'Too many tries. Wait a few minutes.',
+    // Something answered and it was not a Logbook server. Usually this copy of
+    // the app is on a host that only serves files — the app works, it just has
+    // no server of its own, and the address of one goes in the field above.
+    http_404: 'No Logbook server at that address.',
     passphrase_required: 'This server needs a passphrase, not just a passkey.',
     bad_handle: 'That name is not one the server will take.'
   }[e.message];
