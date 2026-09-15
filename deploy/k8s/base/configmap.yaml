@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logbook-config
+data:
+  LOGBOOK_PORT: "8080"
+  LOGBOOK_DB: /data/logbook.db
+  LOGBOOK_SERVE_STATIC: "true"
+  # An invite is needed to create a vault. With this on, anyone who finds the
+  # address can put a vault on your disk — and it is encrypted, so you cannot
+  # tell what you are storing.
+  LOGBOOK_OPEN_REGISTRATION: "false"
+  # True here because an Ingress always terminates in front: without it every
+  # client shares one rate-limit bucket, which is the controller's address.
+  LOGBOOK_TRUST_PROXY: "true"
+  LOGBOOK_VAPID_SUBJECT: mailto:you@example.com

@@ -639,7 +639,25 @@ which is what the leakage list above is for.
    `docker run --rm IMAGE vapid` prints the key pair. A server without
    `LOGBOOK_VAPID_PRIVATE` accepts subscriptions, schedules alerts, and delivers
    nothing — so it says which it is doing on startup.
-7. The container and the three deployment targets.
+7. ~~The container and the three deployment targets.~~ **Done.**
+   `server/Dockerfile` — `node:22-alpine`, no build stage because there is
+   nothing to build, no init process because node installs its own `SIGTERM`
+   handler and starts no children to reap. It ships the app exactly as the
+   static allowlist defines it and nothing else from the repository. `deploy/`
+   holds `compose.yml`, `stack.yml` and a Kustomize base with a worked overlay.
+
+   The one-replica rule is now asserted rather than documented: a test reads the
+   manifests and fails if the replica count moves, if Kubernetes goes back to
+   `RollingUpdate` or Swarm to its `start-first` default, if the volume becomes
+   `ReadWriteMany`, or if the private key moves from a mounted file into an
+   environment variable. Another test fails if a file is added to the static
+   allowlist and not to the image — which would otherwise 404 something the
+   service worker precaches, breaking offline launch and nothing else, so a user
+   would find it rather than the suite.
+
+   CI builds the image for `linux/amd64` and `linux/arm64` on every pull
+   request, then starts it and checks it serves the app, withholds its own
+   source, runs as a non-root user, and cannot write outside the volume.
 8. A real phone, in a pocket, for three minutes — and a second device.
 
 Steps 1 and 2 are worth doing on their own merits whether or not the rest ever

@@ -1,0 +1,35 @@
+# A worked example: one namespace, one hostname, one image. Copy it, change the
+# three things that are yours, and leave the base alone.
+#
+#   kubectl apply -k deploy/k8s/overlays/example
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: logbook
+
+resources:
+  - ../../base
+  - namespace.yaml
+  - ingress.yaml
+
+images:
+  - name: logbook-server
+    newName: ghcr.io/hype-armor/logbook-server
+    newTag: "1.0.0"
+
+configMapGenerator:
+  - name: logbook-config
+    behavior: merge
+    literals:
+      - LOGBOOK_VAPID_SUBJECT=mailto:you@example.com
+
+patches:
+  # k3s on one node: the local-path provisioner is the storage class that is
+  # already there, and its volumes are ReadWriteOnce, which is what this wants.
+  - target:
+      kind: PersistentVolumeClaim
+      name: logbook-data
+    patch: |-
+      - op: add
+        path: /spec/storageClassName
+        value: local-path

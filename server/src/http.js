@@ -115,7 +115,7 @@ const TYPES = {
  * The list is the same one the service worker precaches, which is the honest
  * definition of "the app".
  */
-const APP_FILE = [
+export const APP_FILE = [
   /^index\.html$/,
   /^sw\.js$/,
   /^manifest\.webmanifest$/,

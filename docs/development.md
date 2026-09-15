@@ -14,6 +14,7 @@ it behaves the way it does, see the [README](../README.md).
 | `img/*.webp` | exercise photos, start and finish, 44 files |
 | `version.txt`, `release-please-config.json` | release automation, see below |
 | `server/` | the optional sync server — nothing the app needs to run |
+| `deploy/` | Compose, a Swarm stack and Kustomize manifests for the above |
 
 An optional self-hosted server — end-to-end encrypted sync between devices,
 and the push notifications that are the only way to wake a suspended phone
@@ -28,8 +29,12 @@ converge through the real server in `tests/sync.spec.js`.
 
 **Settings → Sync** switches it on, and **Wake this phone when a rest timer
 ends** beneath it turns on notifications. The server speaks Web Push itself —
-RFC 8188, 8291 and 8292, no dependency — and its 78 tests include the vectors
-those specifications publish. What is left is the container to run it in.
+RFC 8188, 8291 and 8292, no dependency — and its 88 tests include the vectors
+those specifications publish. `server/Dockerfile` and `deploy/` package it for
+Compose, Swarm and Kubernetes; CI builds the image for amd64 and arm64 on every
+pull request and starts it.
+
+The one thing left is a real phone, which no suite can stand in for.
 
 ```sh
 npm run test:server     # the server, no browser needed

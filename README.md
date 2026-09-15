@@ -2,8 +2,9 @@
 
 A lifting logbook that works with no signal, in a gym, on a phone that is
 face-down between sets. Sets, plate math, a rest timer, superset pairing and
-pain tracking by site. Data lives in the browser on your device — nothing is
-uploaded anywhere.
+pain tracking by site. Data lives in the browser on your device, and stays
+there unless you decide otherwise — and if you do, it leaves as ciphertext a
+server cannot read.
 
 **[Open the app](https://hype-armor.github.io/WorkoutLogBook/)** · [Add it to your home screen](#install-it) ·
 [How it is built and shipped](docs/development.md)
@@ -20,9 +21,17 @@ uploaded anywhere.
 ## What it is
 
 One `index.html` — markup, styles and logic in a single file — with a service
-worker that precaches it. There is no account, no server and no sync. Open the
-file straight from disk and it works; serve it over HTTP and it installs to a
-home screen and opens full-screen with the network off.
+worker that precaches it. Open the file straight from disk and it works; serve
+it over HTTP and it installs to a home screen and opens full-screen with the
+network off.
+
+There is no account and no server unless you go and run one. That used to read
+"there is no account, no server and no sync", which was simpler and is no longer
+true — so here is the sharper version instead: the app is complete without any
+of it, the server is one container you host yourself, and it holds ciphertext
+it has no key for. What it can and cannot see is
+[written down precisely](docs/server.md#what-the-server-learns) rather than
+promised.
 
 Everything below is what the app does and, mostly, why: the rules it applies to
 your numbers are opinionated, and an opinion you cannot see is just a surprise.
@@ -34,6 +43,30 @@ on the phone, then use the browser's *Add to Home Screen*. After that it
 launches full-screen and works offline, including the exercise photos.
 
 To run your own copy, see [docs/development.md](docs/development.md).
+
+## Sync, if you want it
+
+The app needs no server and never will. There is one available for the two
+things a single device cannot do: keep two of them in agreement, and wake a
+phone that has suspended the app when a rest timer ends.
+
+It is self-hosted, one container, and it **cannot read your log** — everything
+is encrypted on the device under a key derived from a passphrase the server
+never sees. What it holds is ciphertext, a clock per record, and a push address.
+
+```sh
+docker compose -f deploy/compose.yml run --rm logbook vapid    # notification keys
+docker compose -f deploy/compose.yml run --rm logbook invite --uses 1
+docker compose -f deploy/compose.yml up -d
+```
+
+Then **Settings → Sync** on the phone. Swarm and Kubernetes manifests are in
+`deploy/`; the design, and precisely what the server can and cannot see, is in
+[docs/server.md](docs/server.md).
+
+Put TLS in front of it. A service worker needs a secure context, so without it
+the app will not install, will not work offline, and will not receive a
+notification.
 
 ## Estimated max
 

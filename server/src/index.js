@@ -2,6 +2,7 @@
 // same image runs under Compose, Swarm and Kubernetes with nothing but the
 // environment changed.
 import { createServer } from 'node:http';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { open } from './db.js';
@@ -14,6 +15,26 @@ import { defaultHosts } from './hosts.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const bool = (v, dflt) => (v == null || v === '' ? dflt : /^(1|true|yes|on)$/i.test(String(v)));
+/**
+ * A secret, from a file if one is named. Both Swarm and Kubernetes mount
+ * secrets as files, and an environment variable holding a private key is one
+ * `docker inspect` away from being on someone's screen. `FOO_FILE` wins over
+ * `FOO`, so a deployment can move to a mounted secret without renaming
+ * anything.
+ */
+function secret(env, name) {
+  const file = env[name + '_FILE'];
+  if (file) {
+    try { return readFileSync(file, 'utf8').trim(); }
+    catch (e) {
+      // Failing loudly: a server that starts without the key it was told to
+      // read accepts subscriptions and never delivers one.
+      throw new Error(`cannot read ${name}_FILE at ${file}: ${e.message}`);
+    }
+  }
+  return env[name] || null;
+}
+
 const perHour = (v, dflt) => {
   const n = Number(v) > 0 ? Number(v) : dflt;
   return { capacity: n, perSecond: n / 3600 };
@@ -38,8 +59,8 @@ export function configure(env = process.env) {
     kdfIterations: Number(env.LOGBOOK_KDF_ITERATIONS || 600000),
     maxRecordBytes: Number(env.LOGBOOK_MAX_RECORD_BYTES || 65536),
     maxVaultBytes: Number(env.LOGBOOK_MAX_VAULT_BYTES || 52428800),
-    vapidPublic: env.LOGBOOK_VAPID_PUBLIC || null,
-    vapidPrivate: env.LOGBOOK_VAPID_PRIVATE || null,
+    vapidPublic: secret(env, 'LOGBOOK_VAPID_PUBLIC'),
+    vapidPrivate: secret(env, 'LOGBOOK_VAPID_PRIVATE'),
     vapidSubject: env.LOGBOOK_VAPID_SUBJECT || 'mailto:nobody@example.invalid',
     // Every host this server will POST to. Narrow by default; a self-hoster
     // testing against something of their own has to say so out loud.

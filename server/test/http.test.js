@@ -58,6 +58,38 @@ describe('the http surface', () => {
   });
 });
 
+describe('configuration', () => {
+  test('a secret is read from the file a deployment mounts it at', async () => {
+    const { configure } = await import('../src/index.js');
+    const { writeFileSync, mkdtempSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = mkdtempSync(join(tmpdir(), 'logbook-secret-'));
+    const file = join(dir, 'vapid');
+    // Trailing newline included, because that is how every secret manager
+    // writes one and an unreadable key is a server that never delivers.
+    writeFileSync(file, 'the-private-half\n');
+
+    const fromFile = configure({ LOGBOOK_VAPID_PRIVATE_FILE: file });
+    assert.equal(fromFile.vapidPrivate, 'the-private-half');
+
+    // The file wins, so moving to a mounted secret needs no renaming.
+    const both = configure({ LOGBOOK_VAPID_PRIVATE_FILE: file, LOGBOOK_VAPID_PRIVATE: 'stale' });
+    assert.equal(both.vapidPrivate, 'the-private-half');
+
+    assert.equal(configure({ LOGBOOK_VAPID_PRIVATE: 'plain' }).vapidPrivate, 'plain');
+    assert.equal(configure({}).vapidPrivate, null);
+  });
+
+  test('a secret file that cannot be read stops the server rather than starting it deaf', async () => {
+    const { configure } = await import('../src/index.js');
+    // Starting without it means accepting subscriptions and delivering nothing,
+    // which looks like working.
+    assert.throws(() => configure({ LOGBOOK_VAPID_PRIVATE_FILE: '/nope/not/here' }),
+      /cannot read LOGBOOK_VAPID_PRIVATE_FILE/);
+  });
+});
+
 describe('serving the app from the same origin', () => {
   let s;
   before(async () => { s = await start({ openRegistration: true, staticRoot: repoRoot }); });

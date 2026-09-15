@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logbook
+  labels:
+    app: logbook
+spec:
+  # Exactly one, because the database is SQLite: two writers corrupt the file
+  # and two schedulers send every notification twice.
+  replicas: 1
+  strategy:
+    # Recreate, not RollingUpdate. A rolling update starts the new pod before
+    # the old one goes, which is two processes on one ReadWriteOnce volume —
+    # and on most storage classes the new pod simply never schedules, which
+    # looks like a stuck deploy rather than the constraint it is.
+    type: Recreate
+  selector:
+    matchLabels:
+      app: logbook
+  template:
+    metadata:
+      labels:
+        app: logbook
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        # So the mounted volume is writable by that user. Without it the
+        # database cannot be created and the pod crash-loops on first start.
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      # Nothing is held in memory that a restart would lose, so this is
+      # politeness rather than correctness.
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: logbook
+          image: logbook-server:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: logbook-config
+          env:
+            - name: LOGBOOK_VAPID_PUBLIC
+              valueFrom:
+                secretKeyRef:
+                  name: logbook-vapid
+                  key: public
+            # A file rather than a variable, so the private half is not in the
+            # pod spec for anything that can read one.
+            - name: LOGBOOK_VAPID_PRIVATE_FILE
+              value: /run/secrets/vapid/private
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            # Opens the database, so a pod whose volume is not yet writable
+            # says so instead of taking traffic and failing every write.
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 2
+            failureThreshold: 15
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: vapid
+              mountPath: /run/secrets/vapid
+              readOnly: true
+            # The root filesystem is read-only; node wants somewhere to write.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: logbook-data
+        - name: vapid
+          secret:
+            secretName: logbook-vapid
+            items:
+              - key: private
+                path: private
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Mi

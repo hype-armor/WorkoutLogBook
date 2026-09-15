@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: logbook-data
+spec:
+  accessModes:
+    # One writer. ReadWriteMany would suggest this scales sideways, and SQLite
+    # over a shared mount is how the database is corrupted rather than shared.
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
