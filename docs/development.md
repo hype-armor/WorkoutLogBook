@@ -44,6 +44,29 @@ npm run serve:sync      # the server itself; see docs/server.md for the environm
 ```
 
 
+## Hosting the app
+
+GitHub Pages serves it from `main`, and there is a Vercel project linked to the
+same repository. Both are static hosts, which is all the app needs: there is no
+server in this half of it.
+
+Vercel builds with `deploy/vercel-build.mjs`, which assembles `dist/` from the
+allowlist the server's static handler exports — the same list the service worker
+precaches. Without it a static deployment of this repository publishes the whole
+of it at the app's own domain, test suite included; none of that is secret,
+since the repository is public, but the app is the app.
+
+**The sync server cannot run on Vercel**, and not for want of configuration.
+It keeps a SQLite file on a disk that has to still be there next week, and it
+polls once a second for alerts that come due — neither of which a serverless
+function has. It wants the container in `server/Dockerfile`, on something that
+stays running: a VPS, a home server, a Raspberry Pi under k3s.
+
+Pointing the two at each other is what the **Server** field in the sync setup
+sheet is for. Put the server's address in it, and set `LOGBOOK_ALLOWED_ORIGINS`
+on the server to the host the app is served from — same-origin needs neither,
+which is why the single container is the simpler deployment.
+
 ## Running it
 
 Open `index.html` directly and it works — logging, plate math and history all
