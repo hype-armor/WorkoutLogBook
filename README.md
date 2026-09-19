@@ -177,6 +177,25 @@ same loadable number collapse into one. A ramp is lifting convention rather than
 a finding, and this is here to save taps on something you were going to do
 anyway.
 
+## The order of a day
+
+Each day opens with the lift its tag names and ends with isolation or core:
+heaviest and most technical while you are fresh, arms and abs when you are not.
+Upper A alternates push and pull through its compounds so each has a rest while
+the other works.
+
+That was true of three days out of four. Upper B was tagged *Vertical pull* and
+opened with a weighted dip, which is a push — the only day whose first row
+disagreed with its own label. The pull-up leads it now: it is the day the
+vertical pull is the point rather than the accessory, and `4 × max` is the one
+target in the program measured by what you have left rather than by a number,
+which makes it the set that most wants fresh arms.
+
+The order is not decoration. The **next** marker and the panel that hands you on
+after a finished exercise both walk the day's list in sequence, so moving a row
+changes what the app points you at. A test pins the convention rather than the
+comment.
+
 ## Which session is next
 
 <img src="docs/screens/days.webp" alt="The session picker open: four day cards, Lower A marked Next and done today, Upper A four days ago, Lower B two days ago, Upper B seven days ago." width="240">
@@ -501,7 +520,7 @@ instead of failing quietly.
 ## Built like this
 
 Markup, styles and logic in one file; a service worker that precaches the shell
-and keeps the exercise photos in a cache of their own; 344 Playwright tests that
+and keeps the exercise photos in a cache of their own; 349 Playwright tests that
 read real bounding boxes at phone sizes; and Release Please, which tags the
 version and rewrites it in `sw.js` — the thing that makes an installed phone
 notice a release at all. The deploy refuses to publish a build the suite rejects.

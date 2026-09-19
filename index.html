@@ -1397,6 +1397,12 @@ const KEY = 'logbook-v1';
 const APP_VERSION = '1.21.0'; // x-release-please-version
 
 /* ---------- program ---------- */
+// Each day leads with the lift its tag names, and ends with isolation or core:
+// heaviest and most technical while you are fresh, arms and abs when you are
+// not. Upper A alternates push and pull through its compounds so each has a
+// rest while the other works. The order is not decoration — the "next" marker
+// and the panel that hands you on after a finished exercise both walk this
+// list in sequence, so moving a row changes what the app points you at.
 const DEFAULT_PROGRAM = [
   {id:'A', name:'Lower A', tag:'Deadlift focus', ex:[
     ['Deadlift','4 × 4'],['Leg press','3 × 10'],['Romanian deadlift','3 × 8'],
@@ -1408,7 +1414,12 @@ const DEFAULT_PROGRAM = [
     ['Front squat','4 × 8'],['Trap bar deadlift','3 × 6'],['Bulgarian split squat','4 × 10'],
     ['Calf raise','3 × 15'],['Dead bug','3 × 10']]},
   {id:'D', name:'Upper B', tag:'Vertical pull', ex:[
-    ['Weighted dip','4 × 8'],['Pull-up','4 × max'],['Seated DB press','3 × 10'],
+    // Pull-up ahead of the dip: this is the day the vertical pull is the point
+    // rather than the accessory, and the other three days all open with the
+    // lift their tag names. A set written "max" is also the one that most wants
+    // fresh arms — it is the only target in the program measured by what you
+    // have left rather than by a number.
+    ['Pull-up','4 × max'],['Weighted dip','4 × 8'],['Seated DB press','3 × 10'],
     ['Cable row','3 × 12'],['Barbell curl','3 × 12'],['Face pull','3 × 15']]}
 ];
 

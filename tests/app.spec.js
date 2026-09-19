@@ -3250,3 +3250,56 @@ test.describe('starting from a template', () => {
     expect(errs).toEqual([]);
   });
 });
+
+test.describe('the order of a day', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('every day opens with the lift its tag names', async () => {
+    // Upper B was tagged "Vertical pull" and opened with a dip, which is a
+    // push — the only day whose first row disagreed with its own label.
+    const leads = await page.evaluate(() =>
+      program().map(d => [d.name, d.tag, d.ex[0][0]]));
+    expect(leads).toEqual([
+      ['Lower A', 'Deadlift focus', 'Deadlift'],
+      ['Upper A', 'Press focus', 'Overhead press'],
+      ['Lower B', 'Squat focus', 'Front squat'],
+      ['Upper B', 'Vertical pull', 'Pull-up'],
+    ]);
+  });
+
+  test('and the order is what the app points you at, not just how it reads', async () => {
+    await chooseDay(page, 'D');
+    // the "next" marker and the hand-off panel both walk the list in sequence
+    await expect(page.locator('.ex.next')).toHaveAttribute('data-ex', 'Pull-up');
+    expect(await page.evaluate(() => nextExercise(state.date, 'Pull-up'))).toBe('Weighted dip');
+  });
+
+  test('isolation and core come last, never before a compound', async () => {
+    // the other half of the convention: heaviest while you are fresh, arms and
+    // abs when you are not
+    const trailing = await page.evaluate(() =>
+      program().map(d => d.ex[d.ex.length - 1][0]));
+    expect(trailing).toEqual(['Suitcase carry', 'Triceps pushdown', 'Dead bug', 'Face pull']);
+  });
+
+  test('the default and the template it doubles as cannot drift apart', async () => {
+    expect(await page.evaluate(() =>
+      TEMPLATES.find(t => t.id === 'upperlower4').days === DEFAULT_PROGRAM)).toBe(true);
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
