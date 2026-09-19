@@ -264,6 +264,11 @@
     -webkit-font-smoothing:antialiased;
     padding-bottom:calc(96px + var(--safe-bottom));
   }
+  /* The floating timer sits over whatever the page ends with, which on the
+     Train tab is the Finish button. While one is up the page ends above the
+     bar instead of above the nav — and the bar's height depends on how many
+     clocks are running, so the space it needs is measured rather than guessed. */
+  body.resting{padding-bottom:calc(70px + var(--restpad, 0px) + var(--safe-bottom))}
   /* Every number in the app is compared against another number, so they all
      get fixed-width digits. */
   input,.count,.metric b,.setrow,.clock,.sessmeta,.pmtext,.datestamp{font-variant-numeric:tabular-nums}
@@ -643,10 +648,6 @@
   }
   .pairrow select{flex:1;min-width:0;background:var(--surface-3)}
   .rest .mid.jump{cursor:pointer}
-  .rest.transition{border-color:var(--p35)}
-  .rest.transition .fill{background:var(--p35)}
-  .rest.transition.ready .clock{color:var(--p35)}
-  .rest.transition.ready .fill{background:var(--p35)}
 
   /* rest timer */
   .rest, .nextup{
@@ -705,6 +706,22 @@
   .rest .track{height:4px;background:var(--bg);border-radius:999px;overflow:hidden}
   .rest .fill{height:100%;width:0;background:var(--accent);border-radius:999px;transition:width .3s linear}
   .rest.ready .fill{background:var(--good)}
+  /* The clocks that are not on the bar. They scroll rather than wrap: the bar
+     has to keep its height, and three at once is already a long superset. */
+  .rest .others{display:flex;gap:6px;margin-top:7px;overflow-x:auto;
+    scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .rest .others::-webkit-scrollbar{display:none}
+  .rest .others.hide{display:none}
+  .tchip{
+    flex:none;display:flex;align-items:center;gap:5px;
+    background:var(--surface-3);border:1px solid var(--line-2);border-radius:999px;
+    color:var(--ink-2);font-family:inherit;font-size:0.6875rem;font-weight:600;
+    padding:3px 9px;max-width:100%;cursor:pointer;
+  }
+  .tchip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tchip b{font-variant-numeric:tabular-nums;color:var(--ink)}
+  .tchip.ready{border-color:var(--good);color:var(--good)}
+  .tchip.ready b{color:var(--good)}
   .rest .target{background:none;border:0;color:var(--ink-2);font-family:inherit;
     font-size:0.75rem;font-weight:620;letter-spacing:-.005em;cursor:pointer;padding:2px 0;white-space:nowrap}
   .rest .x{background:none;border:0;color:var(--ink-3);font-size:1.25rem;line-height:1;
@@ -1298,10 +1315,7 @@
     <div class="hint" id="bwhistory"></div>
 
     <div class="eyebrow">Timers</div>
-    <label class="f"><span class="lab">Superset transition</span>
-      <select id="transel"></select></label>
-
-    <label class="f" style="margin-top:16px"><span class="lab">When a rest timer ends</span>
+    <label class="f"><span class="lab">When a rest timer ends</span>
       <select id="alertsel"></select></label>
     <div class="hint hide" id="alerthint">This browser gives a web page no way to
       vibrate the phone, so only sound is offered.</div>
@@ -1368,6 +1382,7 @@
       <button class="target" id="resttarget">3:00 target</button>
     </div>
     <div class="track"><div class="fill" id="restfill"></div></div>
+    <div class="others hide" id="restothers"></div>
   </div>
   <button class="x" id="restclose" aria-label="Dismiss rest timer">&#215;</button>
 </div>
@@ -1533,7 +1548,6 @@ const REST_DEFAULT = {
   'Suitcase carry':90,'Dead bug':60
 };
 const REST_OPTIONS = [60,90,120,150,180,210,240,300];
-const TRANSITION_OPTIONS = [15,20,30,45,60,90];
 
 // What a finished rest timer does. A gym is either too loud to hear a chime or
 // quiet enough that one is rude, so this needs to be a real choice.
@@ -1671,9 +1685,9 @@ let pendingWorker = null, installPrompt = null;
 
 function blank(){
   return {v:5, sets:[], days:{}, pairs:{}, ex:{}, program:null,
-          settings:{units:'lb', plates:null, transition:30, bw:{lb:0,kg:0},
+          settings:{units:'lb', plates:null, bw:{lb:0,kg:0},
                     lastDay:'A', alert:'both', painSites:['lower-back']},
-          rest:null, rev:{}};
+          rest:null, timers:null, rev:{}};
 }
 
 /* ---------- record identity and clocks ---------- */
@@ -3766,7 +3780,6 @@ function renderPlateMath(){
 }
 
 /* ---------- supersets ---------- */
-const TRANSITION = 30;
 const partnerOf = ex => db.pairs?.[ex] || null;
 
 function setPair(a, b){
@@ -3796,8 +3809,16 @@ function renderPairSelect(){
   $('#pairrow').classList.toggle('hide', !on);
 }
 
-/* ---------- rest timer ---------- */
-let rest = {start:0, ex:'', target:180, alerted:false, tick:null, jump:null, mode:'rest', ac:null};
+/* ---------- rest timers ---------- */
+// One clock per exercise, all running at once. A superset is two exercises
+// resting at the same time — logging the cable row does not mean the chest
+// press is ready again, and a single timer had to pick one of them to be
+// about. The bar shows the clock for the exercise you are looking at; the
+// others wait beside it as chips and say when they are up.
+let timers = {};        // exercise -> {start, target, jump, alerted}
+let restTick = null;    // one interval renders every timer
+let restAc = null;      // the shared AudioContext, warmed inside a tap
+let ticking = false;    // a tick can retire a timer; do not re-enter
 let wakeLock = null;
 
 const mmss = s => Math.floor(s/60) + ':' + String(Math.floor(s%60)).padStart(2,'0');
@@ -3832,11 +3853,13 @@ const alertMode = () => {
 const wantsSound = () => alertMode() === 'both' || alertMode() === 'sound';
 const wantsBuzz  = () => alertMode() === 'both' || alertMode() === 'vibrate';
 
-// `short` is the superset transition, which gets one beep rather than two.
-function fireAlert(short){
-  if(wantsSound()) chime(short ? [0] : [0, .18]);
-  if(wantsBuzz() && navigator.vibrate) navigator.vibrate(short ? [90] : [130,70,130]);
-  notifyRestDone(short);
+// One alert, for the exercise whose rest just ended. There used to be a
+// quieter variant for the superset transition, which no longer exists: both
+// halves of a pair now rest in full, at the same time.
+function fireAlert(ex){
+  if(wantsSound()) chime([0, .18]);
+  if(wantsBuzz() && navigator.vibrate) navigator.vibrate([130,70,130]);
+  notifyRestDone(ex);
 }
 
 // The Notification constructor has never existed on iOS, which is the platform
@@ -3856,13 +3879,13 @@ if('serviceWorker' in navigator && location.protocol.startsWith('http')){
 
 // Only worth raising when you are looking at something else; on screen the
 // timer already turned green.
-function notifyRestDone(short){
+function notifyRestDone(ex){
   if(!db.settings.notify) return;
   if(typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
   if(document.visibilityState === 'visible') return;
-  const title = short ? 'Go now' : 'Rest complete';
+  const title = 'Rest complete';
   const opts = {
-    body: rest.ex || 'Next set',
+    body: ex || 'Next set',
     tag: 'logbook-rest',      // replaces rather than stacks
     icon: 'icon-192.png',
     silent: alertMode() === 'silent'
@@ -3901,73 +3924,99 @@ async function askNotify(on){
 function chime(times){
   try{
     const AC = window.AudioContext || window.webkitAudioContext; if(!AC) return;
-    rest.ac ||= new AC();
-    if(rest.ac.state === 'suspended') rest.ac.resume();
+    restAc ||= new AC();
+    if(restAc.state === 'suspended') restAc.resume();
     (times || [0, .18]).forEach((offset, i)=>{
-      const o = rest.ac.createOscillator(), g = rest.ac.createGain();
-      const t0 = rest.ac.currentTime + offset;
+      const o = restAc.createOscillator(), g = restAc.createGain();
+      const t0 = restAc.currentTime + offset;
       o.frequency.value = i ? 880 : 660; o.type = 'sine';
       g.gain.setValueAtTime(0.0001, t0);
       g.gain.exponentialRampToValueAtTime(0.22, t0 + .015);
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + .16);
-      o.connect(g).connect(rest.ac.destination); o.start(t0); o.stop(t0 + .18);
+      o.connect(g).connect(restAc.destination); o.start(t0); o.stop(t0 + .18);
     });
   }catch(e){ /* audio unavailable — the visual state still changes */ }
 }
 
-// After a set: if this exercise is paired and its partner is a set behind,
-// the round isn't finished — give a short transition, not full rest.
+// Starting one clock never stops another. Pairing two exercises is a way of
+// resting both at once, so both have to be counted at once.
 function startRest(ex){
   hideNextUp();   // a live countdown supersedes it
   const partner = partnerOf(ex);
-  const mine = setsFor(state.date, ex).length;
-  const theirs = partner ? setsFor(state.date, partner).length : 0;
-  const midRound = !!partner && mine > theirs;
-
-  rest.mode   = midRound ? 'transition' : 'rest';
-  rest.jump   = midRound ? partner : null;
-  rest.ex     = midRound ? `${ex} → ${partner}` : ex;
-  rest.target = midRound
-    ? (db.settings.transition ?? TRANSITION)
-    : (partner ? Math.max(restTargetFor(ex), restTargetFor(partner)) : restTargetFor(ex));
-  rest.start = Date.now();
-  rest.alerted = false;
+  timers[ex] = {
+    start: Date.now(),
+    target: restTargetFor(ex),
+    // Mid-round on a superset the partner is where you are going next, and the
+    // bar is already under your thumb. Once it has caught up, it isn't.
+    jump: partner && setsFor(state.date, ex).length > setsFor(state.date, partner).length
+          ? partner : null,
+    alerted: false
+  };
   // warm up audio inside the tap that logged the set, so the chime can fire later
   if(wantsSound()){
     try{ const AC = window.AudioContext||window.webkitAudioContext;
-         if(AC){ rest.ac ||= new AC(); rest.ac.resume(); } }catch(e){}
+         if(AC){ restAc ||= new AC(); restAc.resume(); } }catch(e){}
   }
   requestWake();
   showRest();
   persistRest();
-  // The phone may be in a pocket before this timer ends, and nothing on it will
-  // be running when it does.
-  alertSchedule(rest.start + rest.target * 1000,
-    midRound ? 'Go now' : 'Rest complete', rest.ex || 'Next set');
+  scheduleNextAlert();
 }
 
 function showRest(){
   dockRest();
-  $('#rest').classList.add('show');
-  $('#rest').classList.toggle('transition', rest.mode === 'transition');
-  $('#restmid').classList.toggle('jump', !!rest.jump);
-  clearInterval(rest.tick);
-  rest.tick = setInterval(tickRest, 250);
+  clearInterval(restTick);
+  restTick = setInterval(tickRest, 250);
   tickRest();
 }
 
+// The clock the bar is showing: the exercise on screen if it is resting — that
+// is the one you are asking about — and otherwise whichever is closest to being
+// up, because that is the one you are about to need.
+function focusTimer(){
+  if(exerciseScreenOpen() && timers[state.ex]) return state.ex;
+  let best = null, bestLeft = Infinity;
+  for(const [ex, t] of Object.entries(timers)){
+    const left = t.target - (Date.now() - t.start)/1000;
+    if(left < bestLeft){ bestLeft = left; best = ex; }
+  }
+  return best;
+}
+
 function persistRest(){
-  db.rest = rest.start ? {start:rest.start, target:rest.target, ex:rest.ex,
-                          mode:rest.mode, jump:rest.jump} : null;
+  const live = Object.entries(timers).map(([ex, t]) =>
+    [ex, {start:t.start, target:t.target, jump:t.jump}]);
+  db.timers = live.length ? Object.fromEntries(live) : null;
+  db.rest = null;   // the single-timer field this replaced
   save();
 }
 
-function stopRest(){
-  clearInterval(rest.tick); rest.tick = null; rest.start = 0;
-  $('#rest').classList.remove('show','ready','transition');
-  releaseWake();
+// The phone holds one scheduled alert, so it goes to the timer that comes up
+// first. The rest are announced by the app itself, which is open, because the
+// second half of a superset is the reason you are still looking at it.
+function scheduleNextAlert(){
+  let soon = null, when = Infinity;
+  for(const [ex, t] of Object.entries(timers)){
+    const at = t.start + t.target * 1000;
+    if(at > Date.now() && at < when){ when = at; soon = ex; }
+  }
+  if(soon) alertSchedule(when, 'Rest complete', soon);
+  else alertCancel();
+}
+
+// No argument stops every timer — the session is over. A name stops one.
+function stopRest(ex){
+  if(typeof ex === 'string') delete timers[ex]; else timers = {};
+  if(!Object.keys(timers).length){
+    clearInterval(restTick); restTick = null;
+    $('#rest').classList.remove('show','ready');
+    othersKey = ''; $('#restothers').innerHTML = '';
+    padForRest();
+    releaseWake();
+  }
   persistRest();
-  alertCancel();
+  scheduleNextAlert();
+  if(restTick && !ticking) tickRest();
 }
 
 // The alert fires from a 250ms interval on this page, so a phone that suspended
@@ -3990,35 +4039,84 @@ function lateLabel(secs){
 // A rest left running long past its target belongs to a session that is over.
 // It used to be dropped in silence, which is how you come back to a phone that
 // has quietly forgotten what it was counting.
-function finishLate(secs){
-  const ex = rest.ex, short = rest.mode === 'transition';
-  stopRest();
-  toast(`${short ? 'Transition' : 'Rest'}${ex ? ' after ' + ex : ''} finished ${lateLabel(secs)}`);
+function finishLate(ex, secs){
+  stopRest(ex);
+  toast(`Rest${ex ? ' after ' + ex : ''} finished ${lateLabel(secs)}`);
   announce(`Rest finished ${lateLabel(secs)}`);
 }
 
-function tickRest(){
-  if(!rest.start) return;
-  const el = (Date.now() - rest.start)/1000;
-  $('#restclock').textContent = mmss(el);
-  $('#restex').textContent = rest.ex;
-  $('#resttarget').textContent = rest.mode === 'transition' ? 'Go now' : mmss(rest.target) + ' target';
-  $('#restfill').style.width = Math.min(100, el/rest.target*100) + '%';
-  const ready = el >= rest.target;
-  $('#rest').classList.toggle('ready', ready);
-  if(ready && !rest.alerted){
-    rest.alerted = true;
-    const late = lateLabel(el - rest.target);
-    // Only chime for a rest that finished while you were looking. Sounding the
-    // alert on the way back in is an alarm for something that already happened.
-    if(!late) fireAlert(rest.mode === 'transition');
-    // The clock itself is aria-live="off"; this is the one moment worth saying.
-    announce(late ? `Rest finished ${late}`
-      : rest.mode === 'transition' ? 'Go now' : 'Rest complete');
-    if(late) toast(`Rest finished ${late}`);
+// The timers that are not on the bar. Ordered by when they come up, so the one
+// you need next is nearest the clock, and rebuilt only when the names change —
+// a row of buttons replaced four times a second cannot be tapped.
+let othersKey = '';
+function renderRestOthers(focus, now){
+  const row = $('#restothers');
+  const others = Object.entries(timers)
+    .filter(([ex]) => ex !== focus)
+    .sort((a, b) => (a[1].start + a[1].target*1000) - (b[1].start + b[1].target*1000));
+  const key = others.map(([ex]) => ex).join('|');
+  if(key !== othersKey){
+    othersKey = key;
+    row.innerHTML = others.map(([ex]) =>
+      `<button class="tchip" data-timer="${esc(ex)}" aria-label="Go to ${esc(ex)}">`
+      + `<span>${esc(ex)}</span> <b>0:00</b></button>`).join('');
+    row.classList.toggle('hide', !others.length);
   }
-  // Long past its target: the session it belonged to is over.
-  if(el > rest.target + 900) finishLate(el - rest.target);
+  others.forEach(([, t], i) => {
+    const b = row.children[i]; if(!b) return;
+    const el = (now - t.start)/1000;
+    b.querySelector('b').textContent = mmss(el);
+    b.classList.toggle('ready', el >= t.target);
+  });
+}
+
+function tickRest(){
+  if(ticking) return;
+  ticking = true;
+  try{
+    const now = Date.now();
+    // Sweep first: anything a quarter of an hour past its target belongs to a
+    // session that is over, whichever exercise it was counting.
+    for(const [ex, t] of Object.entries(timers)){
+      const el = (now - t.start)/1000;
+      if(el > t.target + 900) finishLate(ex, el - t.target);
+    }
+    // Every timer that came up gets said, not only the one on the bar: the
+    // whole point of a second clock is that it finishes while you are watching
+    // the first.
+    let rang = false;
+    for(const [ex, t] of Object.entries(timers)){
+      const el = (now - t.start)/1000;
+      if(el < t.target || t.alerted) continue;
+      t.alerted = true;
+      rang = true;
+      const late = lateLabel(el - t.target);
+      // Only chime for a rest that finished while you were looking. Sounding
+      // the alert on the way back in is an alarm for something already past.
+      if(!late) fireAlert(ex);
+      // The clock itself is aria-live="off"; this is the one moment worth saying.
+      announce(late ? `Rest after ${ex} finished ${late}` : `${ex} rest complete`);
+      if(late) toast(`Rest after ${ex} finished ${late}`);
+    }
+    // The phone's one alert now belongs to whichever clock is next.
+    if(rang) scheduleNextAlert();
+
+    const bar = $('#rest'), ex = focusTimer();
+    if(!ex){ bar.classList.remove('show','ready'); padForRest(); return; }
+    // The "what's next" card takes the same slot and supersedes the bar. The
+    // clocks keep running underneath it; dismissing it brings them back.
+    if($('#nextup').classList.contains('show')){ bar.classList.remove('show'); padForRest(); return; }
+    const t = timers[ex], el = (now - t.start)/1000;
+    bar.classList.add('show');
+    $('#restclock').textContent = mmss(el);
+    $('#restex').textContent = t.jump ? `${ex} → ${t.jump}` : ex;
+    $('#resttarget').textContent = mmss(t.target) + ' target';
+    $('#restfill').style.width = Math.min(100, el/t.target*100) + '%';
+    bar.classList.toggle('ready', el >= t.target);
+    $('#restmid').classList.toggle('jump', !!t.jump);
+    renderRestOthers(ex, now);
+    padForRest();
+  } finally { ticking = false; }
 }
 
 /* ---------- sheets ---------- */
@@ -4111,6 +4209,22 @@ function dockRest(){
       el.classList.remove('docked');
     }
   }
+  padForRest();
+}
+
+// How much room the floating bar is taking out of the bottom of the page.
+// Recomputed only when the answer can have changed: reading a height is a
+// layout, and this runs behind a timer that ticks four times a second.
+let padKey = '';
+function padForRest(){
+  const up = [$('#rest'), $('#nextup')].find(e => e.classList.contains('show'));
+  const floating = up && !up.classList.contains('docked') ? up : null;
+  const key = floating ? floating.id + '|' + othersKey : '';
+  if(key === padKey) return;
+  padKey = key;
+  document.body.style.setProperty('--restpad',
+    floating ? (floating.offsetHeight + 14) + 'px' : '0px');
+  document.body.classList.toggle('resting', !!floating);
 }
 
 // The next unfinished exercise below the one just finished, wrapping to the top
@@ -4143,12 +4257,17 @@ function showNextUp(ex){
   $('#nextupgo').setAttribute('aria-label',
     next ? `Go to ${next}` : 'Back to the exercise list');
   $('#nextup').classList.add('show');
+  $('#rest').classList.remove('show');   // one card in the slot at a time
+  padKey = '';                           // the two are different heights
   dockRest();
   announce(`${ex} finished.` + (next ? ` Next up, ${next}.` : ' Last exercise of the day.'));
 }
 function hideNextUp(){
   $('#nextup').classList.remove('show');
   nextUpFor = null;
+  padForRest();
+  // Whatever was still resting behind the card gets the slot back.
+  if(restTick) tickRest();
 }
 
 function openPanel(el, focusEl){
@@ -4186,7 +4305,7 @@ function closePanel(el, pickFocus){
     $('#scrim').classList.remove('open');
     document.body.classList.remove('sheetopen');
     unlockScroll();
-    if(!rest.start) releaseWake();
+    if(!Object.keys(timers).length) releaseWake();
   }
   dockRest();
   let back = el._lastFocus;
@@ -4304,7 +4423,7 @@ function hideExerciseScreen(){
   document.querySelector('nav').classList.remove('hide');
   if(!sheetStack.length) unlockScroll();
   dockRest();
-  if(!rest.start && !sheetStack.length) releaseWake();
+  if(!Object.keys(timers).length && !sheetStack.length) releaseWake();
 }
 
 function closeSheet(){
@@ -4867,8 +4986,10 @@ $('#logset').addEventListener('click', ()=>{
     save(); renderSetList(); renderSheetSub(); toast('Set updated');
     return;
   }
-  // actual rest since the previous set, when the timer was running
-  const restTaken = rest.start ? Math.round((Date.now()-rest.start)/1000) : null;
+  // Actual rest since the previous set of THIS exercise. On a superset the
+  // other half's clock is also running and is a different number entirely.
+  const mineRunning = timers[state.ex];
+  const restTaken = mineRunning ? Math.round((Date.now()-mineRunning.start)/1000) : null;
   const now = Date.now();
   // Still adding sets, so the session is not finished after all.
   if(db.days[state.date]?.done) delete db.days[state.date].done;
@@ -4889,7 +5010,7 @@ $('#logset').addEventListener('click', ()=>{
     toast(goal && done <= goal ? `Set ${done} of ${goal}` : `Set ${done} logged`);
     // A rest timer after the set that finishes an exercise is timing a rest
     // before nothing. Say what is next instead.
-    if(goal && done >= goal){ stopRest(); showNextUp(state.ex); }
+    if(goal && done >= goal){ stopRest(state.ex); showNextUp(state.ex); }
     else startRest(state.ex);
   }
   // Deliberately no focus() here: it opens the numeric keyboard over the
@@ -4940,27 +5061,38 @@ $('#close').addEventListener('click', closeSheet);
 $('#scrim').addEventListener('click', closeTop);
 
 /* ---------- events: rest timer ---------- */
+// The target belongs to the exercise the bar is showing, and so does the
+// setting this writes back — never to whatever was resting a moment ago.
 $('#resttarget').addEventListener('click', ()=>{
-  if(rest.mode === 'transition'){ stopRest(); return; }
-  const i = REST_OPTIONS.indexOf(rest.target);
-  rest.target = REST_OPTIONS[(i + 1) % REST_OPTIONS.length];
-  const base = rest.ex.split(' → ')[0];
-  (db.ex[base] ||= {}).rest = rest.target;
-  rest.alerted = (Date.now() - rest.start)/1000 >= rest.target;
-  persistRest(); tickRest();
+  const ex = focusTimer(); if(!ex) return;
+  const t = timers[ex];
+  t.target = REST_OPTIONS[(REST_OPTIONS.indexOf(t.target) + 1) % REST_OPTIONS.length];
+  (db.ex[ex] ||= {}).rest = t.target;
+  t.alerted = (Date.now() - t.start)/1000 >= t.target;
+  persistRest();
   // Otherwise the phone still buzzes at the old deadline, which is now a lie.
-  alertSchedule(rest.start + rest.target * 1000, 'Rest complete', rest.ex || 'Next set');
+  scheduleNextAlert();
+  tickRest();
 });
 $('#restmid').addEventListener('click', ()=>{
-  if(!rest.jump) return;
-  const day = dayById(state.day);
-  if(day.ex.some(([n]) => n === rest.jump)) openSheet(rest.jump);
+  const ex = focusTimer(), jump = ex && timers[ex].jump;
+  if(jump && dayById(state.day).ex.some(([n]) => n === jump)) openSheet(jump);
 });
-$('#restclose').addEventListener('click', stopRest);
+// A chip is the other half of the superset, still counting. Tapping it opens
+// that exercise, which is also what puts its clock on the bar.
+$('#restothers').addEventListener('click', e=>{
+  const chip = e.target.closest('[data-timer]'); if(!chip) return;
+  const ex = chip.dataset.timer;
+  if(dayById(state.day).ex.some(([n]) => n === ex)) openSheet(ex);
+});
+// Dismissing the bar dismisses the clock it is showing, not the others.
+$('#restclose').addEventListener('click', ()=>{
+  const ex = focusTimer(); if(ex) stopRest(ex);
+});
 document.addEventListener('visibilitychange', ()=>{
   if(document.hidden) return;
   tickRest();
-  if(rest.start) requestWake();
+  if(Object.keys(timers).length) requestWake();
   // Back in the app: whatever the other device did while this one was away is
   // worth having before the next set is logged against it.
   syncLater(400);
@@ -5192,9 +5324,6 @@ function openSettings(){
   $('#bwlab').textContent = `Bodyweight (${u.label})`;
   $('#bwinput').value = bw() || '';
   renderBwHint();
-  $('#transel').innerHTML = TRANSITION_OPTIONS.map(v =>
-    `<option value="${v}">${v}s</option>`).join('');
-  $('#transel').value = String(db.settings.transition ?? TRANSITION);
   $('#alertsel').innerHTML = alertOptions().map(([v,label]) =>
     `<option value="${v}">${esc(label)}</option>`).join('');
   $('#alertsel').value = alertMode();
@@ -5275,7 +5404,7 @@ $('#alertsel').addEventListener('change', e=>{
   save();
   // Preview on change: picking "sound only" should tell you what that sounds
   // like now, not in three minutes.
-  fireAlert(false);
+  fireAlert();
 });
 
 $('#notifybox').addEventListener('change', async e=>{
@@ -5284,7 +5413,7 @@ $('#notifybox').addEventListener('change', async e=>{
 });
 
 $('#testalert').addEventListener('click', ()=>{
-  fireAlert(false);
+  fireAlert();
   const label = (ALERT_OPTIONS.find(([v]) => v === alertMode()) || [])[1] || '';
   toast(alertMode() === 'silent' ? 'Alerts are silent' : label);
 });
@@ -5485,10 +5614,6 @@ function syncLater(ms = 4000){
   clearTimeout(syncSoon);
   syncSoon = setTimeout(()=>{ syncOnce().then(renderSyncStatus); }, ms);
 }
-
-$('#transel').addEventListener('change', e=>{
-  db.settings.transition = +e.target.value; save();
-});
 
 $('#resetprog').addEventListener('click', ()=>{
   if(!confirm('Reset all four days to the default program? Logged sets are kept.')) return;
@@ -5912,19 +6037,22 @@ let persistentStorage = null;
   // first thing that happens after the other device logged something.
   syncLater(1200);
 
-  const r = db.rest;
-  if(r && r.start){
-    const el = (Date.now() - r.start) / 1000;
-    if(el < r.target + 900){
-      Object.assign(rest, r);
+  // Clocks outlive the app being closed. A save from before per-exercise
+  // timers kept a single one under `rest`; it comes back as its own exercise's.
+  const saved = db.timers || (db.rest?.start
+    ? {[(db.rest.ex || '').split(' → ')[0] || 'Rest']: db.rest} : null);
+  if(saved){
+    for(const [ex, t] of Object.entries(saved)){
+      if(!t || !t.start) continue;
+      const el = (Date.now() - t.start) / 1000;
       // Left unalerted on purpose when it finished while away: the tick that
       // follows says how long ago rather than announcing it as news.
-      rest.alerted = false;
-      showRest();
-    } else {
-      db.rest = null;
-      toast(`Rest${r.ex ? ' after ' + r.ex : ''} finished ${lateLabel(el - r.target)}`);
+      if(el < t.target + 900) timers[ex] = {...t, alerted:false};
+      else toast(`Rest after ${ex} finished ${lateLabel(el - t.target)}`);
     }
+    // Either way the old single-timer field is written out of the save.
+    if(Object.keys(timers).length) showRest();
+    persistRest();
   }
 
   // Manifest shortcuts land here with ?view=history

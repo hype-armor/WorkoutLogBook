@@ -385,6 +385,28 @@ session still open, or a day whose targets carry no set count (`max` rather
 than `3 × max`), since without one there is no way to know how many sets are
 coming.
 
+## Two exercises resting at once
+
+A superset is two exercises resting at the same time. Every exercise keeps its
+own clock, so logging the cable row does not end the one the chest press is
+running — the press is not ready again until its own rest is up, and that is a
+different number from the row's.
+
+The bar shows the clock for the exercise you are looking at. The others wait
+beside it as chips, counting, and turn green when they come up; tapping one
+opens that exercise, which is also what puts its clock on the bar. The target
+button and the dismiss button act on the exercise named on the bar and on
+nothing else, so changing a rest target while two are running changes the one
+you can see.
+
+A phone can hold one scheduled alert, so it goes to whichever clock comes up
+first. The others are announced by the app itself, which is open — the second
+half of a superset is the reason you are still looking at it.
+
+Mid-round the bar reads `Chest press → Cable row` and taps through to the
+partner, because that is where you are going next. Once the partner has caught
+up it stops saying so.
+
 ## When the rest timer outlives the app
 
 The alert fires from a 250 ms interval on the page, so a phone that suspended
@@ -520,7 +542,7 @@ instead of failing quietly.
 ## Built like this
 
 Markup, styles and logic in one file; a service worker that precaches the shell
-and keeps the exercise photos in a cache of their own; 349 Playwright tests that
+and keeps the exercise photos in a cache of their own; 360 Playwright tests that
 read real bounding boxes at phone sizes; and Release Please, which tags the
 version and rewrites it in `sw.js` — the thing that makes an installed phone
 notice a release at all. The deploy refuses to publish a build the suite rejects.
