@@ -1018,6 +1018,7 @@
     <div class="eyebrow" id="trendlabel">Estimated max</div>
     <div class="bars" id="trendspan"></div>
   </div>
+  <div class="bars" id="trendmetric" style="margin:-2px 0 12px"></div>
   <div id="trends"></div>
   <div class="eyebrow hide" id="bwlabel">Bodyweight</div>
   <div class="card hide" id="bwcard"></div>
@@ -4498,14 +4499,23 @@ function sparkline(vals){
 }
 
 const TREND_SPANS = [[8,'8'],[20,'20'],[50,'50'],['all','All']];
+// What the trend cards plot. An estimated max says how strong the lift got; a
+// volume says how much work went into it. They answer different questions and
+// can move in opposite directions — a deload week is less volume at the same
+// max — so the app shows one at a time rather than averaging them into a score.
+const TREND_METRICS = [['max','Est. max'],['volume','Volume']];
+const trendMetric = () => db.settings.trendMetric === 'volume' ? 'volume' : 'max';
 
 function renderHistory(){
   const u = U();
   const span = state.trendSpan || 8;
-  $('#trendlabel').textContent = span === 'all'
-    ? 'Estimated max — every session' : `Estimated max — last ${span} sessions`;
+  const metric = trendMetric(), vol = metric === 'volume';
+  $('#trendlabel').textContent = (vol ? 'Volume' : 'Estimated max')
+    + (span === 'all' ? ' — every session' : ` — last ${span} sessions`);
   $('#trendspan').innerHTML = TREND_SPANS.map(([v,label]) =>
     `<button data-span="${v}" aria-pressed="${String(v)===String(span)}">${label}</button>`).join('');
+  $('#trendmetric').innerHTML = TREND_METRICS.map(([v,label]) =>
+    `<button data-metric="${v}" aria-pressed="${v===metric}">${label}</button>`).join('');
   // Sessions that hold any working set, qualifying or not, so a card can say
   // how much of the history it is actually drawing.
   const logged = {};
@@ -4513,9 +4523,19 @@ function renderHistory(){
 
   const byEx = {};
   db.sets.forEach(s=>{
+    const dist = kindOf(s.e) === 'distance';
+    if(vol){
+      // Volume keeps every set, warm-ups included: the warm-up weight was
+      // moved too, which is the same sum a session card reports. Distance has
+      // no load to multiply, so a carry totals the ground covered instead.
+      const val = dist ? s.r : loadOf(s) * s.r;
+      if(!val) return;
+      const days = (byEx[s.e] ||= {});
+      days[s.d] = (days[s.d] || 0) + val;
+      return;
+    }
     if(isWarmup(s)) return; // a ramp-up rep is not evidence of a max
     // Distance keeps every set: a carry has no proximity to failure to judge.
-    const dist = kindOf(s.e) === 'distance';
     if(!dist && !countsForMax(s)) return;
     const val = dist ? s.r : e1rm(s);
     if(!val) return;
@@ -4528,7 +4548,7 @@ function renderHistory(){
       // and the line under it are all describing the same series. Rounding only
       // the display would have the card read 55 to 60 while the badge worked
       // out the change from 57 to 60.2.
-      const round = kindOf(ex) === 'distance'
+      const round = (vol || kindOf(ex) === 'distance')
         ? ((v) => Math.round(v)) : ((v, d) => roundToStep(shownMax(ex, v, d), ex));
       return {ex, dates, vals: dates.map(d=>round(days[d], d)),
               logged: logged[ex] ? logged[ex].size : dates.length};
@@ -4551,16 +4571,22 @@ function renderHistory(){
         : cls==='flat' ? 'no clear change' : (pct>0?'+':'') + pct.toFixed(1) + '% over ' + vals.length + ' sessions';
       const k = kindOf(c.ex);
       const unit = k === 'distance' ? u.dist : u.label;
-      const what = k === 'distance' ? 'best distance'
+      const what = vol
+        ? (k === 'distance' ? `${unit} covered` : `${unit} moved`)
+        : k === 'distance' ? 'best distance'
         : k === 'bodyweight' ? 'est. max added ' + unit : 'est. max ' + unit;
+      // Volumes run into the thousands, where an unseparated number stops
+      // being readable at a glance.
+      const shown = vol ? now.toLocaleString() : now;
       return `<button class="card trendcard" data-ex="${esc(c.ex)}"
           aria-label="History for ${esc(c.ex)}">
         <h3>${esc(c.ex)}</h3>
-        <div class="metric"><b>${now}</b><small>${esc(what)}</small>
+        <div class="metric"><b>${shown}</b><small>${esc(what)}</small>
           <small class="delta ${cls}" style="margin-left:auto">${esc(label)}</small></div>
         ${sparkline(vals)}</button>`;
     });
   $('#trends').innerHTML = cards.length ? cards.join('')
+    : vol ? `<div class="empty">Nothing logged yet. Every set counts towards volume — warm-ups too, since you moved that weight as well.</div>`
     : `<div class="empty">Nothing to estimate from yet. A max is only estimated from sets taken to ${E1RM_MAX_RIR} reps in reserve or harder — further from failure the number moves on how you rated the set rather than on what you lifted. You still never have to test a true max.</div>`;
 
   // One series per site. Charting them together would put a knee and a lower
@@ -5929,8 +5955,14 @@ $('#exinfobtn').addEventListener('click', ()=>openExInfo(state.ex));
 $('#exinfoclose').addEventListener('click', ()=>closePanel($('#exinfo'), $('#exinfobtn')));
 $('#exinfodone').addEventListener('click', ()=>closePanel($('#exinfo'), $('#exinfobtn')));
 
+// The sheet behind a trend card follows the same toggle: opening a volume card
+// onto a column of estimated maxes would answer a question nobody asked.
+const dayVolume = (list, k) =>
+  Math.round(list.reduce((a, s) => a + (k === 'distance' ? s.r : loadOf(s) * s.r), 0));
+
 function openExHistory(ex){
-  const u = U(), k = kindOf(ex);
+  const u = U(), k = kindOf(ex), vol = trendMetric() === 'volume';
+  const unit = k === 'distance' ? u.dist : u.label;
   const mine = db.sets.filter(s => s.e === ex);
   const byDate = {};
   mine.forEach(s => (byDate[s.d] ||= []).push(s));
@@ -5944,7 +5976,10 @@ function openExHistory(ex){
   // subtract belongs to the set that produced the number.
   const bestShown = k === 'distance' ? Math.round(best)
     : roundToStep(Math.max(0, ...forMax.map(s => shownMax(ex, e1rm(s), s.d))), ex);
+  const bestDay = Math.max(0, ...dates.map(d => dayVolume(byDate[d], k)));
   $('#exhist-sub').textContent = !sessions ? 'Nothing logged yet'
+    : vol ? `${sessions} session${sessions===1?'':'s'} · best ${
+        bestDay.toLocaleString()} ${unit} in one`
     : `${sessions} session${sessions===1?'':'s'}` + (best
       ? ` · best ${k==='bodyweight' ? signed(bestShown) : bestShown} ${k==='distance'?u.dist:u.label}`
       : ` · nothing at ${E1RM_MAX_RIR} RIR or harder yet`);
@@ -5958,7 +5993,8 @@ function openExHistory(ex){
       return isWarmup(s) ? `<em>${esc(load)}</em>` : esc(load);
     }).join('  ');
     const work = list.filter(s => k === 'distance' ? !isWarmup(s) : countsForMax(s));
-    const top = work.length
+    const top = vol ? dayVolume(list, k).toLocaleString()
+      : work.length
       ? (k === 'distance' ? Math.round(Math.max(...work.map(s => s.r)))
                           : roundToStep(Math.max(...work.map(s => shownMax(ex, e1rm(s), s.d))), ex)) : null;
     return `<div class="exhistday">
@@ -5981,6 +6017,15 @@ $('#exhistdone').addEventListener('click', ()=>closePanel($('#exhist')));
 $('#trendspan').addEventListener('click', e=>{
   const b = e.target.closest('[data-span]'); if(!b) return;
   state.trendSpan = b.dataset.span === 'all' ? 'all' : +b.dataset.span;
+  renderHistory();
+});
+
+// Kept on the database rather than in `state`: which of the two you read is a
+// standing preference, unlike how far back you happen to be looking right now.
+$('#trendmetric').addEventListener('click', e=>{
+  const b = e.target.closest('[data-metric]'); if(!b) return;
+  db.settings.trendMetric = b.dataset.metric;
+  save();
   renderHistory();
 });
 

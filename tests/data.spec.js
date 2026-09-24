@@ -1538,3 +1538,121 @@ test.describe('estimated max', () => {
     await ctx.close();
   });
 });
+
+/* ---------- the other thing a history of an exercise can be ---------- */
+
+test.describe('volume', () => {
+  // An estimated max and a volume answer different questions, so they are
+  // built from different sets and can move in opposite directions.
+  const mk = (d, e, w, r, rir, i, over = {}) => ({ id: `${d}-${e}-${i}`,
+    t: Date.parse(d) + i * 1000, d, e, dy: 'A', w, r, rir, rest: 180, u: 'lb', ...over });
+
+  const open = async (browser, sets, settings = {}) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seed(page, blankDb({ sets, settings: { units: 'lb', bw: { lb: 0, kg: 0 },
+      lastDay: 'A', alert: 'both', painSites: ['lower-back'], ...settings } }));
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('#tab-history');
+    return { page, ctx };
+  };
+
+  test('the toggle swaps what the cards are a history of', async ({ browser }) => {
+    const { page, ctx } = await open(browser, [
+      mk('2026-08-20', 'Overhead press', 95, 5, 2, 1),
+      mk('2026-09-01', 'Overhead press', 100, 5, 2, 2)]);
+    await expect(page.locator('#trendlabel')).toHaveText('Estimated max — last 8 sessions');
+    await expect(page.locator('#trends')).toContainText('est. max');
+
+    await page.click('[data-metric="volume"]');
+    await expect(page.locator('#trendlabel')).toHaveText('Volume — last 8 sessions');
+    await expect(page.locator('#trends')).toContainText('lb moved');
+    await expect(page.locator('.trendcard b')).toHaveText('500');   // 100 × 5
+    await ctx.close();
+  });
+
+  test('warm-ups count towards it, though they never count towards a max',
+    async ({ browser }) => {
+    // You moved the warm-up weight, which is the sum a session card already
+    // reports — but a ramp-up rep is still no evidence of a max.
+    const { page, ctx } = await open(browser, [
+      mk('2026-09-01', 'Overhead press', 45, 5, 4, 1, { wu: true }),
+      mk('2026-09-01', 'Overhead press', 100, 5, 2, 2)]);
+    await page.click('[data-metric="volume"]');
+    await expect(page.locator('.trendcard b')).toHaveText('725');   // 225 + 500
+    await ctx.close();
+  });
+
+  test('a bodyweight set counts the body that moved with it', async ({ browser }) => {
+    const { page, ctx } = await open(browser,
+      [mk('2026-09-01', 'Pull-up', 25, 5, 2, 1)], { bw: { lb: 180, kg: 0 } });
+    await page.click('[data-metric="volume"]');
+    // 180 of you plus 25 on the belt, five times — not 125
+    await expect(page.locator('.trendcard b')).toHaveText('1,025');
+    await ctx.close();
+  });
+
+  test('a carry totals the ground covered, having no load to multiply',
+    async ({ browser }) => {
+    const { page, ctx } = await open(browser, [
+      mk('2026-09-01', 'Suitcase carry', 70, 40, 2, 1),
+      mk('2026-09-01', 'Suitcase carry', 70, 40, 2, 2)]);
+    await page.click('[data-metric="volume"]');
+    await expect(page.locator('.trendcard b')).toHaveText('80');
+    await expect(page.locator('#trends')).toContainText('m covered');
+    await ctx.close();
+  });
+
+  test('the two can disagree, which is the reason for the toggle', async ({ browser }) => {
+    // A deload: the same top set, a third of the work. The max is unmoved and
+    // the volume is down by two thirds, and one number cannot say both.
+    const { page, ctx } = await open(browser, [
+      mk('2026-08-20', 'Overhead press', 100, 5, 2, 1),
+      mk('2026-08-20', 'Overhead press', 100, 5, 2, 2),
+      mk('2026-08-20', 'Overhead press', 100, 5, 2, 3),
+      mk('2026-09-01', 'Overhead press', 100, 5, 2, 4)]);
+    await expect(page.locator('.trendcard .delta')).toHaveText('no clear change');
+    await page.click('[data-metric="volume"]');
+    await expect(page.locator('.trendcard b')).toHaveText('500');
+    await expect(page.locator('.trendcard .delta')).toContainText('-66.7%');
+    await ctx.close();
+  });
+
+  test('the sheet behind a card follows the toggle too', async ({ browser }) => {
+    const { page, ctx } = await open(browser, [
+      mk('2026-08-20', 'Overhead press', 95, 5, 2, 1),
+      mk('2026-09-01', 'Overhead press', 100, 5, 2, 2),
+      mk('2026-09-01', 'Overhead press', 100, 5, 2, 3)]);
+    await page.click('.trendcard');
+    await expect(page.locator('#exhist-sub')).toContainText('best 125 lb');
+    await page.click('#exhistclose');
+
+    await page.click('[data-metric="volume"]');
+    await page.click('.trendcard');
+    // the best session, and each day's own total down the side
+    await expect(page.locator('#exhist-sub')).toContainText('best 1,000 lb in one');
+    await expect(page.locator('.exhistday').first()).toContainText('1,000');
+    await expect(page.locator('.exhistday').last()).toContainText('475');
+    await ctx.close();
+  });
+
+  // Seeded through addInitScript, which runs again on reload and would put the
+  // saved choice back the way it started — so this one starts from an empty app.
+  test('which of the two you read is remembered', async ({ browser }) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.click('#tab-history');
+    await page.click('[data-metric="volume"]');
+    await page.click('[data-span="20"]');
+    await page.reload();
+    await page.waitForSelector('.ex');
+    await page.click('#tab-history');
+    // the metric is a standing choice; how far back you were looking is not
+    await expect(page.locator('#trendlabel')).toHaveText('Volume — last 8 sessions');
+    await expect(page.locator('[data-metric="volume"]')).toHaveAttribute('aria-pressed', 'true');
+    await ctx.close();
+  });
+});

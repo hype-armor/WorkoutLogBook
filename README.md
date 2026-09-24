@@ -93,6 +93,24 @@ one you are now; see below.
 A card whose sessions did not all qualify says so: `1 of 2 sessions counted`
 rather than `first session`, which contradicted the rows listed underneath it.
 
+## Volume
+
+**Est. max** and **Volume** above the cards are the two things a history of an
+exercise can be: how strong the lift got, and how much work went into it. They
+answer different questions and can move in opposite directions — a deload week
+is a third of the volume at the same max — so the app shows one at a time
+rather than averaging them into a score.
+
+Volume is load × reps, summed per exercise per session. It keeps every set,
+warm-ups included, because you moved that weight too and it is the same sum the
+session cards already report. A bodyweight lift counts the body that moved with
+it — 180 of you plus 25 on the belt, five times, is 1,025 rather than 125. A
+carry has no load to multiply, so it totals the ground covered instead.
+
+Which of the two you are reading is remembered, unlike how far back you happen
+to be looking. Opening a card follows it: on Volume the sheet lists each
+session's own total and names your biggest one.
+
 ## Text size
 
 Four sizes, under **Settings → Text size**. Every font size in the stylesheet is
@@ -542,7 +560,7 @@ instead of failing quietly.
 ## Built like this
 
 Markup, styles and logic in one file; a service worker that precaches the shell
-and keeps the exercise photos in a cache of their own; 360 Playwright tests that
+and keeps the exercise photos in a cache of their own; 367 Playwright tests that
 read real bounding boxes at phone sizes; and Release Please, which tags the
 version and rewrites it in `sw.js` — the thing that makes an installed phone
 notice a release at all. The deploy refuses to publish a build the suite rejects.
