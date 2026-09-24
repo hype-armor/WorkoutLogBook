@@ -93,6 +93,24 @@ one you are now; see below.
 A card whose sessions did not all qualify says so: `1 of 2 sessions counted`
 rather than `first session`, which contradicted the rows listed underneath it.
 
+## Volume
+
+**Est. max** and **Volume** above the cards are the two things a history of an
+exercise can be: how strong the lift got, and how much work went into it. They
+answer different questions and can move in opposite directions — a deload week
+is a third of the volume at the same max — so the app shows one at a time
+rather than averaging them into a score.
+
+Volume is load × reps, summed per exercise per session. It keeps every set,
+warm-ups included, because you moved that weight too and it is the same sum the
+session cards already report. A bodyweight lift counts the body that moved with
+it — 180 of you plus 25 on the belt, five times, is 1,025 rather than 125. A
+carry has no load to multiply, so it totals the ground covered instead.
+
+Which of the two you are reading is remembered, unlike how far back you happen
+to be looking. Opening a card follows it: on Volume the sheet lists each
+session's own total and names your biggest one.
+
 ## Text size
 
 Four sizes, under **Settings → Text size**. Every font size in the stylesheet is
@@ -176,6 +194,25 @@ Rounding is also what thins the list on a light lift: two steps that land on the
 same loadable number collapse into one. A ramp is lifting convention rather than
 a finding, and this is here to save taps on something you were going to do
 anyway.
+
+## The order of a day
+
+Each day opens with the lift its tag names and ends with isolation or core:
+heaviest and most technical while you are fresh, arms and abs when you are not.
+Upper A alternates push and pull through its compounds so each has a rest while
+the other works.
+
+That was true of three days out of four. Upper B was tagged *Vertical pull* and
+opened with a weighted dip, which is a push — the only day whose first row
+disagreed with its own label. The pull-up leads it now: it is the day the
+vertical pull is the point rather than the accessory, and `4 × max` is the one
+target in the program measured by what you have left rather than by a number,
+which makes it the set that most wants fresh arms.
+
+The order is not decoration. The **next** marker and the panel that hands you on
+after a finished exercise both walk the day's list in sequence, so moving a row
+changes what the app points you at. A test pins the convention rather than the
+comment.
 
 ## Which session is next
 
@@ -366,6 +403,28 @@ session still open, or a day whose targets carry no set count (`max` rather
 than `3 × max`), since without one there is no way to know how many sets are
 coming.
 
+## Two exercises resting at once
+
+A superset is two exercises resting at the same time. Every exercise keeps its
+own clock, so logging the cable row does not end the one the chest press is
+running — the press is not ready again until its own rest is up, and that is a
+different number from the row's.
+
+The bar shows the clock for the exercise you are looking at. The others wait
+beside it as chips, counting, and turn green when they come up; tapping one
+opens that exercise, which is also what puts its clock on the bar. The target
+button and the dismiss button act on the exercise named on the bar and on
+nothing else, so changing a rest target while two are running changes the one
+you can see.
+
+A phone can hold one scheduled alert, so it goes to whichever clock comes up
+first. The others are announced by the app itself, which is open — the second
+half of a superset is the reason you are still looking at it.
+
+Mid-round the bar reads `Chest press → Cable row` and taps through to the
+partner, because that is where you are going next. Once the partner has caught
+up it stops saying so.
+
 ## When the rest timer outlives the app
 
 The alert fires from a 250 ms interval on the page, so a phone that suspended
@@ -501,7 +560,7 @@ instead of failing quietly.
 ## Built like this
 
 Markup, styles and logic in one file; a service worker that precaches the shell
-and keeps the exercise photos in a cache of their own; 344 Playwright tests that
+and keeps the exercise photos in a cache of their own; 367 Playwright tests that
 read real bounding boxes at phone sizes; and Release Please, which tags the
 version and rewrites it in `sw.js` — the thing that makes an installed phone
 notice a release at all. The deploy refuses to publish a build the suite rejects.

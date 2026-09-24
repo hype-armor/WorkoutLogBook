@@ -591,11 +591,12 @@ test.describe('the rest timer outlives the page', () => {
 
     // saving is debounced, so the timer is not on disk the instant it starts
     await expect.poll(async () => page.evaluate(() =>
-      !!JSON.parse(localStorage.getItem('logbook-v1') || '{}').rest)).toBe(true);
+      !!JSON.parse(localStorage.getItem('logbook-v1') || '{}').timers)).toBe(true);
 
     await page.evaluate(() => {
       const db = JSON.parse(localStorage.getItem('logbook-v1'));
-      db.rest.start = Date.now() - (db.rest.target + 1000) * 1000;
+      const t = db.timers.Deadlift;
+      t.start = Date.now() - (t.target + 1000) * 1000;
       localStorage.setItem('logbook-v1', JSON.stringify(db));
     });
     await page.reload();
@@ -854,7 +855,7 @@ test.describe('PWA affordances', () => {
         db.settings.notify = notify;
         Object.defineProperty(document, 'visibilityState', { get: () => vis, configurable: true });
         const before = shown;
-        fireAlert(false);
+        fireAlert('Deadlift');
         return shown - before;
       };
       const out = {
@@ -895,7 +896,7 @@ test.describe('PWA affordances', () => {
       swReg = null;
       db.settings.notify = true;
       Object.defineProperty(document, 'visibilityState', { get: () => 'hidden', configurable: true });
-      fireAlert(false);
+      fireAlert('Deadlift');
       Object.defineProperty(document, 'visibilityState', { get: () => 'visible', configurable: true });
       window.Notification = Real;
       return made;
@@ -2985,9 +2986,8 @@ test.describe('a rest that finished while the app was away', () => {
   test('finishing under your nose still just says it is done', async () => {
     await page.evaluate(() => {
       startRest('Deadlift');
-      rest.target = 1;
-      rest.start = Date.now() - 1200;   // a second past, while you were looking
-      rest.alerted = false;
+      Object.assign(timers['Deadlift'],
+        { target: 1, start: Date.now() - 1200, alerted: false });  // a second past, while you were looking
       tickRest();
     });
     await expect(page.locator('#rest')).toHaveClass(/ready/);
@@ -3002,25 +3002,23 @@ test.describe('a rest that finished while the app was away', () => {
       window.chime = () => { rang = true; };
       stopRest();
       startRest('Deadlift');
-      rest.target = 180;
-      rest.start = Date.now() - 600 * 1000;   // 7 minutes past target
-      rest.alerted = false;
+      Object.assign(timers['Deadlift'],
+        { target: 180, start: Date.now() - 600 * 1000, alerted: false });  // 7 min past
       tickRest();
       window.chime = realChime;
       return rang;
     });
     // ringing on the way back in is an alarm for something that already happened
     expect(chimed).toBe(false);
-    await expect(page.locator('#toast')).toContainText('Rest finished 7 min ago');
+    await expect(page.locator('#toast')).toContainText('Rest after Deadlift finished 7 min ago');
   });
 
   test('one left running far too long is cleared out loud, not in silence', async () => {
     await page.evaluate(() => {
       stopRest();
       startRest('Leg press');
-      rest.target = 180;
-      rest.start = Date.now() - 1500 * 1000;   // well past the 15-minute cutoff
-      rest.alerted = true;
+      Object.assign(timers['Leg press'],
+        { target: 180, start: Date.now() - 1500 * 1000, alerted: true });  // past the 15-minute cutoff
       tickRest();
     });
     await expect(page.locator('#toast')).toContainText(/Rest after Leg press finished 22 min ago/);
@@ -3249,4 +3247,186 @@ test.describe('starting from a template', () => {
   test('no page errors', () => {
     expect(errs).toEqual([]);
   });
+});
+
+test.describe('the order of a day', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('every day opens with the lift its tag names', async () => {
+    // Upper B was tagged "Vertical pull" and opened with a dip, which is a
+    // push — the only day whose first row disagreed with its own label.
+    const leads = await page.evaluate(() =>
+      program().map(d => [d.name, d.tag, d.ex[0][0]]));
+    expect(leads).toEqual([
+      ['Lower A', 'Deadlift focus', 'Deadlift'],
+      ['Upper A', 'Press focus', 'Overhead press'],
+      ['Lower B', 'Squat focus', 'Front squat'],
+      ['Upper B', 'Vertical pull', 'Pull-up'],
+    ]);
+  });
+
+  test('and the order is what the app points you at, not just how it reads', async () => {
+    await chooseDay(page, 'D');
+    // the "next" marker and the hand-off panel both walk the list in sequence
+    await expect(page.locator('.ex.next')).toHaveAttribute('data-ex', 'Pull-up');
+    expect(await page.evaluate(() => nextExercise(state.date, 'Pull-up'))).toBe('Weighted dip');
+  });
+
+  test('isolation and core come last, never before a compound', async () => {
+    // the other half of the convention: heaviest while you are fresh, arms and
+    // abs when you are not
+    const trailing = await page.evaluate(() =>
+      program().map(d => d.ex[d.ex.length - 1][0]));
+    expect(trailing).toEqual(['Suitcase carry', 'Triceps pushdown', 'Dead bug', 'Face pull']);
+  });
+
+  test('the default and the template it doubles as cannot drift apart', async () => {
+    expect(await page.evaluate(() =>
+      TEMPLATES.find(t => t.id === 'upperlower4').days === DEFAULT_PROGRAM)).toBe(true);
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
+
+// A superset is the case the single timer could not describe: two exercises
+// resting at the same time, each with its own rest to finish.
+test.describe('two exercises resting at once', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  const logSet = async (ex, w, r) => {
+    await page.click(`.ex[data-ex="${ex}"]`);
+    await page.fill('#wt', String(w));
+    await page.fill('#reps', String(r));
+    await page.click('#logset');
+  };
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await chooseDay(page, 'A');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('a set of the second exercise does not stop the first one resting', async () => {
+    await logSet('Deadlift', 225, 4);
+    await page.click('#close');
+    await logSet('Leg press', 300, 10);
+    expect(await page.evaluate(() => Object.keys(timers).sort()))
+      .toEqual(['Deadlift', 'Leg press']);
+  });
+
+  test('each counts its own rest, not a target shared with the other', async () => {
+    // Deadlift rests 210, Leg press 150 — one bar cannot say both
+    expect(await page.evaluate(() =>
+      [timers['Deadlift'].target, timers['Leg press'].target])).toEqual([210, 150]);
+  });
+
+  test('the bar shows the exercise you are looking at', async () => {
+    await expect(page.locator('#restex')).toHaveText('Leg press');
+    await expect(page.locator('#resttarget')).toHaveText('2:30 target');
+    // and the other one waits beside it, still counting
+    await expect(page.locator('#restothers')).not.toHaveClass(/hide/);
+    await expect(page.locator('.tchip')).toHaveCount(1);
+    await expect(page.locator('.tchip')).toContainText('Deadlift');
+  });
+
+  test('a chip is the way back to the exercise it is counting', async () => {
+    await page.click('.tchip');
+    await expect(page.locator('#sheet-title')).toHaveText('Deadlift');
+    await expect(page.locator('#restex')).toHaveText('Deadlift');
+    await expect(page.locator('#resttarget')).toHaveText('3:30 target');
+    // the bar swapped, so the chip is now the one it left
+    await expect(page.locator('.tchip')).toContainText('Leg press');
+  });
+
+  test('the target on the bar belongs to the exercise on the bar', async () => {
+    await page.click('#resttarget');
+    await expect(page.locator('#resttarget')).toHaveText('4:00 target');
+    expect(await page.evaluate(() => [db.ex['Deadlift'].rest, db.ex['Leg press']?.rest]))
+      .toEqual([240, undefined]);
+    expect(await page.evaluate(() => timers['Leg press'].target)).toBe(150);
+  });
+
+  test('both clocks outlive the page', async () => {
+    await page.waitForFunction(() =>
+      Object.keys(JSON.parse(localStorage.getItem('logbook-v1') || '{}').timers || {}).length === 2);
+    await page.reload();
+    await page.waitForSelector('.ex');
+    expect(await page.evaluate(() => Object.keys(timers).sort()))
+      .toEqual(['Deadlift', 'Leg press']);
+    await expect(page.locator('#rest')).toHaveClass(/show/);
+  });
+
+  test('dismissing the bar dismisses one clock, not both', async () => {
+    const on = await page.textContent('#restex');
+    await page.click('#restclose');
+    expect(await page.evaluate(() => Object.keys(timers))).toHaveLength(1);
+    await expect(page.locator('#restex')).not.toHaveText(on);
+    await expect(page.locator('#rest')).toHaveClass(/show/);
+    // nothing left beside it now
+    await expect(page.locator('#restothers')).toHaveClass(/hide/);
+    await page.click('#restclose');
+    await expect(page.locator('#rest')).not.toHaveClass(/show/);
+    expect(await page.evaluate(() => db.timers)).toBe(null);
+  });
+
+  test('the rest written against a set is that exercise own clock', async () => {
+    await logSet('Deadlift', 225, 4);
+    await page.evaluate(() => { timers['Deadlift'].start = Date.now() - 100 * 1000; });
+    await page.click('#close');
+    await logSet('Leg press', 300, 10);
+    await page.evaluate(() => { timers['Leg press'].start = Date.now() - 20 * 1000; });
+    await page.click('#logset');   // a second set, without leaving the screen
+    const last = await page.evaluate(() => db.sets[db.sets.length - 1]);
+    // 20, the gap since the last Leg press — not 100, the Deadlift's
+    expect(last.rest).toBeGreaterThanOrEqual(19);
+    expect(last.rest).toBeLessThan(40);
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
+
+test('a timer saved before there could be two comes back as its own', async ({ browser }) => {
+  const ctx = await phone(browser);
+  const page = await ctx.newPage();
+  // the shape the app wrote when one exercise could be resting at a time
+  await page.addInitScript(() => {
+    const db = JSON.parse(localStorage.getItem('logbook-v1') || 'null') || {};
+    localStorage.setItem('logbook-v1', JSON.stringify(Object.assign(db, {
+      v: 5, sets: [], days: {}, pairs: {}, ex: {}, program: null,
+      settings: { units: 'lb', bw: { lb: 0, kg: 0 }, lastDay: 'A', alert: 'both' },
+      rest: { ex: 'Leg press → Cable row', target: 180, start: Date.now() - 20 * 1000,
+              mode: 'transition', jump: 'Cable row' }, rev: {}
+    })));
+  });
+  await page.goto(FILE_URL);
+  await page.waitForSelector('.ex');
+  // keyed by the exercise it was actually counting, not by the arrow it was
+  // labelled with — the label is rebuilt from the key and the jump
+  expect(await page.evaluate(() => Object.keys(timers))).toEqual(['Leg press']);
+  await expect(page.locator('#restex')).toHaveText('Leg press → Cable row');
+  expect(await page.evaluate(() => db.rest)).toBe(null);
+  await ctx.close();
 });

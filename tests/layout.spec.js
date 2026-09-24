@@ -679,3 +679,33 @@ test('the largest text size still fits the narrowest phone', async ({ browser })
   }
   await ctx.close();
 });
+
+// The timer grew a row when a second clock could run beside it, and grew
+// straight over the Finish button — the page still ended above the nav rather
+// than above the thing floating over it.
+test('a timer with another clock beside it does not cover the end of the page',
+  async ({ browser }) => {
+  const ctx = await browser.newContext({ ...PHONE });
+  const page = await ctx.newPage();
+  await page.goto(FILE_URL);
+  await page.waitForSelector('.ex');
+  await page.evaluate(() => { state.day = 'A'; renderDays(); renderExercises(); });
+
+  const log = async ex => {
+    await page.click(`.ex[data-ex="${ex}"]`);
+    await page.fill('#wt', '100');
+    await page.fill('#reps', '10');
+    await page.click('#logset');
+    await page.click('#close');
+  };
+  await log('Deadlift');
+  await log('Leg press');
+  await expect(page.locator('.tchip')).toHaveCount(1);   // two clocks, taller bar
+
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await page.waitForTimeout(120);
+  const r = await rects(page);
+  expect(r.finish, 'Finish button was not on screen to be measured').not.toBeNull();
+  expect(overlaps(r.rest, r.finish), 'timer over the Finish button').toBe(false);
+  await ctx.close();
+});
