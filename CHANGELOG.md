@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.22.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.21.0...logbook-v1.22.0) (2026-09-25)
+
+
+### Features
+
+* a container, and the three ways to run it ([414d139](https://github.com/hype-armor/WorkoutLogBook/commit/414d139a18c1345a4f4d666435aa2f9a0641edb1))
+* EZ curl bars in the rack, and the curl set to one ([bb747b9](https://github.com/hype-armor/WorkoutLogBook/commit/bb747b958ccba85306ce7a19e42c1910956128aa))
+* give every record a clock and every delete a mark (schema v5) ([9c5e421](https://github.com/hype-armor/WorkoutLogBook/commit/9c5e421f311a014aed606e5fb9ddc20ac59fb9f1))
+* notifications that reach a phone in a pocket ([d417b6d](https://github.com/hype-armor/WorkoutLogBook/commit/d417b6d30b3f5f5f843b4ffa2272c9043c27a44d))
+* one rest timer per exercise, running at once ([49b7b8d](https://github.com/hype-armor/WorkoutLogBook/commit/49b7b8d72a0abe9e61a1919d8ecfe804dfdc64e9))
+* Settings → Sync, so any of this can be turned on ([64f1fc1](https://github.com/hype-armor/WorkoutLogBook/commit/64f1fc1742982ab1b9d7285f96b0c8b54d392370))
+* show volume as well as estimated max in History ([19b5090](https://github.com/hype-armor/WorkoutLogBook/commit/19b5090d005b3544c076086f0593817c31229e43))
+* the sync client — pull, merge, push, and the reset ([f6a1f24](https://github.com/hype-armor/WorkoutLogBook/commit/f6a1f248ac6a2dd4db7bba9355481bf598d1b87b))
+* the sync server — vaults, factors, invites and records ([32e62de](https://github.com/hype-armor/WorkoutLogBook/commit/32e62de803f0fefb3e5d14ad8b539236c2ac7ae8))
+* the vault — key hierarchy, record addressing and sealing ([18a33fa](https://github.com/hype-armor/WorkoutLogBook/commit/18a33fa65b0f92c6922a3e887e4c066abaf9b859))
+
+
+### Bug Fixes
+
+* open Upper B with the lift its tag names ([96e80a5](https://github.com/hype-armor/WorkoutLogBook/commit/96e80a5b8bc26ba0c3ffef3accab5abea668522d))
+* raise rest alerts through the service worker, not the constructor ([68a10f8](https://github.com/hype-armor/WorkoutLogBook/commit/68a10f8562296b556920ae43e7151d4997c562b3))
+
+
+### Documentation
+
+* design for self-hosted web push notifications ([f139826](https://github.com/hype-armor/WorkoutLogBook/commit/f1398264bd4b1e93c8df8f9b598acdf4402f707f))
+* how the app is hosted, and why the server cannot be ([45a873a](https://github.com/hype-armor/WorkoutLogBook/commit/45a873ab40caa8a8047601fc6ce0093019b52c16))
+* record the sync client, and repair a sentence ([ec7ec26](https://github.com/hype-armor/WorkoutLogBook/commit/ec7ec26ca383fc591fa30cf450c9d6bb2e746751))
+* redesign the server around E2E sync, not backup ([a2d2327](https://github.com/hype-armor/WorkoutLogBook/commit/a2d23273e98ead263be29ada8f00b0e9dabc5e69))
+
 ## [1.21.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.20.0...logbook-v1.21.0) (2026-09-12)
 
 
