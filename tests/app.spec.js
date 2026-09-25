@@ -3430,3 +3430,88 @@ test('a timer saved before there could be two comes back as its own', async ({ b
   expect(await page.evaluate(() => db.rest)).toBe(null);
   await ctx.close();
 });
+
+// An EZ bar is the one most curls are actually done on, and the rack had no
+// way to say so: the lightest bar on offer was 35 lb.
+test.describe('curl bars', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await chooseDay(page, 'D');
+    await page.click('.ex[data-ex="Barbell curl"]');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('the curl comes set to one, not to a 45', async () => {
+    expect(await page.evaluate(() => barFor('Barbell curl'))).toBe(25);
+    expect(await page.evaluate(() => {
+      db.settings.units = 'kg'; const v = barFor('Barbell curl');
+      db.settings.units = 'lb'; return v;
+    })).toBe(10);
+  });
+
+  test('the plates drawn under it are the ones you would load', async () => {
+    await page.fill('#wt', '55');
+    // 55 on a 25 lb bar is 15 a side; on the 45 this used to assume it was 5
+    await expect(page.locator('#pmtext')).toHaveText('10 · 5 per side');
+  });
+
+  test('an EZ bar is one of the bars you can pick, in either unit',
+    async () => {
+    await page.click('#exsettings');
+    expect(await page.$$eval('#exbar option', els => els.map(e => e.textContent)))
+      .toEqual(['No plate math', '45 bar', '35 bar', '55 trap',
+                '25 EZ', '20 EZ', '15 EZ', 'per side']);
+    await expect(page.locator('#exbar')).toHaveValue('25');
+    await page.click('#exsave');
+
+    await page.evaluate(() => { db.settings.units = 'kg'; save(); rerenderAll(); });
+    await page.click('#exsettings');
+    expect(await page.$$eval('#exbar option', els => els.map(e => e.textContent)))
+      .toEqual(['No plate math', '20 bar', '15 bar', '25 trap',
+                '10 EZ', '9 EZ', '7 EZ', 'per side']);
+    await page.click('#exsave');
+    await page.evaluate(() => { db.settings.units = 'lb'; save(); rerenderAll(); });
+  });
+
+  test('a bar chosen in pounds is still a bar in kilos', async () => {
+    // Custom bars are stored under the unit they were set in. Read from the
+    // other one this came back as "no plate math", though the bar had not
+    // gone anywhere — it was written down in the other language. Saving the
+    // editor above wrote a kilo bar as well, so this starts from neither set.
+    await page.evaluate(() => { delete db.ex['Barbell curl'].bar; save(); rerenderAll(); });
+    await page.click('#exsettings');
+    await page.selectOption('#exbar', '15');
+    await page.click('#exsave');
+    expect(await page.evaluate(() => barFor('Barbell curl'))).toBe(15);
+
+    // 15 lb is 6.8 kg, snapped to the nearest bar the rack offers
+    expect(await page.evaluate(() => {
+      db.settings.units = 'kg'; const v = barFor('Barbell curl');
+      db.settings.units = 'lb'; return v;
+    })).toBe(7);
+    await expect(page.locator('#platemath')).toBeVisible();
+  });
+
+  test('per side means the same thing in either unit', async () => {
+    await page.click('#exsettings');
+    await page.selectOption('#exbar', '0');
+    await page.click('#exsave');
+    expect(await page.evaluate(() => {
+      db.settings.units = 'kg'; const v = barFor('Barbell curl');
+      db.settings.units = 'lb'; return v;
+    })).toBe(0);
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
