@@ -86,6 +86,37 @@ const rects = page => page.evaluate(() => {
 });
 
 /**
+ * Every visible element whose text is wider than the box drawn around it —
+ * an ellipsis, or a word running off under a neighbour. An exercise name is
+ * whatever the lifter typed, so nothing that renders one may reserve a width
+ * for it; the app is expected to wrap instead of cut.
+ *
+ * Excluded on purpose: screen-reader-only text (clipped to 1px by design),
+ * off-screen and hidden nodes, file inputs, and anything the page scrolls
+ * sideways deliberately.
+ */
+const clipped = page => page.evaluate(() => {
+  const out = [];
+  for (const el of document.querySelectorAll('body *')) {
+    if (!el.offsetParent && el !== document.body) continue;
+    if (el.closest('.sr-only, #sr') || el.className === 'sr-only') continue;
+    if (el.type === 'file') continue;
+    const cs = getComputedStyle(el);
+    if (cs.visibility === 'hidden' || cs.opacity === '0') continue;
+    if (cs.overflowX === 'auto' || cs.overflowX === 'scroll') continue;
+    // Only nodes holding text of their own: a container is wide because its
+    // children are, and its children are measured on their own account.
+    const ownText = [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim());
+    if (!ownText) continue;
+    if (el.clientWidth > 0 && el.scrollWidth - el.clientWidth > 1) {
+      out.push(`${el.id ? '#' + el.id : '.' + String(el.className).split(' ')[0]}` +
+        ` "${el.textContent.trim().slice(0, 40)}" has ${el.clientWidth}px, needs ${el.scrollWidth}px`);
+    }
+  }
+  return out;
+});
+
+/**
  * Wait for a sliding sheet to stop moving. Playwright's actionability checks
  * cover clicks, but reading getBoundingClientRect mid-transition measures the
  * sheet halfway up the screen and reports a false collision.
@@ -110,4 +141,4 @@ async function chooseDay(page, id) {
 }
 
 module.exports = {
-  chooseDay, APP_PATH, SW_PATH, FILE_URL, SYNC_URL, PHONE, phone, watchErrors, seed, blankDb, set, overlaps, rects, settle };
+  chooseDay, APP_PATH, SW_PATH, FILE_URL, SYNC_URL, PHONE, phone, watchErrors, seed, blankDb, set, overlaps, rects, clipped, settle };
