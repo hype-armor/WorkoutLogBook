@@ -93,6 +93,25 @@ one you are now; see below.
 A card whose sessions did not all qualify says so: `1 of 2 sessions counted`
 rather than `first session`, which contradicted the rows listed underneath it.
 
+## Which bar is on the rack
+
+Plate math is only right if the app knows what the bar weighs, and the list of
+bars had no curl bar in it — the lightest on offer was a 35. **Bar / plate
+math** in the exercise editor now also carries `25 EZ`, `20 EZ` and `15 EZ`
+(`10`, `9` and `7` in kilos), which covers both the Olympic EZ bar and the
+lighter 1-inch one.
+
+**Barbell curl** comes set to the 25 lb EZ bar rather than a 45, because that
+is the bar most curls are actually done on. Nothing already logged moves — a
+set stores the total that was typed, and only the plates drawn under it change.
+A straight bar is two taps away in the editor.
+
+A bar picked in one unit is now still a bar in the other. Custom bars are
+stored under the unit they were set in, and reading from the other one used to
+come back as "no plate math" although the bar had not gone anywhere; it is
+converted and snapped to the nearest bar that unit offers — a 45 is a 20 kg
+bar, not a 20.41 kg one.
+
 ## Volume
 
 **Est. max** and **Volume** above the cards are the two things a history of an
@@ -560,7 +579,7 @@ instead of failing quietly.
 ## Built like this
 
 Markup, styles and logic in one file; a service worker that precaches the shell
-and keeps the exercise photos in a cache of their own; 367 Playwright tests that
+and keeps the exercise photos in a cache of their own; 373 Playwright tests that
 read real bounding boxes at phone sizes; and Release Please, which tags the
 version and rewrites it in `sw.js` — the thing that makes an installed phone
 notice a release at all. The deploy refuses to publish a build the suite rejects.

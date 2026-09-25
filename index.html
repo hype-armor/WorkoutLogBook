@@ -1497,7 +1497,12 @@ const TEMPLATES = [
 const DEFAULT_BAR = {
   'Deadlift':{lb:45,kg:20}, 'Romanian deadlift':{lb:45,kg:20}, 'Front squat':{lb:45,kg:20},
   'Trap bar deadlift':{lb:55,kg:25}, 'Overhead press':{lb:45,kg:20},
-  'Barbell curl':{lb:45,kg:20}, 'Leg press':{lb:0,kg:0}
+  // The straight bar is the exception on a curl, not the rule: most racks put
+  // an EZ bar in front of you, and 45 lb of it is 20 lb that is not there.
+  // Nothing already logged moves — a set stores the total that was typed, and
+  // only the plates drawn under it change. A straight bar is two taps away in
+  // the exercise editor.
+  'Barbell curl':{lb:25,kg:10}, 'Leg press':{lb:0,kg:0}
 };
 
 // Exercises the barbell numbers don't describe.
@@ -1520,16 +1525,18 @@ const DEFAULT_UNILATERAL = {
 // height and prints the numbers underneath, and each RIR disc shows its digit.
 const UNITS = {
   lb:{
-    label:'lb', defaultBar:45, bars:[45,35,55,0],
-    barLabel:{45:'45 bar',35:'35 bar',55:'55 trap',0:'per side'},
+    label:'lb', defaultBar:45, bars:[45,35,55,25,20,15,0],
+    barLabel:{45:'45 bar',35:'35 bar',55:'55 trap',
+              25:'25 EZ',20:'20 EZ',15:'15 EZ',0:'per side'},
     plates:[{w:45,c:'#E5484D',h:60,t:11},{w:35,c:'#3E7BFA',h:52,t:10},{w:25,c:'#B08C0E',h:44,t:9},
             {w:10,c:'#29AA63',h:32,t:7},{w:5,c:'#C6CEDA',h:24,t:6},{w:2.5,c:'#8A94A6',h:18,t:5},
             {w:1.25,c:'#5A6373',h:14,t:4}],
     minPlate:2.5, fracPlates:[1.25], otherStep:5, dist:'m'
   },
   kg:{
-    label:'kg', defaultBar:20, bars:[20,15,25,0],
-    barLabel:{20:'20 bar',15:'15 bar',25:'25 trap',0:'per side'},
+    label:'kg', defaultBar:20, bars:[20,15,25,10,9,7,0],
+    barLabel:{20:'20 bar',15:'15 bar',25:'25 trap',
+              10:'10 EZ',9:'9 EZ',7:'7 EZ',0:'per side'},
     plates:[{w:25,c:'#E5484D',h:60,t:11},{w:20,c:'#3E7BFA',h:54,t:10},{w:15,c:'#B08C0E',h:48,t:9},
             {w:10,c:'#29AA63',h:38,t:8},{w:5,c:'#C6CEDA',h:28,t:6},{w:2.5,c:'#8A94A6',h:20,t:5},
             {w:1.25,c:'#5A6373',h:15,t:4},{w:0.5,c:'#454E5D',h:12,t:3}],
@@ -2960,9 +2967,24 @@ function evenTarget(target){
   if(!n || n % 2 === 0) return target;
   return String(target).replace(/^(\s*)(\d+)/, (_, sp) => sp + (n + 1));
 }
+// Snapped to a bar the unit actually offers rather than converted exactly:
+// a 45 lb bar is a 20 kg bar, not a 20.41 kg one.
+const nearestBar = w => U().bars.filter(b => b > 0)
+  .reduce((best, b) => Math.abs(b - w) < Math.abs(best - w) ? b : best);
+
 function barFor(ex){
   const m = meta(ex);
-  if(m.bar && typeof m.bar === 'object') return m.bar[units()] ?? null;
+  if(m.bar && typeof m.bar === 'object'){
+    const mine = m.bar[units()];
+    if(mine !== undefined) return mine;
+    // A custom bar is stored under the unit it was set in. Read from the other
+    // one it used to come back as null — "no plate math" — although the bar
+    // had not gone anywhere; it was only written down in the other language.
+    const other = m.bar[units() === 'lb' ? 'kg' : 'lb'];
+    if(other === undefined) return null;
+    if(!other) return 0;   // "per side" means the same thing in either unit
+    return nearestBar(units() === 'lb' ? other * LB_PER_KG : other / LB_PER_KG);
+  }
   const d = DEFAULT_BAR[ex];
   return d ? d[units()] : null;
 }
