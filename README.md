@@ -142,6 +142,23 @@ the largest thing on screen, and its growth is what pushed the gear off the
 header instead of helping anyone read. A test drives all four sizes at 375×667
 and fails on any horizontal overflow.
 
+## Text that does not get cut off
+
+An exercise name is whatever you typed, so nothing that renders one reserves a
+width for it. The rest timer was the worst offender: at the largest text size
+its label had 51px and `Romanian deadlift → Leg curl` needed 195, so the bar
+read `Romanian dea…`. The label and the chips beside it now wrap and the bar
+grows, and the page reserves whatever height it ends up with.
+
+The target button says `3:30` rather than `3:30 target`. The word was taking
+88px of a 147px row — most of the room the name needed — next to a countdown
+that already makes it obvious. It is still said to a screen reader, where
+there is no countdown beside it.
+
+A test walks every visible element at 375px across all three text sizes, in the
+states that carry long names, and fails if any of them is narrower than the
+text inside it. Fixing this once is not the same as it staying fixed.
+
 ## Starting from a template
 
 The default four-day split is one opinion about how to train, and it used to be
@@ -579,7 +596,7 @@ instead of failing quietly.
 ## Built like this
 
 Markup, styles and logic in one file; a service worker that precaches the shell
-and keeps the exercise photos in a cache of their own; 373 Playwright tests that
+and keeps the exercise photos in a cache of their own; 376 Playwright tests that
 read real bounding boxes at phone sizes; and Release Please, which tags the
 version and rewrites it in `sw.js` — the thing that makes an installed phone
 notice a release at all. The deploy refuses to publish a build the suite rejects.

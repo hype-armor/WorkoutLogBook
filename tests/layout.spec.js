@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { FILE_URL, PHONE, watchErrors, rects, overlaps, settle } = require('./helpers');
+const { FILE_URL, PHONE, watchErrors, rects, overlaps, clipped, settle } = require('./helpers');
 
 // The bugs these cover were all "the control you need next is underneath
 // something else", which only shows up at a real phone size.
@@ -708,4 +708,81 @@ test('a timer with another clock beside it does not cover the end of the page',
   expect(r.finish, 'Finish button was not on screen to be measured').not.toBeNull();
   expect(overlaps(r.rest, r.finish), 'timer over the Finish button').toBe(false);
   await ctx.close();
+});
+
+// An exercise name is whatever the lifter typed, and the app renders it in
+// places that used to reserve a fixed width for it. The timer was the worst of
+// them: at the largest text size the label had 51px and a superset needed 195,
+// so "Romanian deadlift → Leg curl" came out as "Romanian dea…". Nothing here
+// may cut text off — it wraps, or the box grows.
+test.describe('text is never cut off', () => {
+  // The narrowest phone the app supports, at every text size it offers: the
+  // combination that leaves the least room for the most words.
+  for (const ts of [1, 1.15, 1.3]) {
+    test(`at ${ts}× text on a 375px phone`, async ({ browser }) => {
+      const ctx = await browser.newContext({ ...PHONE, viewport: { width: 375, height: 667 } });
+      const page = await ctx.newPage();
+      const errs = watchErrors(page);
+      await page.addInitScript(scale => {
+        localStorage.setItem('logbook-v1', JSON.stringify({
+          v: 5, sets: [], days: {}, pairs: {}, ex: {}, program: null,
+          // the longest pairing the default program can make
+          settings: { units: 'lb', bw: { lb: 180, kg: 0 }, lastDay: 'A',
+                      alert: 'both', painSites: ['lower-back'], ts: scale },
+          rest: null, timers: null, rev: {}
+        }));
+      }, ts);
+      await page.goto(FILE_URL);
+      await page.waitForSelector('.ex');
+      expect(await clipped(page), 'the exercise list').toEqual([]);
+
+      await page.evaluate(() => {
+        state.day = 'A';
+        db.pairs = { 'Romanian deadlift': 'Leg curl', 'Leg curl': 'Romanian deadlift' };
+        save(); renderDays(); renderExercises();
+      });
+
+      const log = async (ex, w, r) => {
+        await page.click(`.ex[data-ex="${ex}"]`);
+        await page.fill('#wt', String(w));
+        await page.fill('#reps', String(r));
+        await page.click('#logset');
+      };
+
+      // mid-round: the label is "A → B", the longest thing the bar ever says
+      await log('Romanian deadlift', 135, 8);
+      await expect(page.locator('#rest')).toHaveClass(/show/);
+      await expect(page.locator('#restex')).toHaveText('Romanian deadlift → Leg curl');
+      expect(await clipped(page), 'the timer mid-superset').toEqual([]);
+
+      // and now two clocks, so a chip carries a name as well
+      await page.click('#close');
+      await log('Leg curl', 40, 12);
+      await expect(page.locator('.tchip')).toHaveCount(1);
+      await expect(page.locator('.tchip')).toContainText('Romanian deadlift');
+      expect(await clipped(page), 'the timer with a chip beside it').toEqual([]);
+
+      await page.click('#close');
+      expect(await clipped(page), 'the timer floating over the list').toEqual([]);
+
+      // the card that takes the timer's place names an exercise too
+      await log('Leg curl', 40, 12);
+      await page.click('#logset');
+      await expect(page.locator('#nextup')).toHaveClass(/show/);
+      expect(await clipped(page), 'the move-on card').toEqual([]);
+
+      await page.click('#close');
+      await page.click('#tab-history');
+      await expect(page.locator('#trends')).toBeVisible();
+      expect(await clipped(page), 'History').toEqual([]);
+      await page.click('[data-metric="volume"]');
+      expect(await clipped(page), 'History by volume').toEqual([]);
+
+      await page.click('#gear');
+      expect(await clipped(page), 'Settings').toEqual([]);
+
+      expect(errs).toEqual([]);
+      await ctx.close();
+    });
+  }
 });

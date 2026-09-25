@@ -570,7 +570,7 @@ test.describe('the rest timer outlives the page', () => {
     // where it left off rather than restarting at zero
     const after = secs(await page.textContent('#restclock'));
     expect(after).toBeGreaterThanOrEqual(before);
-    await expect(page.locator('#resttarget')).toHaveText('3:30 target');
+    await expect(page.locator('#resttarget')).toHaveText('3:30');
 
     await page.waitForTimeout(2200);
     expect(secs(await page.textContent('#restclock'))).toBeGreaterThan(after);
@@ -3343,7 +3343,7 @@ test.describe('two exercises resting at once', () => {
 
   test('the bar shows the exercise you are looking at', async () => {
     await expect(page.locator('#restex')).toHaveText('Leg press');
-    await expect(page.locator('#resttarget')).toHaveText('2:30 target');
+    await expect(page.locator('#resttarget')).toHaveText('2:30');
     // and the other one waits beside it, still counting
     await expect(page.locator('#restothers')).not.toHaveClass(/hide/);
     await expect(page.locator('.tchip')).toHaveCount(1);
@@ -3354,14 +3354,14 @@ test.describe('two exercises resting at once', () => {
     await page.click('.tchip');
     await expect(page.locator('#sheet-title')).toHaveText('Deadlift');
     await expect(page.locator('#restex')).toHaveText('Deadlift');
-    await expect(page.locator('#resttarget')).toHaveText('3:30 target');
+    await expect(page.locator('#resttarget')).toHaveText('3:30');
     // the bar swapped, so the chip is now the one it left
     await expect(page.locator('.tchip')).toContainText('Leg press');
   });
 
   test('the target on the bar belongs to the exercise on the bar', async () => {
     await page.click('#resttarget');
-    await expect(page.locator('#resttarget')).toHaveText('4:00 target');
+    await expect(page.locator('#resttarget')).toHaveText('4:00');
     expect(await page.evaluate(() => [db.ex['Deadlift'].rest, db.ex['Leg press']?.rest]))
       .toEqual([240, undefined]);
     expect(await page.evaluate(() => timers['Leg press'].target)).toBe(150);

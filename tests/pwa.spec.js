@@ -182,7 +182,7 @@ test.describe('installable and offline', () => {
       const toSecs = t => { const [m, s] = t.trim().split(':').map(Number); return m * 60 + s; };
       const before = toSecs(clockBefore);
       expect(toSecs(await page.textContent('#restclock'))).toBeGreaterThanOrEqual(before);
-      await expect(page.locator('#resttarget')).toHaveText('3:30 target');
+      await expect(page.locator('#resttarget')).toHaveText('3:30');
     } finally {
       fs.writeFileSync(SW_PATH, original);
     }

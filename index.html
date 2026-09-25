@@ -674,10 +674,9 @@
      the button stays short. Naming the exercise on the button itself truncated
      it to "Next: Romanian ..." at phone widths. */
   .nextup .was{display:block;color:var(--ink-3);font-size:0.7188rem;font-weight:600;
-    letter-spacing:.03em;text-transform:uppercase;
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    letter-spacing:.03em;text-transform:uppercase;overflow-wrap:anywhere}
   .nextup .to{display:block;font-size:0.9375rem;font-weight:660;letter-spacing:-.02em;
-    margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    margin-top:2px;overflow-wrap:anywhere}
   .nextbtn{
     flex:none;background:var(--good);color:var(--on-light);border:0;border-radius:999px;
     font-family:inherit;font-size:0.875rem;font-weight:700;letter-spacing:-.01em;
@@ -698,27 +697,32 @@
   }
   .rest.ready .clock{color:var(--good)}
   .rest .mid{flex:1;min-width:0}
+  /* The name and the target share a line while both fit and the target drops
+     below it when they do not — min-width:max-content is what makes the row
+     break rather than squeeze the name. An exercise name is not a label the
+     app chose; it is what the lifter typed, and it can be longer than any
+     width reserved for it, so it wraps rather than being cut. */
   .rest .lbl{
     font-size:0.75rem;font-weight:580;letter-spacing:-.005em;
-    color:var(--ink-3);display:flex;justify-content:space-between;gap:8px;margin-bottom:7px;
+    color:var(--ink-3);display:flex;flex-wrap:wrap;
+    justify-content:space-between;gap:2px 8px;margin-bottom:7px;
   }
-  .rest .lbl #restex{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rest .lbl #restex{min-width:min(100%, max-content);overflow-wrap:anywhere}
   .rest .track{height:4px;background:var(--bg);border-radius:999px;overflow:hidden}
   .rest .fill{height:100%;width:0;background:var(--accent);border-radius:999px;transition:width .3s linear}
   .rest.ready .fill{background:var(--good)}
-  /* The clocks that are not on the bar. They scroll rather than wrap: the bar
-     has to keep its height, and three at once is already a long superset. */
-  .rest .others{display:flex;gap:6px;margin-top:7px;overflow-x:auto;
-    scrollbar-width:none;-webkit-overflow-scrolling:touch}
-  .rest .others::-webkit-scrollbar{display:none}
+  /* The clocks that are not on the bar. They wrap rather than scroll: a name
+     off the end of a scrolling row is still a name you cannot read, and the
+     bar is free to grow — the page reserves whatever height it ends up with. */
+  .rest .others{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
   .rest .others.hide{display:none}
   .tchip{
     flex:none;display:flex;align-items:center;gap:5px;
     background:var(--surface-3);border:1px solid var(--line-2);border-radius:999px;
     color:var(--ink-2);font-family:inherit;font-size:0.6875rem;font-weight:600;
-    padding:3px 9px;max-width:100%;cursor:pointer;
+    padding:3px 9px;cursor:pointer;text-align:left;
   }
-  .tchip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tchip span{overflow-wrap:anywhere}
   .tchip b{font-variant-numeric:tabular-nums;color:var(--ink)}
   .tchip.ready{border-color:var(--good);color:var(--good)}
   .tchip.ready b{color:var(--good)}
@@ -4133,7 +4137,13 @@ function tickRest(){
     bar.classList.add('show');
     $('#restclock').textContent = mmss(el);
     $('#restex').textContent = t.jump ? `${ex} → ${t.jump}` : ex;
-    $('#resttarget').textContent = mmss(t.target) + ' target';
+    // Just the number: "3:30 target" took 88px of a 147px row at the largest
+    // text size, which is most of the room the exercise name needed. The word
+    // is still said where it is not redundant — to a screen reader, where
+    // there is no countdown beside it to make it obvious.
+    $('#resttarget').textContent = mmss(t.target);
+    $('#resttarget').setAttribute('aria-label',
+      `Rest target ${mmss(t.target)}, tap to change`);
     $('#restfill').style.width = Math.min(100, el/t.target*100) + '%';
     bar.classList.toggle('ready', el >= t.target);
     $('#restmid').classList.toggle('jump', !!t.jump);
@@ -4242,7 +4252,10 @@ let padKey = '';
 function padForRest(){
   const up = [$('#rest'), $('#nextup')].find(e => e.classList.contains('show'));
   const floating = up && !up.classList.contains('docked') ? up : null;
-  const key = floating ? floating.id + '|' + othersKey : '';
+  // The label and the chips both wrap, so the same bar is a different height
+  // with a different exercise in it — the text is part of what is measured.
+  const key = floating
+    ? floating.id + '|' + othersKey + '|' + $('#restex').textContent : '';
   if(key === padKey) return;
   padKey = key;
   document.body.style.setProperty('--restpad',
