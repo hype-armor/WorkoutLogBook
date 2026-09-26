@@ -457,6 +457,10 @@
   .setrow .idx{color:var(--ink-3);width:18px;flex:none;font-size:0.875rem;font-weight:600}
   .setrow .load{flex:1;min-width:0;font-weight:560}
   .setrow .rir{font-size:0.8125rem;font-weight:560;color:var(--ink-2);flex:none;letter-spacing:-.005em}
+  /* Set into the row above rather than dimmed: it is work that counts, just
+     not a set of its own, and dimming it would say the opposite. */
+  .setrow.ext .tap{padding-left:14px}
+  .setrow.ext .idx{color:var(--ink-3)}
   .setrow .del{
     background:none;border:0;color:var(--ink-3);font-size:1.25rem;
     min-width:44px;min-height:44px;padding:0;cursor:pointer;line-height:1;flex:none;border-radius:var(--r-sm);
@@ -1711,7 +1715,7 @@ const EXERCISE_INFO = {"Deadlift":{"img":"barbell-deadlift","src":"Barbell Deadl
 
 /* ---------- state ---------- */
 let db = blank();
-let state = {day:'A', ex:null, rir:2, tab:'train', date:todayISO(), editing:null, progEdit:false, editingEx:null, warmup:false, painSite:null};
+let state = {day:'A', ex:null, rir:2, tab:'train', date:todayISO(), editing:null, progEdit:false, editingEx:null, kind:'work', painSite:null};
 let undoBuf = null, saveFails = 0, storageBroken = false;
 let pendingWorker = null, installPrompt = null;
 
@@ -3027,7 +3031,9 @@ function deloadTo(w, ex){
 //                         straight sets; progression is a between-sessions idea
 //   done before        -> last working set plus the progression amount
 function seedFor(ex){
-  const mine = db.sets.filter(s => s.e === ex && !isWarmup(s));
+  // Extensions left out: the number to come back to is the top set, not the
+  // 70 you dropped to at the end of it.
+  const mine = db.sets.filter(s => s.e === ex && !isWarmup(s) && !isExtension(s));
   const today = mine.filter(s => s.d === state.date).slice(-1)[0];
   const prior = mine.filter(s => s.d !== state.date).slice(-1)[0];
   const base = today || prior;
@@ -3353,7 +3359,14 @@ const setsFor = (date, ex) => db.sets.filter(s => s.d === date && s.e === ex);
 // Warm-ups are logged, but they are not the work. Targets, trends and the
 // session summary all mean working sets.
 const isWarmup = s => !!s.wu;
-const workingSets = list => list.filter(s => !isWarmup(s));
+// A drop set or a rest-pause burst continues the set before it rather than
+// being one of its own. It is work — it counts towards the volume you moved
+// and towards the estimate, because it was lifted — but counting it as a set
+// says you did four when you did three, and then tells you the session is
+// complete when it is not.
+const isExtension = s => !!s.ext;
+const EXT_NAME = {drop: 'drop', rp: 'rest-pause'};
+const workingSets = list => list.filter(s => !isWarmup(s) && !isExtension(s));
 
 function renderExercises(){
   const day = dayById(state.day);
@@ -3468,7 +3481,12 @@ function sessionStats(date){
   return {
     // Sets stay split, because a target of four means four working sets.
     count: sets.length,
-    warmups: all.length - sets.length,
+    // Counted, not inferred by subtraction: once a drop set was neither a
+    // working set nor a warm-up, subtracting called it a warm-up.
+    warmups: all.filter(isWarmup).length,
+    // Per kind, because "2 extensions" is not a thing anybody says and there
+    // are only ever two of them to name.
+    exts: all.filter(isExtension).reduce((a, x) => (a[x.ext] = (a[x.ext] || 0) + 1, a), {}),
     // Volume, exercises and elapsed time cover everything: you moved the
     // warm-up weight, you were in the gym for it, and it was still that lift.
     exercises: new Set(all.map(s => s.e)).size,
@@ -3495,8 +3513,10 @@ function median(xs){
   return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
 }
 
+// An extension follows the set before it immediately, so the gap in front of
+// it is not a rest and must not be averaged in as the pace of one.
 const usableIntervals = list => list
-  .filter(s => !isWarmup(s) && typeof s.rest === 'number'
+  .filter(s => !isWarmup(s) && !isExtension(s) && typeof s.rest === 'number'
                && s.rest >= INTERVAL_MIN && s.rest <= INTERVAL_MAX);
 
 // How much longer a set actually takes than the rest it was given. This is the
@@ -3547,11 +3567,13 @@ function estimateLabel(secs){
 }
 
 function sessionSummary(date){
-  const {count, warmups, exercises, tonnage, start} = sessionStats(date);
+  const {count, warmups, exts, exercises, tonnage, start} = sessionStats(date);
   const done = db.days[date]?.done;
   const parts = [`${count} set${count === 1 ? '' : 's'}`,
                  `${exercises} exercise${exercises === 1 ? '' : 's'}`];
   if(warmups) parts.push(`${warmups} warm-up${warmups === 1 ? '' : 's'}`);
+  for(const [kind, n] of Object.entries(exts))
+    parts.push(`${n} ${EXT_NAME[kind]}${n === 1 ? '' : 's'}`);
   if(tonnage > 0) parts.push(`${Math.round(tonnage).toLocaleString()} ${U().label} moved`);
   if(done && start && done > start) parts.push(`${Math.max(1, Math.round((done - start)/60000))} min`);
   return parts.join(' · ');
@@ -3727,7 +3749,7 @@ function renderRepBand(){
   const box = $('#repband');
   // A ramp-up set is not training a quality, and "reps" on a carry is metres
   // — or, on a plank, seconds.
-  const off = state.warmup || measured(state.ex);
+  const off = state.kind === 'warm' || measured(state.ex);
   box.classList.toggle('hide', off);
   if(off) return;
   const b = repBand(parseFloat($('#reps').value));
@@ -3738,18 +3760,29 @@ function renderRepBand(){
 }
 
 function renderSetKind(){
-  $('#setkind').innerHTML = [['work','Working'],['warm','Warm-up']].map(([v,label]) =>
-    `<button data-kind="${v}" aria-pressed="${(state.warmup ? 'warm' : 'work') === v}">${label}</button>`).join('');
+  // Drop and rest-pause continue a set, so they are only offered once there is
+  // one to continue. Offered first they would be the first set of an exercise
+  // continuing nothing, which is not a thing that can happen in a gym.
+  const started = !!workingSets(setsFor(state.date, state.ex)).length;
+  const kinds = [['work','Working'],['warm','Warm-up']]
+    .concat(started ? [['drop','Drop'],['rp','Rest-pause']] : []);
+  if(!started && (state.kind === 'drop' || state.kind === 'rp')) state.kind = 'work';
+  $('#setkind').innerHTML = kinds.map(([v,label]) =>
+    `<button data-kind="${v}" aria-pressed="${state.kind === v}">${label}</button>`).join('');
   // Reps in reserve is a question about proximity to failure. A warm-up has no
-  // meaningful answer, so it is not asked.
-  $('#rirblock').classList.toggle('hide', state.warmup);
-  if(!state.editing) $('#logset').textContent = state.warmup ? 'Log warm-up' : 'Log set';
+  // meaningful answer, so it is not asked. A drop set has one, and it is
+  // usually zero.
+  $('#rirblock').classList.toggle('hide', state.kind === 'warm');
+  if(!state.editing) $('#logset').textContent =
+    state.kind === 'warm' ? 'Log warm-up'
+    : state.kind === 'drop' ? 'Log drop'
+    : state.kind === 'rp' ? 'Log rest-pause' : 'Log set';
   renderRepBand();
 }
 
 $('#setkind').addEventListener('click', e=>{
   const b = e.target.closest('[data-kind]'); if(!b) return;
-  state.warmup = b.dataset.kind === 'warm';
+  state.kind = b.dataset.kind;
   renderSetKind();
 });
 
@@ -3765,19 +3798,27 @@ function renderSetList(){
   const k = kindOf(state.ex);
   let n = 0;
   $('#setlist').innerHTML = rows.length ? rows.map((s,i)=>{
-    const warm = isWarmup(s);
-    const idx = warm ? 'W' : ++n;
+    const warm = isWarmup(s), ext = isExtension(s);
+    // An extension hangs off the set above rather than taking a number of its
+    // own, because taking one is exactly what it does not do.
+    const idx = warm ? 'W' : ext ? '↳' : ++n;
     let load;
     if(measured(s.e)) load = `${amountLabel(s.e, s.r)}${toDisplay(s) > 0 ? ` @ ${fmtW(toDisplay(s))}` : ''}`;
     else if(k === 'bodyweight') load = `${bwLabel(toDisplay(s))} × ${s.r}`;
     else load = `${fmtW(toDisplay(s))} × ${s.r}`;
-    return `<div class="setrow ${warm?'warm':''} ${state.editing===s.id?'editing':''} ${
+    return `<div class="setrow ${warm?'warm':''} ${ext?'ext':''} ${state.editing===s.id?'editing':''} ${
       state.justLogged === s.id ? 'new' : ''}">
-       <button class="tap" data-edit="${esc(s.id)}" aria-label="Edit ${warm?'warm-up':'set '+n}">
+       <button class="tap" data-edit="${esc(s.id)}" aria-label="Edit ${
+         warm ? 'warm-up' : ext ? `${EXT_NAME[s.ext]} after set ${n}` : 'set ' + n}">
          <span class="idx">${idx}</span>
          <span class="load">${esc(load)}</span>
-         <span class="rir">${warm ? 'warm-up' : `${s.rir}${s.rir===4?'+':''} RIR`}</span>
-         ${s.rest!=null?`<span class="rir" style="color:var(--ink-3)">${mmss(s.rest)}</span>`:''}
+         <span class="rir">${warm ? 'warm-up'
+           : `${ext ? EXT_NAME[s.ext] + ' · ' : ''}${s.rir}${s.rir===4?'+':''} RIR`}</span>
+         ${s.rest != null && !ext
+           // The gap in front of an extension is not a rest — you went
+           // straight into it — so "0:00" is noise in the one column that
+           // has no room for any.
+           ? `<span class="rir" style="color:var(--ink-3)">${mmss(s.rest)}</span>` : ''}
        </button>
        <button class="del" data-del="${esc(s.id)}" aria-label="Delete set ${i+1}">&#215;</button>
      </div>`;
@@ -4561,7 +4602,7 @@ function openSheet(ex){
   const day = dayById(state.day);
   const row = day.ex.find(([n]) => n === ex);
   const target = row ? row[1] : '';
-  state.ex = ex; state.editing = null; state.warmup = false; state.justLogged = null;
+  state.ex = ex; state.editing = null; state.kind = 'work'; state.justLogged = null;
   $('#sheet-title').textContent = ex;
   $('#exinfobtn').classList.toggle('hide', !guideFor(ex));
 
@@ -4830,7 +4871,7 @@ function setsPerMuscle(days = 7){
   const direct = {}, indirect = {}, stray = new Set();
   let unplaced = 0;
   for(const s of db.sets){
-    if(isWarmup(s) || s.d < since) continue;
+    if(isWarmup(s) || isExtension(s) || s.d < since) continue;
     const g = musclesFor(s.e);
     // Anything the app has not been told about: counted and named, never
     // silently dropped. A chart that quietly ignores a third of the work is
@@ -4961,7 +5002,9 @@ function renderSessions(){
     if(!sets) return restCard(date);
     // One source for both summaries. Computing it twice is what let the finish
     // card and this card disagree about the same session.
-    const {count, warmups, tonnage} = sessionStats(date);
+    const {count, warmups, exts, tonnage} = sessionStats(date);
+    const extra = Object.entries(exts)
+      .map(([kind, n]) => `${n} ${EXT_NAME[kind]}${n === 1 ? '' : 's'}`).join(' + ');
     const pain = painSummary(date);
     const note = db.days[date]?.notes;
     const open = state.openSession === date;
@@ -4977,7 +5020,8 @@ function renderSessions(){
       <button class="sesshead" data-sess="${esc(date)}" aria-expanded="${!!open}">
         <h3 style="margin:0">${esc(prettyDate(date))}${dayNameFor(sets)?' · '+esc(dayNameFor(sets)):''}</h3>
         <span class="sessmeta">${count} set${count===1?'':'s'}${
-          warmups ? ` + ${warmups} warm-up${warmups===1?'':'s'}` : ''}${open?' ▴':' ▾'}</span>
+          warmups ? ` + ${warmups} warm-up${warmups===1?'':'s'}` : ''}${
+          extra ? ` + ${esc(extra)}` : ''}${open?' ▴':' ▾'}</span>
       </button>
       <div class="sessmeta" style="margin-top:4px">${Math.round(tonnage).toLocaleString()} ${esc(u.label)} volume${
         pain ? ` · ${esc(pain)}` : ''}${
@@ -4994,17 +5038,24 @@ function renderSessions(){
 /* ---------- steppers ---------- */
 // Smallest real-world jump: two of the smallest plate you own.
 // Non-barbell work (dumbbells, stacks) moves in bigger increments.
+// The jump this exercise is set to take. Defaults to one plate a side, which
+// is what the buttons always moved by — but an exercise told to climb in
+// tens was still nudged in fives, so the number the app suggests next session
+// and the number the buttons reach were two different amounts.
 function weightStep(){
-  // The smallest real-world jump is one plate on each side.
-  return stepFor(state.ex);
+  return progressionFor(state.ex);
 }
 
 function nudgeWeight(dir){
   const step = weightStep();
   const cur = parseFloat($('#wt').value);
-  const bar = isLoadable(state.ex) ? barFor(state.ex) : 0;
+  const bar = isLoadable(state.ex) ? (barFor(state.ex) || 0) : 0;
   const base = isNaN(cur) ? (kindOf(state.ex) === 'bodyweight' ? 0 : bar) : cur;
-  const next = Math.max(minWeight(state.ex), +(Math.round((base + dir*step)/step)*step).toFixed(2));
+  // Snapped from the bar rather than from zero. Multiples of the step measured
+  // from nothing put a 45 lb bar and a 10 lb jump at 60, because 55 is not one
+  // of them — the grid a barbell actually sits on starts at the bar.
+  const from = bar + Math.round((base - bar) / step) * step;
+  const next = Math.max(minWeight(state.ex), +(from + dir * step).toFixed(2));
   $('#wt').value = next;
   renderPlateMath();
 }
@@ -5018,7 +5069,7 @@ function nudgeReps(dir){
 }
 
 function refreshStepperLabels(){
-  const s = weightStep();
+  const s = fmtW(weightStep());
   $('#wup').textContent = '+' + s;
   $('#wdown').textContent = '−' + s;
 }
@@ -5195,7 +5246,8 @@ $('#logset').addEventListener('click', ()=>{
     const s = db.sets.find(x => x.id === state.editing);
     if(s){
       s.w = w; s.r = r; s.rir = state.rir; s.u = units();
-      if(state.warmup) s.wu = true; else delete s.wu;
+      if(state.kind === 'warm') s.wu = true; else delete s.wu;
+      if(state.kind === 'drop' || state.kind === 'rp') s.ext = state.kind; else delete s.ext;
     }
     state.editing = null;
     $('#canceledit').classList.add('hide');
@@ -5212,15 +5264,23 @@ $('#logset').addEventListener('click', ()=>{
   if(db.days[state.date]?.done) delete db.days[state.date].done;
   const newId = now + '' + Math.random().toString(36).slice(2,6);
   state.justLogged = newId;
+  const ext = state.kind === 'drop' || state.kind === 'rp' ? state.kind : null;
   db.sets.push({id: newId, t: now,
                 d: state.date, e: state.ex, dy: state.day,
                 w, r, rir: state.rir, rest: restTaken, u: units(),
-                ...(state.warmup ? {wu: true} : {})});
-  save(); renderSetList(); renderSheetSub(); renderRamp();
-  if(state.warmup){
+                ...(state.kind === 'warm' ? {wu: true} : {}),
+                ...(ext ? {ext} : {})});
+  save(); renderSetList(); renderSheetSub(); renderRamp(); renderSetKind();
+  if(state.kind === 'warm'){
     toast('Warm-up logged');
     // No rest timer: three and a half minutes between ramp-up sets is not a
     // thing anyone wants, and any timer already running is left alone.
+  } else if(ext){
+    // The clock restarts because a drop is the last thing you did, and the
+    // rest you are about to take starts now. It never finishes the exercise:
+    // the set it continues already counted, and this one does not count again.
+    toast(`${EXT_NAME[ext][0].toUpperCase()}${EXT_NAME[ext].slice(1)} logged`);
+    startRest(state.ex);
   } else {
     const done = workingSets(setsFor(state.date, state.ex)).length;
     const goal = goalSetsOn(state.ex, state.target);
@@ -5251,10 +5311,10 @@ $('#setlist').addEventListener('click', e=>{
     undoBuf = {set: db.sets[i], i};
     db.sets.splice(i, 1);
     if(state.editing === id) $('#canceledit').click();
-    save(); renderSetList(); renderSheetSub();
+    save(); renderSetList(); renderSheetSub(); renderSetKind();
     toast('Set deleted', {label:'Undo', fn:()=>{
       db.sets.splice(undoBuf.i, 0, undoBuf.set);
-      save(); renderSetList(); renderSheetSub(); toast('Restored');
+      save(); renderSetList(); renderSheetSub(); renderSetKind(); toast('Restored');
     }});
     return;
   }
@@ -5262,7 +5322,7 @@ $('#setlist').addEventListener('click', e=>{
   if(!ed) return;
   const s = db.sets.find(x => x.id === ed.dataset.edit); if(!s) return;
   state.editing = s.id;
-  state.warmup = isWarmup(s);
+  state.kind = isWarmup(s) ? 'warm' : (s.ext || 'work');
   $('#wt').value = fmtW(toDisplay(s));
   $('#reps').value = s.r;
   state.rir = s.rir;

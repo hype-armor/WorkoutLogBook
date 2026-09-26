@@ -3602,3 +3602,170 @@ test.describe('work measured in time', () => {
     expect(errs).toEqual([]);
   });
 });
+
+// The buttons moved by one plate a side whatever the exercise was set to climb
+// by, so the number the app suggests next session and the number the buttons
+// reach were two different amounts.
+test.describe('the weight buttons follow the progression', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await chooseDay(page, 'A');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('they start at one plate a side, as they always did', async () => {
+    await page.click('.ex[data-ex="Deadlift"]');
+    await expect(page.locator('#wup')).toHaveText('+5');
+    await expect(page.locator('#wdown')).toHaveText('−5');
+  });
+
+  test('a lift set to climb in tens is nudged in tens', async () => {
+    await page.click('#exsettings');
+    await page.fill('#exprog', '10');
+    await page.click('#exsave');
+    await expect(page.locator('#wup')).toHaveText('+10');
+    await page.fill('#wt', '135');
+    await page.click('#wup');
+    await expect(page.locator('#wt')).toHaveValue('145');
+    await page.click('#wdown');
+    await expect(page.locator('#wt')).toHaveValue('135');
+  });
+
+  test('the grid it snaps to starts at the bar, not at zero', async () => {
+    // 45 + 10 is 55. Multiples of ten measured from nothing make it 60, and
+    // 60 is not a weight a 45 lb bar and a 10 lb jump can reach.
+    await page.fill('#wt', '45');
+    await page.click('#wup');
+    await expect(page.locator('#wt')).toHaveValue('55');
+  });
+
+  test('a half-plate progression is labelled as one', async () => {
+    await page.click('#exsettings');
+    await page.fill('#exprog', '2.5');
+    await page.click('#exsave');
+    await expect(page.locator('#wup')).toHaveText('+2.5');
+    await page.fill('#wt', '45');
+    await page.click('#wup');
+    await expect(page.locator('#wt')).toHaveValue('47.5');
+    await page.click('#close');
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
+
+// A drop set or a rest-pause burst is work, but it is not another set. Logged
+// as one it said you had done four when you did three, and then called the
+// session complete before it was.
+test.describe('drop sets and rest-pause', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await chooseDay(page, 'A');
+    await page.click('.ex[data-ex="Leg press"]');      // 3 × 10
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('neither is offered before there is a set to continue', async () => {
+    expect(await page.$$eval('#setkind button', els => els.map(e => e.textContent)))
+      .toEqual(['Working', 'Warm-up']);
+    await page.fill('#wt', '200');
+    await page.fill('#reps', '10');
+    await page.click('#logset');
+    expect(await page.$$eval('#setkind button', els => els.map(e => e.textContent)))
+      .toEqual(['Working', 'Warm-up', 'Drop', 'Rest-pause']);
+  });
+
+  test('a drop does not advance the count, and hangs off the set above',
+    async () => {
+    await page.click('[data-kind="drop"]');
+    await expect(page.locator('#logset')).toHaveText('Log drop');
+    await page.fill('#wt', '140');
+    await page.fill('#reps', '8');
+    await page.click('#logset');
+
+    await expect(page.locator('#sheet-sub')).toContainText('1/3 done');
+    expect(await page.evaluate(() =>
+      workingSets(setsFor(state.date, 'Leg press')).length)).toBe(1);
+    const rows = await page.$$eval('.setrow', els =>
+      els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
+    expect(rows[1]).toContain('↳');
+    expect(rows[1]).toContain('drop');
+    // no rest shown: you went straight into it, so there was none
+    expect(rows[1]).not.toMatch(/\d:\d\d/);
+  });
+
+  test('but the weight it moved still counts', async () => {
+    await page.click('[data-kind="rp"]');
+    await page.fill('#wt', '140');
+    await page.fill('#reps', '4');
+    await page.click('#logset');
+    // 200×10 + 140×8 + 140×4
+    expect(await page.evaluate(() => sessionStats(state.date).tonnage)).toBe(3680);
+  });
+
+  test('the summary names them rather than calling them warm-ups', async () => {
+    // counted by subtraction, a drop set was neither working nor warm-up and
+    // so was reported as a warm-up
+    expect(await page.evaluate(() => sessionStats(state.date).warmups)).toBe(0);
+    expect(await page.evaluate(() => sessionSummary(state.date)))
+      .toContain('1 set · 1 exercise · 1 drop · 1 rest-pause');
+  });
+
+  test('the next session comes back to the top set, not the drop', async () => {
+    // One working set of three is a held session, so the weight repeats —
+    // and the weight it repeats is the 200 the set was done at, never the 140
+    // the drop finished on.
+    expect(await page.evaluate(() => {
+      const d = state.date;
+      state.date = '2026-12-01';                 // a later day, nothing logged
+      const seed = seedFor('Leg press');
+      state.date = d;
+      return { weight: seed.weight, held: seed.held };
+    })).toEqual({ weight: 200, held: '1 of 3 sets' });
+  });
+
+  test('and the muscle chart does not count them either', async () => {
+    expect(await page.evaluate(() => {
+      const rows = setsPerMuscle().rows;
+      return rows.find(r => r.m === 'quadriceps')?.dir;
+    })).toBe(1);
+  });
+
+  test('a set can be changed into one, and back', async () => {
+    await page.click('.setrow:first-child .tap');
+    await expect(page.locator('#setkind [aria-pressed="true"]')).toHaveText('Working');
+    await page.click('[data-kind="drop"]');
+    await page.click('#logset');
+    expect(await page.evaluate(() =>
+      workingSets(setsFor(state.date, 'Leg press')).length)).toBe(0);
+
+    await page.click('.setrow:first-child .tap');
+    await page.click('[data-kind="work"]');
+    await page.click('#logset');
+    expect(await page.evaluate(() =>
+      workingSets(setsFor(state.date, 'Leg press')).length)).toBe(1);
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});

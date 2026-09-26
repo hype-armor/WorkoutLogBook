@@ -430,6 +430,27 @@ time. Three and ten percent are conventions, not findings; they are there to
 break a loop rather than to be precise about it. Nothing to take off — an
 unweighted bodyweight lift — is not called a deload.
 
+## Drop sets and rest-pause
+
+A drop set or a rest-pause burst is work, and it is not another set. Logged as
+one it said you had done four when you did three, and then called the session
+complete before it was — and, counted by subtraction, it was reported as a
+warm-up in the session summary.
+
+**Drop** and **Rest-pause** sit beside Working and Warm-up, and are offered only
+once there is a set to continue, since the first set of an exercise cannot be a
+continuation of anything. One hangs off the set above it in the list rather than
+taking a number of its own, and shows no rest time, because you went straight
+into it and there was none.
+
+What it counts towards is everything except the count: the weight it moved is in
+the session's volume, it feeds the estimated max like any other hard set, and
+the summary names it — `1 set · 1 exercise · 1 drop · 1 rest-pause`. What it
+does not do is advance the target, satisfy the set count, add a set to the
+muscle chart, or become the weight the next session comes back to. That last one
+matters most: the number to return to is the 200 the set was done at, never the
+140 the drop finished on.
+
 ## What the weight waits for
 
 A target can name a range, and the range is how you say what should grow before
@@ -452,6 +473,13 @@ on purpose otherwise reads as a stall.
 Falling short still asks for the prescription again rather than the shortfall:
 three sets of 6 against `3 × 8-12` comes back as 8, not 6. A missed target does
 not become the target.
+
+The **+** and **−** buttons beside the weight move by the same jump. A lift set
+to climb in tens was still nudged in fives, so the number the app suggested next
+session and the number the buttons could reach were two different amounts. They
+snap to a grid that starts at the bar rather than at zero — 45 plus a jump of 10
+is 55, and multiples of ten measured from nothing make it 60, which a 45 lb bar
+and a 10 lb jump cannot reach.
 
 **Progression moves** in an exercise's settings overrides all of this if you
 want it to — weight, reps, sets or time outright — and the number under it
@@ -648,7 +676,7 @@ instead of failing quietly.
 ## Built like this
 
 Markup, styles and logic in one file; a service worker that precaches the shell
-and keeps the exercise photos in a cache of their own; 399 Playwright tests that
+and keeps the exercise photos in a cache of their own; 412 Playwright tests that
 read real bounding boxes at phone sizes; and Release Please, which tags the
 version and rewrites it in `sw.js` — the thing that makes an installed phone
 notice a release at all. The deploy refuses to publish a build the suite rejects.
