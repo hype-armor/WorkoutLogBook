@@ -217,9 +217,20 @@ set and is not a calf set, and adding them would say it was. No target is named
 — the usual ten-to-twenty is a range with wide individual variation, and this
 reports what you did.
 
-Anything the guide does not know — every exercise you add yourself — is counted
-and named rather than dropped. A chart that quietly ignores a third of the work
-is worse than no chart.
+Anything the app has not been told about — an exercise you added yourself — is
+counted and named rather than dropped. A chart that quietly ignores a third of
+the work is worse than no chart. But being named on a list of what could not be
+placed is not the same as being on the chart, so **Muscles worked** in an
+exercise's settings picks from the same fourteen the guide uses. Each chip
+cycles off → mainly → also, and the line underneath reads the picture back —
+`Mainly shoulders · also triceps` — because two shades of chip cannot say which
+is which on their own.
+
+An exercise the guide already knows opens pre-filled with what the guide says,
+so the sheet shows what the app thinks before you change it. Changing it is
+kept; leaving it alone stores nothing, so editing a built-in does not freeze a
+copy of the guide into your database. Clearing every chip hands it back to the
+guide rather than blanking it.
 
 ## Warming up
 
@@ -637,7 +648,7 @@ instead of failing quietly.
 ## Built like this
 
 Markup, styles and logic in one file; a service worker that precaches the shell
-and keeps the exercise photos in a cache of their own; 391 Playwright tests that
+and keeps the exercise photos in a cache of their own; 399 Playwright tests that
 read real bounding boxes at phone sizes; and Release Please, which tags the
 version and rewrites it in `sw.js` — the thing that makes an installed phone
 notice a release at all. The deploy refuses to publish a build the suite rejects.
