@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.22.1](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.22.0...logbook-v1.22.1) (2026-09-25)
+
+
+### Bug Fixes
+
+* wrap the text the timer used to cut off ([5db33a8](https://github.com/hype-armor/WorkoutLogBook/commit/5db33a8e57858080f40ebd007f9463cdc570bd75))
+
 ## [1.22.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.21.0...logbook-v1.22.0) (2026-09-25)
 
 
