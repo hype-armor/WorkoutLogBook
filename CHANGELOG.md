@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.23.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.22.1...logbook-v1.23.0) (2026-09-26)
+
+
+### Features
+
+* target ranges, progression types, and work measured in time ([46b6501](https://github.com/hype-armor/WorkoutLogBook/commit/46b6501bb98ee646c69a3b46d846febfe0d37aa5)), closes [#80](https://github.com/hype-armor/WorkoutLogBook/issues/80)
+
 ## [1.22.1](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.22.0...logbook-v1.22.1) (2026-09-25)
 
 
