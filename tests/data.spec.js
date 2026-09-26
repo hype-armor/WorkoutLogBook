@@ -1656,3 +1656,122 @@ test.describe('volume', () => {
     await ctx.close();
   });
 });
+
+/* ---------- what a target asks for, and which number moves ---------- */
+
+test.describe('progression', () => {
+  // A range in the target is how you say what should grow before the weight
+  // does. Read as its bottom number and nothing else, "8-12" offered more
+  // weight the moment you hit 8 — the opposite of what writing it asks for.
+  const at = async (browser, target, sets, over = {}) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seed(page, blankDb({
+      sets: sets.map((s, i) => ({ id: `s${i}`, t: Date.parse('2026-09-10') + i * 1000,
+        d: '2026-09-10', e: 'Leg press', dy: 'A', rir: 2, rest: 150, u: 'lb', ...s })),
+      ex: over.ex || {},
+      settings: { units: 'lb', bw: { lb: 0, kg: 0 }, lastDay: 'A', alert: 'both',
+                  painSites: ['lower-back'] }
+    }));
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await page.evaluate(([t, o]) => {
+      state.day = 'A';
+      db.program = program().map(d => d.id === 'A'
+        ? { ...d, ex: [['Leg press', t], ...d.ex.filter(([n]) => n !== 'Leg press')] } : d);
+      if (o.kind) (db.ex['Leg press'] ||= {}).kind = o.kind;
+      save(); renderDays(); renderExercises();
+    }, [target, over]);
+    return { page, ctx };
+  };
+  const reps = n => Array.from({ length: 3 }, () => ({ w: 100, r: n }));
+
+  test('a plain target still just adds weight', async ({ browser }) => {
+    const { page, ctx } = await at(browser, '3 × 10', reps(10));
+    expect(await page.evaluate(() => {
+      const s = seedFor('Leg press'); return { type: s.type, w: s.weight, r: s.reps };
+    })).toEqual({ type: 'weight', w: 105, r: 10 });
+    await ctx.close();
+  });
+
+  test('a rep range adds reps, and holds the weight while it fills',
+    async ({ browser }) => {
+    const { page, ctx } = await at(browser, '3 × 8-12', reps(8));
+    expect(await page.evaluate(() => {
+      const s = seedFor('Leg press');
+      return { type: s.type, full: s.full, w: s.weight, r: s.reps };
+    })).toEqual({ type: 'reps', full: false, w: 100, r: 9 });
+    await ctx.close();
+  });
+
+  test('a full rep range moves the weight and drops back to the bottom',
+    async ({ browser }) => {
+    const { page, ctx } = await at(browser, '3 × 8-12', reps(12));
+    expect(await page.evaluate(() => {
+      const s = seedFor('Leg press');
+      return { type: s.type, full: s.full, w: s.weight, r: s.reps };
+    })).toEqual({ type: 'reps', full: true, w: 105, r: 8 });
+    await ctx.close();
+  });
+
+  test('short of the range asks for the prescription again, not the shortfall',
+    async ({ browser }) => {
+    const { page, ctx } = await at(browser, '3 × 8-12', reps(6));
+    expect(await page.evaluate(() => {
+      const s = seedFor('Leg press');
+      return { held: s.held, w: s.weight, r: s.reps };
+    })).toEqual({ held: 'short of 8 reps', w: 100, r: 8 });
+    await ctx.close();
+  });
+
+  test('a set range grows the set count, capped at the top', async ({ browser }) => {
+    const { page, ctx } = await at(browser, '3-5 × 10', reps(10));
+    expect(await page.evaluate(() => ({
+      type: seedFor('Leg press').type,
+      goal: goalSetsOn('Leg press', '3-5 × 10'),
+      w: seedFor('Leg press').weight
+    }))).toEqual({ type: 'sets', goal: 4, w: 100 });
+    // the row and the subtitle both count to the grown goal, not the written one
+    await expect(page.locator('.ex[data-ex="Leg press"] .count')).toHaveText('0/4');
+    await ctx.close();
+  });
+
+  test('a full set range moves the weight and drops back to the bottom',
+    async ({ browser }) => {
+    const { page, ctx } = await at(browser, '3-5 × 10',
+      Array.from({ length: 5 }, () => ({ w: 100, r: 10 })));
+    expect(await page.evaluate(() => ({
+      goal: goalSetsOn('Leg press', '3-5 × 10'),
+      w: seedFor('Leg press').weight
+    }))).toEqual({ goal: 3, w: 105 });
+    await ctx.close();
+  });
+
+  test('seconds move in fives, and read as a clock', async ({ browser }) => {
+    const { page, ctx } = await at(browser, '3 × 30-60s',
+      Array.from({ length: 3 }, () => ({ w: 0, r: 30 })), { kind: 'time' });
+    expect(await page.evaluate(() => {
+      const s = seedFor('Leg press');
+      return { type: s.type, r: s.reps, label: amountLabel('Leg press', 90) };
+    })).toEqual({ type: 'time', r: 35, label: '1:30' });
+    await ctx.close();
+  });
+
+  test('the type can be chosen outright, overriding what the target implies',
+    async ({ browser }) => {
+    const { page, ctx } = await at(browser, '3 × 8-12', reps(8));
+    expect(await page.evaluate(() => {
+      (db.ex['Leg press'] ||= {}).progType = 'weight';
+      const s = seedFor('Leg press'); return { type: s.type, w: s.weight };
+    })).toEqual({ type: 'weight', w: 105 });
+    await ctx.close();
+  });
+
+  test('a target with no range is read exactly as it was before', async ({ browser }) => {
+    const { page, ctx } = await at(browser, '4 × max', reps(9));
+    expect(await page.evaluate(() => ({
+      parts: targetParts('4 × max'), sets: targetSets('4 × 8'), reps: targetReps('3 × 8-12')
+    }))).toEqual({ parts: { sets: 4, setsMax: 4, min: null, max: null }, sets: 4, reps: 8 });
+    await ctx.close();
+  });
+});
