@@ -524,8 +524,8 @@
   .sheetfoot .btn{margin-top:0}
 
   .fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  label.f{display:block}
-  label.f span.lab{
+  .f{display:block}
+  .f span.lab{
     display:block;font-size:0.7188rem;font-weight:620;letter-spacing:.05em;
     text-transform:uppercase;color:var(--ink-3);margin-bottom:5px;
   }
@@ -790,6 +790,19 @@
   .guidegroup .chips span{font-size:0.7812rem;padding:5px 10px;border-radius:999px;border:1px solid var(--line-2);
     color:var(--ink-2);background:var(--surface-2);text-transform:capitalize}
   .guidegroup .chips span.primary{border-color:var(--accent);color:var(--accent-ink);background:var(--accent-soft)}
+  /* Three states in one chip rather than two controls: off, mainly, also.
+     A muscle is worked or it is not, and how much is the only other thing
+     worth saying about it. */
+  .musclepick{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .musclepick button{
+    font-family:inherit;font-size:0.7812rem;padding:6px 11px;border-radius:999px;
+    border:1px solid var(--line-2);color:var(--ink-3);background:var(--surface-2);
+    text-transform:capitalize;cursor:pointer;
+  }
+  .musclepick button[data-tier="1"]{border-color:var(--accent);color:var(--accent-ink);
+    background:var(--accent-soft);font-weight:620}
+  .musclepick button[data-tier="2"]{border-color:var(--line-2);color:var(--ink);
+    background:var(--surface-3)}
   .guidesteps{margin:0;padding:0 0 0 20px;color:var(--ink-2);font-size:0.9062rem;line-height:1.5;letter-spacing:-.005em}
   .guidesteps li{margin:0 0 8px}
   .guidesteps li::marker{color:var(--ink-3);font-weight:640}
@@ -1133,6 +1146,10 @@
         <option value="distance">Distance — carries, sled</option>
         <option value="time">Time — planks, hangs, holds</option>
       </select></label>
+    <div class="f" style="margin-top:14px"><span class="lab">Muscles worked</span>
+      <div class="musclepick" id="exmuscles"></div></div>
+    <div class="hint" id="exmusclehint"></div>
+
     <label class="toggle" style="margin-top:14px">
       <input type="checkbox" id="exuni">
       <span>One side at a time
@@ -4814,12 +4831,13 @@ function setsPerMuscle(days = 7){
   let unplaced = 0;
   for(const s of db.sets){
     if(isWarmup(s) || s.d < since) continue;
-    const g = guideFor(s.e);
-    // Anything you added yourself: counted and named, never silently dropped.
-    // A chart that quietly ignores a third of the work is worse than no chart.
+    const g = musclesFor(s.e);
+    // Anything the app has not been told about: counted and named, never
+    // silently dropped. A chart that quietly ignores a third of the work is
+    // worse than no chart.
     if(!g){ unplaced++; stray.add(s.e); continue; }
-    for(const m of g.primary || []) direct[m] = (direct[m] || 0) + 1;
-    for(const m of g.secondary || []) indirect[m] = (indirect[m] || 0) + 1;
+    for(const m of g.primary) direct[m] = (direct[m] || 0) + 1;
+    for(const m of g.secondary) indirect[m] = (indirect[m] || 0) + 1;
   }
   const rows = [...new Set([...Object.keys(direct), ...Object.keys(indirect)])]
     .map(m => ({m, dir: direct[m] || 0, ind: indirect[m] || 0}))
@@ -4842,8 +4860,9 @@ function renderMuscles(){
     </div>`).join('')
     + `<div class="sessmeta" style="margin-top:10px">Direct \u00b7 indirect sets. ${
         unplaced ? `${unplaced} set${unplaced === 1 ? '' : 's'} of ${
-          esc(stray.join(', '))} could not be placed \u2014 the guide does not know ${
-          stray.length === 1 ? 'it' : 'them'}.`
+          esc(stray.join(', '))} could not be placed \u2014 open ${
+          stray.length === 1 ? 'its' : 'their'} settings to say what ${
+          stray.length === 1 ? 'it works' : 'they work'}.`
         : 'Every set in the last week is counted.'}</div>`;
 }
 
@@ -5372,6 +5391,7 @@ function openExEditor(name){
   $('#exname').value = name || '';
   $('#extarget').value = row ? row[1] : '3 × 10';
   $('#exkind').value = name ? kindOf(name) : 'weight';
+  renderMusclePick(name);
   $('#exuni').checked = name ? isUnilateral(name) : false;
   $('#exassist').checked = name ? allowsAssist(name) : false;
   $('#exbar').innerHTML = [`<option value="">No plate math</option>`]
@@ -5431,12 +5451,30 @@ $('#exsave').addEventListener('click', ()=>{
   m.rest = +$('#exrest').value;
   const barVal = $('#exbar').value;
   // `false`, not `delete`: an exercise with a built-in bar needs somewhere to
-  // record that you do not want it.
-  if(barVal === '') m.bar = false;
+  // record that you do not want it. One without a bar to override needs no
+  // such record, and writing one would put it in every synced database.
+  if(barVal === '') { if(DEFAULT_BAR[name]) m.bar = false; else delete m.bar; }
   else m.bar = Object.assign({}, m.bar || {}, {[units()]: +barVal});
 
   const every = +$('#exevery').value;
   if(every > 1) m.every = every; else delete m.every;
+
+  const tiers = [...$('#exmuscles').querySelectorAll('[data-m]')];
+  const picked = t => tiers.filter(b => +b.dataset.tier === t).map(b => b.dataset.m);
+  const primary = picked(1), secondary = picked(2);
+  // Only stored when it differs from what the guide already says, so editing a
+  // built-in exercise does not freeze a copy of the guide into the database —
+  // and clearing every chip hands it back to the guide rather than blanking it.
+  const g = EXERCISE_INFO[name];
+  const sameSet = (a, b) => a.length === b.length &&
+    [...a].sort().every((x, i) => x === [...b].sort()[i]);
+  const matchesGuide = g && sameSet(g.primary || [], primary)
+                         && sameSet(g.secondary || [], secondary);
+  if(matchesGuide || (!primary.length && !secondary.length)){
+    delete m.primary; delete m.secondary;
+  } else {
+    m.primary = primary; m.secondary = secondary;
+  }
 
   const pt = $('#exprogtype').value;
   if(pt) m.progType = pt; else delete m.progType;
@@ -5472,6 +5510,12 @@ $('#exevery').addEventListener('change', renderEveryHint);
 // The field under the type changes meaning with the type, and the type itself
 // changes with the target — so typing "8-12" into the target relabels the
 // field while you are still looking at it.
+$('#exmuscles').addEventListener('click', e=>{
+  const b = e.target.closest('[data-m]'); if(!b) return;
+  b.dataset.tier = (+b.dataset.tier + 1) % 3;
+  b.setAttribute('aria-pressed', b.dataset.tier !== '0');
+  renderMuscleHint(state.editingEx);
+});
 $('#exprogtype').addEventListener('change', ()=>renderProgFields(state.editingEx));
 $('#extarget').addEventListener('input', ()=>renderProgFields(state.editingEx));
 $('#exkind').addEventListener('change', ()=>renderProgFields(state.editingEx));
@@ -5504,6 +5548,33 @@ function renderBwHint(){
 
 // Reads off the select rather than the stored value, so it answers while you
 // are still deciding rather than after you have saved.
+// Off, mainly, also — one chip cycling through three states rather than two
+// lists to keep in step. Pre-filled from the guide where there is one, so the
+// sheet shows what the app already thinks before you change it.
+function renderMusclePick(name){
+  const g = name ? musclesFor(name) : null;
+  const tier = m => g ? (g.primary.includes(m) ? 1 : g.secondary.includes(m) ? 2 : 0) : 0;
+  $('#exmuscles').innerHTML = MUSCLES.map(m =>
+    `<button type="button" data-m="${esc(m)}" data-tier="${tier(m)}"
+       aria-pressed="${tier(m) ? 'true' : 'false'}">${esc(m)}</button>`).join('');
+  renderMuscleHint(name);
+}
+
+function renderMuscleHint(name){
+  const at = t => [...$('#exmuscles').querySelectorAll('[data-m]')]
+    .filter(b => +b.dataset.tier === t).map(b => b.dataset.m);
+  const primary = at(1), secondary = at(2);
+  // Two shades of chip cannot say which is which on their own, so the line
+  // under them reads the picture back rather than explaining the colours.
+  $('#exmusclehint').textContent = primary.length || secondary.length
+    ? [primary.length ? `Mainly ${primary.join(', ')}` : '',
+       secondary.length ? `also ${secondary.join(', ')}` : ''].filter(Boolean).join(' \u00b7 ')
+      + '. Tap again to cycle.'
+    : (name && EXERCISE_INFO[name]
+        ? 'The guide places this one already. Tap a muscle only to override it.'
+        : 'Tap once for mainly, twice for also. Without this the chart can only name the sets, not place them.');
+}
+
 // The one number under the type means whatever the type says it means, so the
 // label, the placeholder and the sentence under it all follow it.
 function renderProgFields(name){
@@ -6139,6 +6210,25 @@ $('#picklist').addEventListener('click', e=>{
 // has no photos or steps, and a button that opens an empty sheet is worse than
 // no button.
 function guideFor(ex){ return EXERCISE_INFO[ex] || null; }
+
+// The fourteen the guide knows about between them. A custom exercise picks
+// from the same list, so it lands on the same chart rather than beside it.
+const MUSCLES = ['chest','shoulders','triceps','biceps','forearms','lats',
+                 'middle back','lower back','traps','abdominals','glutes',
+                 'quadriceps','hamstrings','calves'];
+
+// What this exercise works. The guide knows the ones it ships with; anything
+// you added yourself says so for itself, and says nothing until you tell it —
+// which is why the chart names it as unplaced rather than dropping it.
+// An explicit answer wins over the guide's, so a lift you do differently from
+// the way it is described can be re-mapped.
+function musclesFor(ex){
+  const m = meta(ex);
+  if(m.primary?.length || m.secondary?.length)
+    return {primary: m.primary || [], secondary: m.secondary || []};
+  const g = EXERCISE_INFO[ex];
+  return g ? {primary: g.primary || [], secondary: g.secondary || []} : null;
+}
 
 function openExInfo(ex){
   const g = guideFor(ex); if(!g) return;

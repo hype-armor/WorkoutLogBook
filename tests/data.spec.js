@@ -2,7 +2,7 @@ const { test, expect } = require('@playwright/test');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { FILE_URL, phone, watchErrors, seed, blankDb, set, settle } = require('./helpers');
+const { FILE_URL, phone, watchErrors, seed, blankDb, set, settle , chooseDay } = require('./helpers');
 
 test.describe('backup, restore and export', () => {
   test.describe.configure({ mode: 'serial' });
@@ -1773,5 +1773,122 @@ test.describe('progression', () => {
       parts: targetParts('4 × max'), sets: targetSets('4 × 8'), reps: targetReps('3 × 8-12')
     }))).toEqual({ parts: { sets: 4, setsMax: 4, min: null, max: null }, sets: 4, reps: 8 });
     await ctx.close();
+  });
+});
+
+/* ---------- placing the exercises you added yourself ---------- */
+
+test.describe('muscles worked', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await chooseDay(page, 'A');
+    await page.click('#editprog');
+    await page.click('#addex');
+    await page.fill('#exname', 'Landmine press');
+    await page.fill('#extarget', '3 × 10');
+    await page.click('#exsave');
+    await page.click('#editprog');
+    await page.click('.ex[data-ex="Landmine press"]');
+    await page.fill('#wt', '95');
+    await page.fill('#reps', '10');
+    await page.click('#logset');
+    await page.click('#close');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('an exercise the app knows nothing about is named, not dropped',
+    async () => {
+    await page.click('#tab-history');
+    // counted and named — a chart that quietly ignores the work is worse
+    await expect(page.locator('#musclecard')).toContainText('Landmine press');
+    await expect(page.locator('#musclecard')).toContainText(/open its settings to say what it works/);
+    expect(await page.evaluate(() => musclesFor('Landmine press'))).toBe(null);
+  });
+
+  test('the chips cycle off, mainly, also', async () => {
+    await page.click('#tab-train');
+    await page.click('.ex[data-ex="Landmine press"]');
+    await page.click('#exsettings');
+    const chip = page.locator('[data-m="shoulders"]');
+    await expect(chip).toHaveAttribute('data-tier', '0');
+    await chip.click();
+    await expect(chip).toHaveAttribute('data-tier', '1');
+    await expect(chip).toHaveAttribute('aria-pressed', 'true');
+    await chip.click();
+    await expect(chip).toHaveAttribute('data-tier', '2');
+    await chip.click();
+    await expect(chip).toHaveAttribute('data-tier', '0');
+    await expect(chip).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  test('the line underneath reads the chips back, since two shades cannot',
+    async () => {
+    await page.click('[data-m="shoulders"]');                 // mainly
+    await page.click('[data-m="triceps"]');
+    await page.click('[data-m="triceps"]');                   // also
+    await expect(page.locator('#exmusclehint'))
+      .toContainText('Mainly shoulders · also triceps');
+  });
+
+  test('once told, it lands on the chart like any other exercise', async () => {
+    await page.click('#exsave');
+    expect(await page.evaluate(() => musclesFor('Landmine press')))
+      .toEqual({ primary: ['shoulders'], secondary: ['triceps'] });
+
+    await page.click('#close');
+    await page.click('#tab-history');
+    await expect(page.locator('#musclecard')).not.toContainText('Landmine press');
+    await expect(page.locator('#musclecard')).toContainText('Every set in the last week is counted');
+    await expect(page.locator('#musclecard')).toContainText('shoulders');
+  });
+
+  test('editing a built-in does not freeze a copy of the guide into the database',
+    async () => {
+    await page.click('#tab-train');
+    await page.click('.ex[data-ex="Deadlift"]');
+    await page.click('#exsettings');
+    // it opens pre-filled from the guide, so the sheet shows what the app thinks
+    await expect(page.locator('[data-m="lower back"]')).toHaveAttribute('data-tier', '1');
+    await expect(page.locator('[data-m="hamstrings"]')).toHaveAttribute('data-tier', '2');
+    await page.click('#exsave');
+    expect(await page.evaluate(() => [db.ex['Deadlift']?.primary, db.ex['Deadlift']?.secondary]))
+      .toEqual([undefined, undefined]);
+  });
+
+  test('but an override of a built-in is kept, and wins', async () => {
+    await page.click('#exsettings');
+    // the guide has glutes as "also"; round it to off, then to "mainly"
+    await page.click('[data-m="glutes"]');
+    await page.click('[data-m="glutes"]');
+    await expect(page.locator('[data-m="glutes"]')).toHaveAttribute('data-tier', '1');
+    await page.click('#exsave');
+    expect(await page.evaluate(() => musclesFor('Deadlift').primary))
+      .toEqual(['lower back', 'glutes']);
+  });
+
+  test('clearing every chip hands it back to the guide', async () => {
+    await page.click('#exsettings');
+    await page.evaluate(() => {
+      // tap each lit chip round to off
+      for (const b of document.querySelectorAll('#exmuscles [data-m]'))
+        while (b.dataset.tier !== '0') b.click();
+    });
+    await page.click('#exsave');
+    expect(await page.evaluate(() => db.ex['Deadlift']?.primary)).toBe(undefined);
+    expect(await page.evaluate(() => musclesFor('Deadlift').primary)).toEqual(['lower back']);
+    await page.click('#close');
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
   });
 });
