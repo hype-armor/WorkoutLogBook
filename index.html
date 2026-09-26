@@ -1131,6 +1131,7 @@
         <option value="weight">Weight — barbell, dumbbell, machine</option>
         <option value="bodyweight">Bodyweight — pull-up, dip, push-up</option>
         <option value="distance">Distance — carries, sled</option>
+        <option value="time">Time — planks, hangs, holds</option>
       </select></label>
     <label class="toggle" style="margin-top:14px">
       <input type="checkbox" id="exuni">
@@ -1146,6 +1147,8 @@
 
     <label class="f" style="margin-top:14px"><span class="lab">Bar / plate math</span>
       <select id="exbar"></select></label>
+    <label class="f" style="margin-top:10px"><span class="lab">Progression moves</span>
+      <select id="exprogtype"></select></label>
     <label class="f" style="margin-top:10px">
       <span class="lab" id="exproglab">Progression</span>
       <input type="number" id="exprog" inputmode="decimal" step="any" aria-labelledby="exproglab"></label>
@@ -2780,11 +2783,21 @@ const meta = ex => db.ex?.[ex] || {};
 const kindOf = ex => meta(ex).kind || DEFAULT_KIND[ex] || 'weight';
 const isUnilateral = ex => meta(ex).uni ?? !!DEFAULT_UNILATERAL[ex];
 
+// For most work the second field counts reps. For a carry it is metres and for
+// a plank it is seconds — a measurement, not a count. The two behave
+// identically everywhere it matters (no estimated max, no rep band, no
+// tonnage); they differ only in what the number is called and how it reads
+// back, so everything else asks this rather than naming a kind.
+const measured = ex => kindOf(ex) === 'distance' || kindOf(ex) === 'time';
+const amountUnit = ex => kindOf(ex) === 'time' ? 's' : U().dist;
+// "40 m", "1:30" — a distance keeps its unit, a duration reads as a clock.
+const amountLabel = (ex, v) => kindOf(ex) === 'time' ? mmss(v) : `${fmtW(v)} ${U().dist}`;
+
 // An assisted pull-up or dip machine takes weight off instead of adding it, so
 // its load is a negative number: −40 is forty pounds of help. Off by default,
 // because everywhere else a minus sign in the weight field is a typo worth
 // catching, and a carry has no sense in which it could be assisted at all.
-const allowsAssist = ex => kindOf(ex) !== 'distance' && !!meta(ex).assist;
+const allowsAssist = ex => !measured(ex) && !!meta(ex).assist;
 
 // How far down the field is allowed to go. Assistance can cancel a bodyweight
 // movement but not overshoot it: being helped with more than you weigh is not
@@ -2792,6 +2805,65 @@ const allowsAssist = ex => kindOf(ex) !== 'distance' && !!meta(ex).assist;
 function minWeight(ex){
   if(!allowsAssist(ex)) return 0;
   return kindOf(ex) === 'bodyweight' && bw() ? -bw() : -Infinity;
+}
+
+// Which number the next session moves. Rarely a choice: writing a range into
+// the target says it, and a target without one adds weight, which is what
+// every target did before ranges existed.
+const PROG_TYPES = [['', 'From the target'], ['weight', 'Weight'],
+                    ['reps', 'Reps'], ['sets', 'Sets'], ['time', 'Time']];
+function typeFromTarget(target, kind){
+  const p = targetParts(target);
+  if(p.max > p.min) return kind === 'time' ? 'time' : 'reps';
+  if(p.setsMax > p.sets) return 'sets';
+  return 'weight';
+}
+function progTypeFor(ex, target){
+  return meta(ex).progType || typeFromTarget(target ?? targetOn(ex, state.day), kindOf(ex));
+}
+// What the field beside the type is counting, and what one step of it is.
+const PROG_UNIT = {weight: null, reps: 'reps', sets: 'sets', time: 'sec'};
+
+// How much that number moves. A rep or a set is one; seconds move in fives,
+// the same as the stepper beside the field.
+function progAmountFor(ex, type){
+  const set = meta(ex).progAmt;
+  return set > 0 ? set : (type === 'time' ? 5 : 1);
+}
+
+// Whether a session filled the range it was given, which is what rolls the
+// progression back over to the weight. Weight progression has no range to
+// fill, so the question does not arise.
+function rangeFull(type, p, sets){
+  if(!sets.length) return false;
+  if(type === 'sets') return sets.length >= p.setsMax;
+  if(type === 'reps' || type === 'time')
+    return p.max != null && sets.length >= p.sets && sets.every(s => s.r >= p.max);
+  return true;
+}
+
+// The last session of this exercise before a date, and the working sets in it.
+function priorSession(ex, date){
+  const days = [...new Set(db.sets
+    .filter(s => s.e === ex && !isWarmup(s) && s.d < date).map(s => s.d))].sort();
+  const d = days[days.length - 1];
+  return d ? {date: d, sets: workingSets(db.sets.filter(s => s.e === ex && s.d === d))} : null;
+}
+
+// How many sets today asks for. A plain target names a number; a set range
+// grows by what the last session earned, capped at the top of the range and
+// dropping back to the bottom once it gets there.
+function goalSetsOn(ex, target, date = state.date){
+  const p = targetParts(target);
+  if(p.setsMax <= p.sets) return p.sets;             // not a range: nothing to work out
+  if(progTypeFor(ex, target) !== 'sets') return p.sets;
+  const prior = priorSession(ex, date);
+  if(!prior) return p.sets;
+  if(rangeFull('sets', p, prior.sets)) return p.sets; // rolled over with the weight
+  const grown = heldAt(ex, prior.date)
+    ? prior.sets.length                              // not earned: the same again
+    : prior.sets.length + progAmountFor(ex, 'sets');
+  return Math.min(p.setsMax, Math.max(p.sets, grown));
 }
 
 // How much to add next time. Defaults to the smallest jump the rack allows,
@@ -2852,7 +2924,7 @@ function startingWeight(ex){
 // calculator warns about the app's own proposal — offering to change your
 // plates to reach a number you never asked for.
 function roundLoadable(w, ex){
-  if(kindOf(ex) === 'distance') return w;
+  if(measured(ex)) return w;
   // Assistance comes off a stack rather than a bar, and it rounds by size, not
   // by sign: −41 is forty-odd pounds of help rounded to the stack, not −45.
   if(w < 0){
@@ -2891,11 +2963,15 @@ function heldAt(ex, date){
   // RIR 0 is failure by definition: that weight is already asking everything.
   if(sets.some(s => s.rir === 0)) return 'a set went to failure';
   const target = targetOn(ex, sets[0].dy);
-  const goalSets = targetSets(target), goalReps = targetReps(target);
-  if(goalSets && sets.length < goalSets)
-    return `${sets.length} of ${goalSets} sets`;
-  if(goalReps && sets.some(s => s.r < goalReps))
-    return `short of ${goalReps} reps`;
+  const p = targetParts(target);
+  // The bottom of a range, not the top: below the bottom the session was not
+  // done at all, while the top is what the weight waits for, and that is a
+  // different question answered by rangeFull.
+  if(p.sets && sets.length < p.sets)
+    return `${sets.length} of ${p.sets} sets`;
+  if(p.min && sets.some(s => s.r < p.min))
+    return `short of ${p.min} ${kindOf(ex) === 'time' ? 'seconds'
+      : kindOf(ex) === 'distance' ? U().dist : 'reps'}`;
   return null;
 }
 
@@ -2950,18 +3026,46 @@ function seedFor(ex){
   const every = progressEveryFor(ex);
   const run = !held && prior ? earnedRun(ex, prior.d) : 0;
   const due = run >= every;
+  const target = targetOn(ex, state.day);
+  const p = targetParts(target);
+  const type = progTypeFor(ex, target);
+  const priorSets = prior ? workingSets(db.sets.filter(s => s.e === ex && s.d === prior.d)) : [];
+  const full = rangeFull(type, p, priorSets);
+  // On a range the weight waits: reps, seconds or sets move through the range
+  // first, and only a full one rolls the step back over to the bar.
+  const stepsWeight = type === 'weight' || full;
+
   const weight = !base ? startingWeight(ex)
     : today ? toDisplay(today)
     : deload ? deloadTo(toDisplay(prior), ex)
     // Rounded like any other suggestion: after a unit switch the weight being
     // repeated is a converted decimal, and offering 102.06 kg is exactly the
     // thing the plate calculator would then warn about.
-    : (held || !due) ? roundLoadable(toDisplay(prior), ex)
+    : (held || !due || !stepsWeight) ? roundLoadable(toDisplay(prior), ex)
     : roundLoadable(toDisplay(prior) + progressionFor(ex), ex);
+
+  // And what goes in the second field. Within a session straight sets are
+  // straight sets, so today's last one repeats; between sessions the range
+  // is walked one step at a time and drops to its bottom on the rollover.
+  const priorReps = priorSets.length ? priorSets[priorSets.length - 1].r : null;
+  const amt = progAmountFor(ex, type);
+  const reps = today ? today.r
+    : (type !== 'reps' && type !== 'time') ? (p.min ?? priorReps ?? null)
+    : priorReps == null ? p.min
+    // Held means the session fell short of the range's bottom. Repeating the
+    // shortfall would make a missed target the new one; the prescription
+    // comes back instead.
+    : held ? (p.min ?? priorReps)
+    // Earned but not due yet: the reps hold too, or a lift set to move every
+    // third session would move every session by another name.
+    : !due ? priorReps
+    : full ? p.min
+    : Math.min(p.max ?? Infinity, priorReps + amt);
+
   // Turning assistance back off leaves negative sets in the record. Repeating
   // one into a field that will not accept it offers a weight you cannot log.
-  return {weight: Math.max(minWeight(ex), weight), rir: base ? base.rir : 2,
-          prior, base, held, stall, deload, every, run, due};
+  return {weight: Math.max(minWeight(ex), weight), reps, rir: base ? base.rir : 2,
+          prior, base, held, stall, deload, every, run, due, type, full};
 }
 
 // Round a target up to an even number of sets, leaving the rest of the string
@@ -2978,6 +3082,11 @@ const nearestBar = w => U().bars.filter(b => b > 0)
 
 function barFor(ex){
   const m = meta(ex);
+  // Chosen "No plate math" — which is not the same as never having chosen.
+  // Deleting the setting let the built-in bar back in, so on an exercise that
+  // ships with one the choice could not be made at all: the curl came back as
+  // a 25 every time, and there was no way to say a dumbbell or a machine.
+  if(m.bar === false) return null;
   if(m.bar && typeof m.bar === 'object'){
     const mine = m.bar[units()];
     if(mine !== undefined) return mine;
@@ -2996,15 +3105,33 @@ const isLoadable = ex => barFor(ex) !== null && barFor(ex) !== undefined;
 const restTargetFor = ex => meta(ex).rest ?? REST_DEFAULT[ex] ?? 120;
 // "4 × 8" -> 8, "3 × 40m" -> 40, "4 × max" -> null. The target already states
 // the prescription, so it is what a fresh set should offer.
-function targetReps(target){
-  const m = /[×x]\s*(\d+(?:\.\d+)?)/.exec(target || '');
-  return m ? +m[1] : null;
+// A target can name a range on either side of the ×, and the range is how you
+// say what should grow before the weight does:
+//
+//   "4 × 8"      4 sets of 8            weight moves when the session is done
+//   "3 × 8-12"   3 sets, 8 to 12 reps   reps move to 12, then weight, back to 8
+//   "3-5 × 10"   3 to 5 sets of 10      sets move to 5, then weight, back to 3
+//   "3 × 30-60s" the same, in seconds
+//   "4 × max"    no number at all
+//
+// A range used to be read as its bottom number and nothing else, so the app
+// offered more weight the moment you hit 8 — which is the opposite of what
+// writing "8-12" asks for.
+function targetParts(target){
+  const t = String(target || '');
+  const sm = /^\s*(\d+)\s*(?:[-–]\s*(\d+))?\s*[×x]/.exec(t);
+  const rm = /[×x]\s*(\d+(?:\.\d+)?)\s*(?:[-–]\s*(\d+(?:\.\d+)?))?/.exec(t);
+  return {
+    sets:    sm ? +sm[1] : 0,
+    setsMax: sm ? (sm[2] === undefined ? +sm[1] : +sm[2]) : 0,
+    min:     rm ? +rm[1] : null,
+    max:     rm ? (rm[2] === undefined ? +rm[1] : +rm[2]) : null
+  };
 }
-
-function targetSets(target){
-  const m = /^\s*(\d+)\s*[×x]/.exec(target || '');
-  return m ? +m[1] : 0;
-}
+// Kept as the bottom of whatever was written: everything that asks these two
+// wants the floor — what the session has to reach to count as done.
+function targetReps(target){ return targetParts(target).min; }
+function targetSets(target){ return targetParts(target).sets; }
 
 /* ---------- weight helpers ---------- */
 const conv = (w, from, to) => from === to ? w : (to === 'kg' ? w / LB_PER_KG : w * LB_PER_KG);
@@ -3240,13 +3367,13 @@ function renderExercises(){
   // marking rather than leaving you to scan for the first unfinished row.
   const nextUp = day.ex.findIndex(([nm, tg]) => {
     const done = workingSets(setsFor(state.date, nm)).length;
-    const goal = targetSets(tg);
+    const goal = goalSetsOn(nm, tg);
     return !goal || done < goal;
   });
 
   const rows = day.ex.map(([name,target], i)=>{
     const n = workingSets(setsFor(state.date, name)).length;
-    const goal = targetSets(target);
+    const goal = goalSetsOn(name, target);
     const p = partnerOf(name);
     const full = goal && n >= goal;
     const badge = goal ? `${n}/${goal}` : n;
@@ -3328,7 +3455,7 @@ function sessionStats(date){
     // Volume, exercises and elapsed time cover everything: you moved the
     // warm-up weight, you were in the gym for it, and it was still that lift.
     exercises: new Set(all.map(s => s.e)).size,
-    tonnage: all.reduce((a,s)=> a + (kindOf(s.e) === 'distance' ? 0 : loadOf(s) * s.r), 0),
+    tonnage: all.reduce((a,s)=> a + (measured(s.e) ? 0 : loadOf(s) * s.r), 0),
     start: times.length ? Math.min(...times) : null
   };
 }
@@ -3378,7 +3505,7 @@ function sessionEstimate(date, dayId){
   const overhead = typicalOverhead();
   let secs = 0, sets = 0;
   for(const [name, target] of day.ex){
-    const goal = targetSets(target);
+    const goal = goalSetsOn(name, target, date);
     if(!goal) continue;
     const remaining = Math.max(0, goal - workingSets(setsFor(date, name)).length);
     sets += remaining;
@@ -3505,7 +3632,8 @@ function renderFieldLabels(){
   if(!ex) return;
   const k = kindOf(ex), u = U();
   $('#wtlab').textContent = k === 'bodyweight' ? `Added weight (${u.label})` : `Weight (${u.label})`;
-  $('#repslab').textContent = k === 'distance' ? `Distance (${u.dist})` : 'Reps';
+  $('#repslab').textContent = k === 'distance' ? `Distance (${u.dist})`
+    : k === 'time' ? 'Time (sec)' : 'Reps';
 }
 
 // The one line under the fields that says what the number in them means. The
@@ -3532,7 +3660,7 @@ function renderLoadHint(){
 // steps that round to the same number collapse into one.
 const RAMP = [[0.40, 5], [0.60, 3], [0.80, 2]];
 function warmupRamp(ex, work){
-  if(!isLoadable(ex) || kindOf(ex) === 'distance' || !(work > 0)) return [];
+  if(!isLoadable(ex) || measured(ex) || !(work > 0)) return [];
   const bar = barFor(ex) || 0;
   if(!(work > bar)) return [];
   const out = [];
@@ -3580,8 +3708,9 @@ function logRamp(w, r){
 
 function renderRepBand(){
   const box = $('#repband');
-  // A ramp-up set is not training a quality, and "reps" on a carry is metres.
-  const off = state.warmup || kindOf(state.ex) === 'distance';
+  // A ramp-up set is not training a quality, and "reps" on a carry is metres
+  // — or, on a plank, seconds.
+  const off = state.warmup || measured(state.ex);
   box.classList.toggle('hide', off);
   if(off) return;
   const b = repBand(parseFloat($('#reps').value));
@@ -3622,7 +3751,7 @@ function renderSetList(){
     const warm = isWarmup(s);
     const idx = warm ? 'W' : ++n;
     let load;
-    if(k === 'distance') load = `${fmtW(s.r)} ${U().dist}${toDisplay(s) > 0 ? ` @ ${fmtW(toDisplay(s))}` : ''}`;
+    if(measured(s.e)) load = `${amountLabel(s.e, s.r)}${toDisplay(s) > 0 ? ` @ ${fmtW(toDisplay(s))}` : ''}`;
     else if(k === 'bodyweight') load = `${bwLabel(toDisplay(s))} × ${s.r}`;
     else load = `${fmtW(toDisplay(s))} × ${s.r}`;
     return `<div class="setrow ${warm?'warm':''} ${state.editing===s.id?'editing':''} ${
@@ -3682,7 +3811,7 @@ function solvePlates(perSide){
 function renderPlateMath(){
   const box = $('#platemath');
   // Plates cannot make a negative, so the diagram has nothing to say about one.
-  if(!isLoadable(state.ex) || kindOf(state.ex) === 'distance' || parseFloat($('#wt').value) < 0){
+  if(!isLoadable(state.ex) || measured(state.ex) || parseFloat($('#wt').value) < 0){
     box.classList.add('hide'); return;
   }
   box.classList.remove('hide');
@@ -4272,7 +4401,7 @@ function nextExercise(date, after){
   const from = list.findIndex(([nm]) => nm === after);
   const unfinished = ([nm, tg]) => {
     if(nm === after) return false;
-    const goal = targetSets(tg);
+    const goal = goalSetsOn(nm, tg, date);
     return !goal || workingSets(setsFor(date, nm)).length < goal;
   };
   for(let i = 1; i <= list.length; i++){
@@ -4284,7 +4413,7 @@ function nextExercise(date, after){
 
 let nextUpFor = null;
 function showNextUp(ex){
-  const goal = targetSets(state.target);
+  const goal = goalSetsOn(ex, state.target);
   const next = nextExercise(state.date, ex);
   nextUpFor = next;
   $('#nextupex').textContent = `${ex} done${goal ? ` · ${goal} of ${goal}` : ''}`;
@@ -4377,8 +4506,8 @@ function renderSheetSub(){
   const ex = state.ex, u = U(), target = state.target || '';
   // "last" means the previous session's set, not the one just logged.
   const prev = db.sets.filter(s => s.e === ex && s.d !== state.date).slice(-1)[0];
-  const done = workingSets(setsFor(state.date, ex)).length, goal = targetSets(target);
-  const goalSets = targetSets(target);
+  const done = workingSets(setsFor(state.date, ex)).length;
+  const goal = goalSetsOn(ex, target), goalSets = goal;
   const bits = [target
     ? `Target ${target}` + (isUnilateral(ex) && goalSets ? ` (${goalSets/2} per side)` : '')
     : 'No target — logged for today only'];
@@ -4401,6 +4530,11 @@ function renderSheetSub(){
       Math.round(DELOAD_PCT * 100)}%`);
     else if(held) bits.push(`repeating — ${held}`);
     else if(!seed.due) bits.push(`${seed.run} of ${seed.every} before the next jump`);
+    // On a range the weight standing still is the plan, not a stall, and the
+    // sheet has to say so or it reads as one.
+    else if(seed.type !== 'weight') bits.push(seed.full
+      ? 'range full — weight up, back to the bottom'
+      : `filling the range — ${PROG_UNIT[seed.type]} up, weight holds`);
   }
   $('#sheet-sub').textContent = bits.join(' · ');
 }
@@ -4418,15 +4552,14 @@ function openSheet(ex){
   renderSheetSub();
 
   const seed = seedFor(ex);
-  const wantReps = targetReps(target);
   renderFieldLabels();
   $('#wt').value = fmtW(seed.weight);
   // Remembered so a settings change can refresh an untouched suggestion
   // without overwriting a number you typed.
   state.seededWeight = $('#wt').value;
-  // The target states the reps; only fall back to history when it does not
-  // name a number, as with "4 × max".
-  $('#reps').value = wantReps ?? (seed.base ? seed.base.r : '');
+  // The prescription states the reps; only fall back to history when it does
+  // not name a number, as with "4 × max".
+  $('#reps').value = seed.reps ?? (seed.base ? seed.base.r : '');
   state.rir = seed.rir;
 
   $('#canceledit').classList.add('hide');
@@ -4497,7 +4630,7 @@ window.addEventListener('popstate', ()=>{
 // who trains mostly in that range.
 const E1RM_REP_CAP = 12;
 function e1rm(s){
-  if(kindOf(s.e) === 'distance') return 0;
+  if(measured(s.e)) return 0;
   return loadOf(s) * (1 + (Math.min(s.r, E1RM_REP_CAP) + Math.min(s.rir, 4))/30);
 }
 
@@ -4558,7 +4691,7 @@ function renderHistory(){
 
   const byEx = {};
   db.sets.forEach(s=>{
-    const dist = kindOf(s.e) === 'distance';
+    const dist = measured(s.e);
     if(vol){
       // Volume keeps every set, warm-ups included: the warm-up weight was
       // moved too, which is the same sum a session card reports. Distance has
@@ -4583,7 +4716,7 @@ function renderHistory(){
       // and the line under it are all describing the same series. Rounding only
       // the display would have the card read 55 to 60 while the badge worked
       // out the change from 57 to 60.2.
-      const round = (vol || kindOf(ex) === 'distance')
+      const round = (vol || measured(ex))
         ? ((v) => Math.round(v)) : ((v, d) => roundToStep(shownMax(ex, v, d), ex));
       return {ex, dates, vals: dates.map(d=>round(days[d], d)),
               logged: logged[ex] ? logged[ex].size : dates.length};
@@ -4605,10 +4738,12 @@ function renderHistory(){
             ? `${c.dates.length} of ${c.logged} sessions counted` : 'first session')
         : cls==='flat' ? 'no clear change' : (pct>0?'+':'') + pct.toFixed(1) + '% over ' + vals.length + ' sessions';
       const k = kindOf(c.ex);
-      const unit = k === 'distance' ? u.dist : u.label;
+      const unit = measured(c.ex) ? amountUnit(c.ex) : u.label;
       const what = vol
-        ? (k === 'distance' ? `${unit} covered` : `${unit} moved`)
+        ? (k === 'distance' ? `${unit} covered`
+          : k === 'time' ? 'seconds held' : `${unit} moved`)
         : k === 'distance' ? 'best distance'
+        : k === 'time' ? 'longest hold'
         : k === 'bodyweight' ? 'est. max added ' + unit : 'est. max ' + unit;
       // Volumes run into the thousands, where an unseparated number stops
       // being readable at a glance.
@@ -4815,7 +4950,7 @@ function renderSessions(){
     sets.forEach(s => (byEx[s.e] ||= []).push(s));
     const lines = Object.entries(byEx).map(([ex, list])=>{
       const k = kindOf(ex);
-      const detail = list.map(s => k === 'distance' ? `${fmtW(s.r)}${u.dist}`
+      const detail = list.map(s => measured(ex) ? amountLabel(ex, s.r)
         : `${fmtW(toDisplay(s))}×${s.r}`).join('  ');
       return `<div class="sessline"><b>${esc(ex)}</b><span>${esc(detail)}</span></div>`;
     }).join('');
@@ -4857,7 +4992,8 @@ function nudgeWeight(dir){
 
 function nudgeReps(dir){
   const cur = parseFloat($('#reps').value);
-  const step = kindOf(state.ex) === 'distance' ? 5 : 1;
+  // Metres and seconds both move in fives; reps move in ones.
+  const step = measured(state.ex) ? 5 : 1;
   $('#reps').value = Math.max(step, (isNaN(cur) ? 0 : cur) + dir*step);
   renderRepBand();
 }
@@ -5032,7 +5168,8 @@ $('#logset').addEventListener('click', ()=>{
   const r = parseFloat($('#reps').value);
   // Below zero is a typo everywhere except a machine that is set up to assist.
   if(!(w >= minWeight(state.ex)) || !(r > 0)){
-    toast(k === 'distance' ? 'Enter a distance' : 'Enter weight and reps');
+    toast(k === 'distance' ? 'Enter a distance'
+      : k === 'time' ? 'Enter a time' : 'Enter weight and reps');
     return;
   }
   if(state.editing){
@@ -5067,7 +5204,7 @@ $('#logset').addEventListener('click', ()=>{
     // thing anyone wants, and any timer already running is left alone.
   } else {
     const done = workingSets(setsFor(state.date, state.ex)).length;
-    const goal = targetSets(state.target);
+    const goal = goalSetsOn(state.ex, state.target);
     toast(goal && done <= goal ? `Set ${done} of ${goal}` : `Set ${done} logged`);
     // A rest timer after the set that finishes an exercise is timing a rest
     // before nothing. Say what is next instead.
@@ -5246,13 +5383,10 @@ function openExEditor(name){
   $('#exrest').innerHTML = REST_OPTIONS.map(v =>
     `<option value="${v}">${mmss(v)}</option>`).join('');
   $('#exrest').value = String(name ? restTargetFor(name) : 120);
-  const progSet = name ? (meta(name).prog || {})[units()] : null;
-  $('#exproglab').textContent = `Progression (${u.label})`;
-  $('#exprog').value = progSet > 0 ? progSet : '';
-  $('#exprog').placeholder = name ? String(progressionFor(name)) : '';
-  $('#exproghint').textContent = name
-    ? `Added to the last session's weight when this opens. Blank follows the rack — currently ${progressionFor(name)} ${u.label}.`
-    : 'Blank follows the smallest jump your plates allow.';
+  $('#exprogtype').innerHTML = PROG_TYPES.map(([v, label]) =>
+    `<option value="${v}">${esc(label)}</option>`).join('');
+  $('#exprogtype').value = name ? (meta(name).progType || '') : '';
+  renderProgFields(name);
   renderEveryHint();
   const inDay = !!name && dayById(state.day).ex.some(([n]) => n === name);
   $('#exdelete').classList.toggle('hide', !inDay);
@@ -5296,15 +5430,26 @@ $('#exsave').addEventListener('click', ()=>{
   if($('#exassist').checked) m.assist = true; else delete m.assist;
   m.rest = +$('#exrest').value;
   const barVal = $('#exbar').value;
-  if(barVal === '') delete m.bar;
+  // `false`, not `delete`: an exercise with a built-in bar needs somewhere to
+  // record that you do not want it.
+  if(barVal === '') m.bar = false;
   else m.bar = Object.assign({}, m.bar || {}, {[units()]: +barVal});
 
   const every = +$('#exevery').value;
   if(every > 1) m.every = every; else delete m.every;
 
+  const pt = $('#exprogtype').value;
+  if(pt) m.progType = pt; else delete m.progType;
+  // One field, whatever the type says it counts. A weight step is per unit,
+  // because five pounds and five kilos are not the same jump; reps, sets and
+  // seconds mean the same thing in either.
   const progVal = parseFloat($('#exprog').value);
-  if(progVal > 0) m.prog = Object.assign({}, m.prog || {}, {[units()]: progVal});
-  else if(m.prog) delete m.prog[units()];
+  if(progTypeFor(name, typed) === 'weight'){
+    if(progVal > 0) m.prog = Object.assign({}, m.prog || {}, {[units()]: progVal});
+    else if(m.prog) delete m.prog[units()];
+  } else {
+    if(progVal > 0) m.progAmt = progVal; else delete m.progAmt;
+  }
 
   save(); renderDays(); renderExercises();
   closePanel($('#exsheet'), ()=>exButton(name) || $('#editprog'));
@@ -5315,7 +5460,7 @@ $('#exsave').addEventListener('click', ()=>{
       $('#wt').value = fmtW(seedFor(name).weight);
       state.seededWeight = $('#wt').value;
     }
-    const reps = targetReps(target);
+    const reps = seedFor(name).reps;
     if(reps != null && !state.editing) $('#reps').value = reps;
     renderSheetSub(); renderPlateMath(); refreshStepperLabels(); renderSetList();
     renderRepBand(); renderFieldLabels(); renderLoadHint();
@@ -5324,6 +5469,12 @@ $('#exsave').addEventListener('click', ()=>{
 });
 
 $('#exevery').addEventListener('change', renderEveryHint);
+// The field under the type changes meaning with the type, and the type itself
+// changes with the target — so typing "8-12" into the target relabels the
+// field while you are still looking at it.
+$('#exprogtype').addEventListener('change', ()=>renderProgFields(state.editingEx));
+$('#extarget').addEventListener('input', ()=>renderProgFields(state.editingEx));
+$('#exkind').addEventListener('change', ()=>renderProgFields(state.editingEx));
 
 $('#exdelete').addEventListener('click', ()=>{
   const name = state.editingEx; if(!name) return;
@@ -5353,6 +5504,33 @@ function renderBwHint(){
 
 // Reads off the select rather than the stored value, so it answers while you
 // are still deciding rather than after you have saved.
+// The one number under the type means whatever the type says it means, so the
+// label, the placeholder and the sentence under it all follow it.
+function renderProgFields(name){
+  const u = U();
+  // The select wins over the target while the sheet is open: you are allowed
+  // to see what a choice does before saving it.
+  const type = $('#exprogtype').value
+    || typeFromTarget($('#extarget').value.trim(), $('#exkind').value);
+  const unit = PROG_UNIT[type] || u.label;
+  $('#exproglab').textContent = `Progression (${unit})`;
+  const stored = type === 'weight'
+    ? (name ? (meta(name).prog || {})[units()] : null)
+    : (name ? meta(name).progAmt : null);
+  const step = type === 'weight'
+    ? (name ? progressionFor(name) : null)
+    : progAmountFor(name || '', type);
+  $('#exprog').value = stored > 0 ? stored : '';
+  $('#exprog').placeholder = step != null ? String(step) : '';
+  $('#exproghint').textContent =
+    type === 'weight'
+      ? (name ? `Added to the last session's weight when this opens. Blank follows the rack — currently ${progressionFor(name)} ${u.label}.`
+              : 'Blank follows the smallest jump your plates allow.')
+      : type === 'sets'
+      ? `Added to the last session's set count until the top of the range, then the weight goes up and the sets drop back. Write the range in the target, as in "3-5 × 10". Blank adds ${step}.`
+      : `Added to the last session's ${unit} until the top of the range, then the weight goes up and they drop back. Write the range in the target, as in "3 × ${type === 'time' ? '30-60s' : '8-12'}". Blank adds ${step}.`;
+}
+
 function renderEveryHint(){
   $('#exeveryhint').textContent = +$('#exevery').value === 1
     ? 'Every session you complete earns the jump. Right for a lift you are new to, and fast for one you are not.'
@@ -5749,7 +5927,7 @@ function csv(){
                  'est_max','rest_sec', ...painCols, 'pain_sides', 'notes']];
   db.sets.forEach(s=>rows.push([s.d, s.dy || '', s.e, kindOf(s.e), isWarmup(s) ? 'yes' : '',
     s.w, s.u || 'lb', s.r, s.rir,
-    kindOf(s.e)==='distance' ? '' : e1rm(s).toFixed(1), s.rest ?? '',
+    measured(s.e) ? '' : e1rm(s).toFixed(1), s.rest ?? '',
     ...painFor(s.d), sideFor(s.d), db.days[s.d]?.notes || ''].map(q)));
 
   // Rest days carry no set, so without a row of their own a rating logged on
@@ -5993,11 +6171,12 @@ $('#exinfodone').addEventListener('click', ()=>closePanel($('#exinfo'), $('#exin
 // The sheet behind a trend card follows the same toggle: opening a volume card
 // onto a column of estimated maxes would answer a question nobody asked.
 const dayVolume = (list, k) =>
-  Math.round(list.reduce((a, s) => a + (k === 'distance' ? s.r : loadOf(s) * s.r), 0));
+  Math.round(list.reduce((a, s) =>
+    a + (k === 'distance' || k === 'time' ? s.r : loadOf(s) * s.r), 0));
 
 function openExHistory(ex){
   const u = U(), k = kindOf(ex), vol = trendMetric() === 'volume';
-  const unit = k === 'distance' ? u.dist : u.label;
+  const unit = measured(ex) ? amountUnit(ex) : u.label;
   const mine = db.sets.filter(s => s.e === ex);
   const byDate = {};
   mine.forEach(s => (byDate[s.d] ||= []).push(s));
@@ -6005,32 +6184,33 @@ function openExHistory(ex){
 
   $('#exhist-title').textContent = ex;
   const sessions = dates.length;
-  const forMax = mine.filter(s => k === 'distance' ? !isWarmup(s) : countsForMax(s));
-  const best = Math.max(0, ...forMax.map(s => k === 'distance' ? s.r : e1rm(s)));
+  const forMax = mine.filter(s => measured(ex) ? !isWarmup(s) : countsForMax(s));
+  const best = Math.max(0, ...forMax.map(s => measured(ex) ? s.r : e1rm(s)));
   // Shown per set and then maxed, not maxed and then shown: the bodyweight to
   // subtract belongs to the set that produced the number.
-  const bestShown = k === 'distance' ? Math.round(best)
+  const bestShown = measured(ex) ? Math.round(best)
     : roundToStep(Math.max(0, ...forMax.map(s => shownMax(ex, e1rm(s), s.d))), ex);
   const bestDay = Math.max(0, ...dates.map(d => dayVolume(byDate[d], k)));
   $('#exhist-sub').textContent = !sessions ? 'Nothing logged yet'
     : vol ? `${sessions} session${sessions===1?'':'s'} · best ${
         bestDay.toLocaleString()} ${unit} in one`
     : `${sessions} session${sessions===1?'':'s'}` + (best
-      ? ` · best ${k==='bodyweight' ? signed(bestShown) : bestShown} ${k==='distance'?u.dist:u.label}`
+      ? ` · best ${measured(ex) ? amountLabel(ex, bestShown)
+          : (k === 'bodyweight' ? signed(bestShown) : bestShown) + ' ' + u.label}`
       : ` · nothing at ${E1RM_MAX_RIR} RIR or harder yet`);
 
   $('#exhist-body').innerHTML = dates.length ? dates.map(d=>{
     const list = byDate[d];
     const detail = list.map(s => {
-      const load = k === 'distance' ? `${fmtW(s.r)}${u.dist}`
+      const load = measured(ex) ? amountLabel(ex, s.r)
         : k === 'bodyweight' ? `${bwLabel(toDisplay(s))}×${s.r}`
         : `${fmtW(toDisplay(s))}×${s.r}`;
       return isWarmup(s) ? `<em>${esc(load)}</em>` : esc(load);
     }).join('  ');
-    const work = list.filter(s => k === 'distance' ? !isWarmup(s) : countsForMax(s));
+    const work = list.filter(s => measured(ex) ? !isWarmup(s) : countsForMax(s));
     const top = vol ? dayVolume(list, k).toLocaleString()
       : work.length
-      ? (k === 'distance' ? Math.round(Math.max(...work.map(s => s.r)))
+      ? (measured(ex) ? Math.round(Math.max(...work.map(s => s.r)))
                           : roundToStep(Math.max(...work.map(s => shownMax(ex, e1rm(s), s.d))), ex)) : null;
     return `<div class="exhistday">
       <b>${esc(prettyDate(d))}</b>

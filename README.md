@@ -95,6 +95,10 @@ rather than `first session`, which contradicted the rows listed underneath it.
 
 ## Which bar is on the rack
 
+**No plate math** now sticks on an exercise that ships with a bar. Choosing it
+used to delete the setting, which let the built-in default straight back in, so
+on the curl there was no way to say "dumbbells" or "a machine" at all.
+
 Plate math is only right if the app knows what the bar weighs, and the list of
 bars had no curl bar in it — the lightest on offer was a 35. **Bar / plate
 math** in the exercise editor now also carries `25 EZ`, `20 EZ` and `15 EZ`
@@ -390,7 +394,9 @@ the height is identical across all four bands and the blank state.
 ## When the weight goes up
 
 A session earns the next weight by being completed at the one it used: every
-prescribed set, every prescribed rep, and nothing taken to failure. Fall short
+prescribed set, every prescribed rep, and nothing taken to failure. Where the
+target names a range, the bottom of it is what has to be reached — the top is
+what the weight waits for, which is the next section. Fall short
 of any of those and the same weight comes back, with the sheet saying which —
 `repeating — 3 of 4 sets`, `short of 4 reps`, `a set went to failure`. RIR 0 is
 failure by definition, wherever in the session it happened.
@@ -412,6 +418,41 @@ the same number and backs off about 10%, rounded to the plates, saying
 time. Three and ten percent are conventions, not findings; they are there to
 break a loop rather than to be precise about it. Nothing to take off — an
 unweighted bodyweight lift — is not called a deload.
+
+## What the weight waits for
+
+A target can name a range, and the range is how you say what should grow before
+the weight does:
+
+| Target | What moves |
+| --- | --- |
+| `3 × 10` | the weight, once the session is complete |
+| `3 × 8-12` | reps, to 12 on every set — then the weight, back to 8 |
+| `3-5 × 10` | sets, to 5 — then the weight, back to 3 |
+| `3 × 30-60s` | seconds, to 60 — then the weight, back to 30 |
+
+Double progression is the most common scheme in a gym and the app used to get
+it backwards: a range was read as its bottom number and nothing else, so `8-12`
+offered more weight the moment you hit 8. Now the sheet says which of the two
+is happening — `filling the range — reps up, weight holds`, then
+`range full — weight up, back to the bottom` — because a weight standing still
+on purpose otherwise reads as a stall.
+
+Falling short still asks for the prescription again rather than the shortfall:
+three sets of 6 against `3 × 8-12` comes back as 8, not 6. A missed target does
+not become the target.
+
+**Progression moves** in an exercise's settings overrides all of this if you
+want it to — weight, reps, sets or time outright — and the number under it
+counts whatever the type says, relabelling itself as you change the target.
+
+## Work measured in time
+
+A plank, a dead hang, a timed carry: **Time** is a kind alongside weight,
+bodyweight and distance, and its second field is seconds. It behaves like a
+carry's metres everywhere it matters — no estimated max, no rep band, no
+tonnage — and reads back as a clock, so 90 is `1:30`. Its volume is the time
+held. Seconds move in fives, the same as the stepper beside the field.
 
 ## How long it will take
 
@@ -596,7 +637,7 @@ instead of failing quietly.
 ## Built like this
 
 Markup, styles and logic in one file; a service worker that precaches the shell
-and keeps the exercise photos in a cache of their own; 376 Playwright tests that
+and keeps the exercise photos in a cache of their own; 391 Playwright tests that
 read real bounding boxes at phone sizes; and Release Please, which tags the
 version and rewrites it in `sw.js` — the thing that makes an installed phone
 notice a release at all. The deploy refuses to publish a build the suite rejects.

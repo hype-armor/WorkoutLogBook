@@ -3515,3 +3515,90 @@ test.describe('curl bars', () => {
     expect(errs).toEqual([]);
   });
 });
+
+// An exercise that ships with a bar had nowhere to record that you do not want
+// one: choosing "No plate math" deleted the setting and let the default back in.
+test('plate math can be turned off on an exercise that ships with a bar',
+  async ({ browser }) => {
+  const ctx = await phone(browser);
+  const page = await ctx.newPage();
+  await page.goto(FILE_URL);
+  await page.waitForSelector('.ex');
+  await chooseDay(page, 'D');
+  await page.click('.ex[data-ex="Barbell curl"]');
+  await expect(page.locator('#platemath')).toBeVisible();
+
+  await page.click('#exsettings');
+  await page.selectOption('#exbar', '');
+  await page.click('#exsave');
+
+  expect(await page.evaluate(() => barFor('Barbell curl'))).toBe(null);
+  await expect(page.locator('#platemath')).toBeHidden();
+  // and it survives the reopen that used to undo it
+  await page.click('#exsettings');
+  await expect(page.locator('#exbar')).toHaveValue('');
+  await page.click('#exsave');
+  expect(await page.evaluate(() => barFor('Barbell curl'))).toBe(null);
+  await ctx.close();
+});
+
+// A plank, a hang, a hold: the second field is seconds, and everything that
+// treats a carry's metres as "not a rep count" has to treat these the same.
+test.describe('work measured in time', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await chooseDay(page, 'A');
+    await page.click('#editprog');          // adding to the day needs edit mode
+    await page.click('#addex');
+    await page.fill('#exname', 'Plank');
+    await page.fill('#extarget', '3 × 30-60s');
+    await page.selectOption('#exkind', 'time');
+    await page.click('#exsave');
+    await page.click('#editprog');          // and back out of it
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('the field asks for seconds, and no rep band or plate math applies',
+    async () => {
+    await page.click('.ex[data-ex="Plank"]');
+    await expect(page.locator('#repslab')).toContainText(/time/i);
+    await expect(page.locator('#platemath')).toBeHidden();
+    // 45 seconds is not "Endurance" — the field is not counting reps at all
+    await expect(page.locator('#repband')).toBeHidden();
+  });
+
+  test('a logged hold reads as a clock, not a rep count', async () => {
+    await page.fill('#wt', '0');
+    await page.fill('#reps', '45');
+    await page.click('#logset');
+    await expect(page.locator('.setrow .load')).toContainText('0:45');
+  });
+
+  test('it is kept out of the estimated max, like a carry', async () => {
+    expect(await page.evaluate(() =>
+      e1rm(db.sets.find(s => s.e === 'Plank')))).toBe(0);
+    expect(await page.evaluate(() => measured('Plank'))).toBe(true);
+  });
+
+  test('its volume is the time held, not a tonnage', async () => {
+    await page.click('#close');
+    await page.click('#tab-history');
+    await page.click('[data-metric="volume"]');
+    await expect(page.locator('.trendcard[data-ex="Plank"]')).toContainText('seconds held');
+    await expect(page.locator('.trendcard[data-ex="Plank"] b')).toHaveText('45');
+    await page.click('#tab-train');
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
