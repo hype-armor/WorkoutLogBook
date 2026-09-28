@@ -807,6 +807,24 @@
     background:var(--accent-soft);font-weight:620}
   .musclepick button[data-tier="2"]{border-color:var(--line-2);color:var(--ink);
     background:var(--surface-3)}
+  .gymrow{display:flex;align-items:center;gap:6px;padding:4px 0;
+    border-bottom:1px solid var(--line)}
+  .gymrow:last-child{border-bottom:0}
+  .gymrow .use{
+    flex:none;background:var(--surface-2);border:1px solid var(--line);
+    color:var(--ink-2);font-family:inherit;font-size:0.75rem;font-weight:620;
+    padding:8px 11px;border-radius:999px;cursor:pointer;white-space:nowrap;
+  }
+  .gymrow .use[aria-pressed="true"]{
+    background:linear-gradient(180deg,var(--accent-fill-2),var(--accent-fill));
+    color:var(--on-accent);border-color:var(--accent-fill)}
+  /* A name field, not a weight field: the sheet's inputs are sized for numbers
+     you read across a gym, and a gym's name is neither. */
+  .gymrow input.nm{
+    flex:1;min-width:0;font-size:1rem;font-weight:600;letter-spacing:-.01em;
+    padding:9px 11px;
+  }
+  .gymrow .icon.small{width:38px;height:38px;min-width:38px;font-size:1rem;flex:none}
   .guidesteps{margin:0;padding:0 0 0 20px;color:var(--ink-2);font-size:0.9062rem;line-height:1.5;letter-spacing:-.005em}
   .guidesteps li{margin:0 0 8px}
   .guidesteps li::marker{color:var(--ink-3);font-weight:640}
@@ -1252,6 +1270,25 @@
   <div class="sheetfoot"><button class="btn" id="exhistdone">Done</button></div>
 </section>
 
+<!-- ============ GYMS ============ -->
+<section class="sheet" id="gymsheet" role="dialog" aria-modal="true" aria-labelledby="gymsheet-title" inert aria-hidden="true">
+  <div class="sheethead">
+    <div class="txt"><h2 id="gymsheet-title" tabindex="-1">Gyms</h2>
+      <div class="sub">Each one keeps its own plates. Tap to switch.</div></div>
+    <button class="icon" id="gymclose" aria-label="Close">&#215;</button>
+  </div>
+  <div class="sheetbody">
+    <div id="gymlist"></div>
+    <button class="btn ghost small wide" id="gymadd" style="margin-top:14px">+ Add gym</button>
+    <div class="hint">The plates you tick in settings belong to whichever gym is
+      current, so the loader, the stepper and every weight the app suggests
+      follow the rack you are actually standing at. Which one that is stays on
+      this phone — it is never synced to your other devices.</div>
+  </div>
+  <div class="restdock"></div>
+  <div class="sheetfoot"><button class="btn" id="gymdone">Done</button></div>
+</section>
+
 <!-- ============ SETTINGS ============ -->
 <!-- ============ SYNC SETUP ============ -->
 <section class="sheet" id="syncsheet" role="dialog" aria-modal="true" aria-labelledby="syncsheet-title" inert aria-hidden="true">
@@ -1333,7 +1370,10 @@
     <div class="eyebrow">Units</div>
     <div class="bars" id="unitsel" style="justify-content:flex-start"></div>
 
-    <div class="eyebrow">Plates you have</div>
+    <div class="rowhead">
+      <div class="eyebrow" id="platelab">Plates you have</div>
+      <button class="linkbtn" id="gymmanage">Gyms</button>
+    </div>
     <div class="bars" id="platesel" style="justify-content:flex-start"></div>
     <div class="hint">Tap to match your rack — plenty of gyms have no 35s, and
       plenty have no 1.25s. Plates you turn off are never suggested, and the
@@ -1723,7 +1763,7 @@ function blank(){
   return {v:5, sets:[], days:{}, pairs:{}, ex:{}, program:null,
           settings:{units:'lb', plates:null, bw:{lb:0,kg:0},
                     lastDay:'A', alert:'both', painSites:['lower-back']},
-          rest:null, timers:null, rev:{}};
+          gyms:null, rest:null, timers:null, rev:{}};
 }
 
 /* ---------- record identity and clocks ---------- */
@@ -1780,7 +1820,7 @@ function hlcSeed(d){
 // the training log, and stamping it would bump a clock every quarter second.
 // Nor are the two backup fields, which describe this device's own backup file
 // rather than anything you lifted.
-const DEVICE_ONLY = new Set(['lastBackup', 'backupSnooze']);
+const DEVICE_ONLY = new Set(['lastBackup', 'backupSnooze', 'gym']);
 function records(d){
   const out = new Map();
   for(const s of d.sets || []) if(s?.id) out.set('set:' + s.id, s);
@@ -1788,6 +1828,7 @@ function records(d){
   for(const [k, v] of Object.entries(d.ex    || {})) out.set('ex:' + k, v);
   for(const [k, v] of Object.entries(d.pairs || {})) out.set('pair:' + k, v);
   for(const e of d.bw || []) if(e?.d) out.set('bw:' + e.d, e);
+  for(const g of d.gyms || []) if(g?.id) out.set('gym:' + g.id, g);
   for(const [k, v] of Object.entries(d.settings || {}))
     if(!DEVICE_ONLY.has(k)) out.set('cfg:' + k, v);
   // An ordered list whose order is the point. Per-day records would need a
@@ -2269,6 +2310,12 @@ function putRecord(d, key, value){
     if(i < 0) list.push({...value, d: id}); else list[i] = {...value, d: id};
     list.sort(byDate);
   }
+  else if(kind === 'gym'){
+    if(!value || typeof value !== 'object') return;
+    const list = Array.isArray(d.gyms) ? d.gyms : (d.gyms = []);
+    const i = list.findIndex(x => x.id === id);
+    if(i < 0) list.push({...value, id}); else list[i] = {...value, id};
+  }
   else if(kind === 'cfg')     d.settings[id] = value;
   else if(kind === 'program') d.program = value;
 }
@@ -2285,6 +2332,10 @@ function dropRecord(d, key){
   else if(kind === 'bw' && Array.isArray(d.bw)){
     const i = d.bw.findIndex(x => x.d === id);
     if(i >= 0) d.bw.splice(i, 1);
+  }
+  else if(kind === 'gym' && Array.isArray(d.gyms)){
+    const i = d.gyms.findIndex(x => x.id === id);
+    if(i >= 0) d.gyms.splice(i, 1);
   }
   else if(kind === 'cfg')     delete d.settings[id];
   else if(kind === 'program') d.program = null;
@@ -3826,11 +3877,35 @@ function renderSetList(){
 }
 
 /* ---------- plate math ---------- */
+/* ---------- gyms ---------- */
+// A gym is a rack: a name and the plates in it. Everything downstream — what
+// the loader may use, how far the stepper jumps, what a suggestion rounds to —
+// follows from whichever one you are standing in.
+//
+// The id of the one the migration makes is fixed rather than generated,
+// because two devices that both upgrade before they sync would otherwise each
+// invent a gym called GYM and end up with two of them.
+const DEFAULT_GYM = 'default';
+
+function gyms(){
+  if(!Array.isArray(db.gyms) || !db.gyms.length){
+    // Everything the single inventory held moves into the first gym, so an
+    // upgrade changes nothing about the numbers the app gives you.
+    db.gyms = [{id: DEFAULT_GYM, name: 'GYM',
+                plates: db.settings.plates ? {...db.settings.plates} : null}];
+  }
+  return db.gyms;
+}
+// Which rack you are at is a fact about this phone this afternoon, not about
+// the training log, so it is never synced — switching gyms here must not
+// switch them on the tablet at home.
+const activeGym = () => gyms().find(g => g.id === db.settings.gym) || gyms()[0];
+
 // The plates actually in the rack. Everything downstream — what the loader may
 // use, and how far the stepper jumps — follows from this one list.
 function availablePlates(){
   const u = U();
-  const list = db.settings.plates?.[units()];
+  const list = activeGym().plates?.[units()];
   const owned = Array.isArray(list) && list.length
     ? new Set(list)
     : new Set(u.plates.filter(p => p.w >= u.minPlate).map(p => p.w));
@@ -5681,8 +5756,34 @@ function renderThemeSel(){
     `<button data-theme="${t.id}" aria-pressed="${t.id === themeId()}">${esc(t.name)}</button>`).join('');
 }
 
-function openSettings(){
+// One row per gym: the name, whether it is the one you are at, and a way to
+// rename or remove it. Tapping the row switches — the whole point of the sheet.
+function renderGymList(){
+  const cur = activeGym();
+  // The name is a field rather than something behind a rename button: there is
+  // nothing to a gym but its name and its plates, and a dialog to change two
+  // words is a dialog nobody wanted. The switch is its own button so that
+  // typing in the name does not also move you to that gym.
+  $('#gymlist').innerHTML = gyms().map(g => `<div class="gymrow${
+      g.id === cur.id ? ' on' : ''}">
+    <button class="use" data-gym="${esc(g.id)}" aria-pressed="${g.id === cur.id}"
+      aria-label="${g.id === cur.id ? 'Current gym' : 'Switch to ' + esc(g.name || 'this gym')}"
+      >${g.id === cur.id ? 'Current' : 'Use'}</button>
+    <input class="nm" type="text" data-gymname="${esc(g.id)}" value="${esc(g.name || '')}"
+      autocomplete="off" aria-label="Gym name">
+    <button class="icon small" data-dropgym="${esc(g.id)}"
+      aria-label="Remove ${esc(g.name || 'gym')}">&#215;</button>
+  </div>`).join('');
+}
+
+function openGyms(){
+  renderGymList();
+  openPanel($('#gymsheet'), $('#gymsheet-title'));
+}
+
+function renderSettings(){
   const u = U();
+  $('#platelab').textContent = `Plates at ${activeGym().name || 'your gym'}`;
   renderTextSel();
   renderThemeSel();
   $('#unitsel').innerHTML = Object.keys(UNITS).map(k =>
@@ -5713,6 +5814,10 @@ function openSettings(){
       : 'Never backed up.');
   $('#appversion').textContent = `v${APP_VERSION}`;
   renderSyncStatus();
+}
+
+function openSettings(){
+  renderSettings();
   openPanel($('#settings'), $('#set-title'));
 }
 
@@ -5741,6 +5846,64 @@ $('#unitsel').addEventListener('click', e=>{
   toast('Now in ' + U().label);
 });
 
+$('#gymmanage').addEventListener('click', openGyms);
+$('#gymclose').addEventListener('click', ()=>closePanel($('#gymsheet')));
+$('#gymdone').addEventListener('click', ()=>closePanel($('#gymsheet')));
+
+$('#gymadd').addEventListener('click', ()=>{
+  const id = 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  // A new gym starts with a full rack rather than an empty one: an empty rack
+  // can load nothing, and copying the rack you are at would be a guess about
+  // somewhere you have not been yet.
+  gyms().push({id, name: 'New gym', plates: null});
+  db.settings.gym = id;
+  save(); renderGymList(); renderSettings(); rerenderAll();
+  // Straight into the name, because naming it is the only thing left to do.
+  const field = $(`[data-gymname="${id}"]`);
+  field?.focus(); field?.select();
+});
+
+$('#gymlist').addEventListener('click', e=>{
+  const pick = e.target.closest('[data-gym]');
+  if(pick){
+    db.settings.gym = pick.dataset.gym;
+    save(); renderGymList(); renderSettings();
+    // The loader's stock and the stepper's jump both follow from the rack, so
+    // an exercise left open behind these two sheets has to catch up.
+    if(state.ex){ renderPlateMath(); refreshStepperLabels(); }
+    rerenderAll();
+    toast(`Now at ${activeGym().name}`);
+    return;
+  }
+  const drop = e.target.closest('[data-dropgym]');
+  if(drop){
+    // Somewhere has to be the rack you are at, so the last one stays.
+    if(gyms().length === 1){ toast('Keep at least one gym'); return; }
+    const i = gyms().findIndex(x => x.id === drop.dataset.dropgym);
+    if(i < 0) return;
+    const [gone] = db.gyms.splice(i, 1);
+    if(db.settings.gym === gone.id) db.settings.gym = db.gyms[0].id;
+    save(); renderGymList(); renderSettings();
+    if(state.ex){ renderPlateMath(); refreshStepperLabels(); }
+    rerenderAll();
+    toast(`${gone.name || 'Gym'} removed`, {label:'Undo', fn:()=>{
+      db.gyms.splice(i, 0, gone);
+      db.settings.gym = gone.id;
+      save(); renderGymList(); renderSettings(); rerenderAll();
+    }});
+  }
+});
+
+// Saved as you type rather than on a button, like the day note. Blank is not
+// a name, so an emptied field falls back rather than leaving a nameless row.
+$('#gymlist').addEventListener('input', e=>{
+  const f = e.target.closest('[data-gymname]'); if(!f) return;
+  const g = gyms().find(x => x.id === f.dataset.gymname); if(!g) return;
+  g.name = f.value.trim() || 'Gym';
+  save();
+  $('#platelab').textContent = `Plates at ${activeGym().name || 'your gym'}`;
+});
+
 $('#platesel').addEventListener('click', e=>{
   const b = e.target.closest('[data-plate]'); if(!b) return;
   const w = +b.dataset.plate;
@@ -5750,7 +5913,8 @@ $('#platesel').addEventListener('click', e=>{
     if(owned.size === 1){ toast('Keep at least one plate'); return; }
     owned.delete(w);
   } else owned.add(w);
-  (db.settings.plates ||= {})[units()] = U().plates
+  const gym = activeGym();
+  (gym.plates ||= {})[units()] = U().plates
     .filter(p => owned.has(p.w)).map(p => p.w);
   save();
   openSettings();

@@ -1892,3 +1892,153 @@ test.describe('muscles worked', () => {
     expect(errs).toEqual([]);
   });
 });
+
+/* ---------- a gym is a rack, and you train at more than one ---------- */
+
+test.describe('gyms', () => {
+  // The single plate inventory meant a second gym was edited by hand on the
+  // way in and edited back on the way out, and forgetting either way silently
+  // corrupted every weight the app suggests.
+  const at = async (browser, over = {}) => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seed(page, blankDb({
+      settings: { units: 'lb', bw: { lb: 0, kg: 0 }, lastDay: 'A', alert: 'both',
+                  painSites: ['lower-back'],
+                  plates: { lb: [45, 25, 10, 5, 2.5], kg: [25, 20, 15, 10, 5, 2.5] } },
+      ...over
+    }));
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    return { page, ctx };
+  };
+
+  test('a single inventory becomes the gym you were already at', async ({ browser }) => {
+    const { page, ctx } = await at(browser);
+    expect(await page.evaluate(() => gyms())).toEqual([{
+      id: 'default', name: 'GYM',
+      plates: { lb: [45, 25, 10, 5, 2.5], kg: [25, 20, 15, 10, 5, 2.5] }
+    }]);
+    // nothing about the numbers changes on the way through
+    expect(await page.evaluate(() => availablePlates().map(p => p.w)))
+      .toEqual([45, 25, 10, 5, 2.5]);
+    expect(await page.evaluate(() => stepFor('Deadlift'))).toBe(5);
+    await ctx.close();
+  });
+
+  test('the id it migrates to is fixed, so two phones do not make two gyms',
+    async ({ browser }) => {
+    // Both upgrade offline, then sync. A generated id would leave you with two
+    // gyms called GYM and no way to tell which rack is which.
+    const { page, ctx } = await at(browser);
+    expect(await page.evaluate(() => {
+      const mk = plates => {
+        const keepG = db.gyms, keepS = db.settings.plates;
+        db.gyms = null; db.settings.plates = plates;
+        const id = gyms()[0].id;
+        db.gyms = keepG; db.settings.plates = keepS;
+        return id;
+      };
+      return [mk({ lb: [45] }), mk({ lb: [45, 25] })];
+    })).toEqual(['default', 'default']);
+    await ctx.close();
+  });
+
+  test('plates belong to the gym you are at, and the other one keeps its own',
+    async ({ browser }) => {
+    const { page, ctx } = await at(browser);
+    await page.click('#gear');
+    await expect(page.locator('#platelab')).toHaveText('Plates at GYM');
+
+    await page.click('#gymmanage');
+    await page.click('#gymadd');
+    const id = await page.evaluate(() => db.gyms[1].id);
+    await page.fill(`[data-gymname="${id}"]`, 'Hotel');
+    // a gym you have not been to yet starts with a full rack, not an empty one
+    expect(await page.evaluate(() => availablePlates().map(p => p.w)))
+      .toEqual([45, 35, 25, 10, 5, 2.5]);
+
+    await page.click('#gymdone');
+    await expect(page.locator('#platelab')).toHaveText('Plates at Hotel');
+    for (const w of [45, 35, 25, 1.25]) await page.click(`[data-plate="${w}"]`);
+    expect(await page.evaluate(() => availablePlates().map(p => p.w)))
+      .toEqual([10, 5, 2.5, 1.25]);
+    expect(await page.evaluate(() => stepFor('Deadlift'))).toBe(2.5);
+
+    await page.click('#gymmanage');
+    await page.click('[data-gym="default"]');
+    expect(await page.evaluate(() => activeGym().name)).toBe('GYM');
+    expect(await page.evaluate(() => availablePlates().map(p => p.w)))
+      .toEqual([45, 25, 10, 5, 2.5]);
+    await ctx.close();
+  });
+
+  test('a name is typed, and an emptied one falls back rather than vanishing',
+    async ({ browser }) => {
+    const { page, ctx } = await at(browser);
+    await page.click('#gear');
+    await page.click('#gymmanage');
+    await page.fill('[data-gymname="default"]', 'Barn');
+    expect(await page.evaluate(() => activeGym().name)).toBe('Barn');
+    await page.fill('[data-gymname="default"]', '   ');
+    expect(await page.evaluate(() => activeGym().name)).toBe('Gym');
+    await ctx.close();
+  });
+
+  test('the last one stays, because somewhere has to be where you are',
+    async ({ browser }) => {
+    const { page, ctx } = await at(browser);
+    await page.click('#gear');
+    await page.click('#gymmanage');
+    await page.click('[data-dropgym="default"]');
+    await expect(page.locator('#toast')).toContainText('Keep at least one gym');
+    expect(await page.evaluate(() => gyms().length)).toBe(1);
+    await ctx.close();
+  });
+
+  test('removing the one you are at moves you, and undo puts it back',
+    async ({ browser }) => {
+    const { page, ctx } = await at(browser);
+    await page.click('#gear');
+    await page.click('#gymmanage');
+    await page.click('#gymadd');
+    const id = await page.evaluate(() => db.gyms[1].id);
+    await page.fill(`[data-gymname="${id}"]`, 'Hotel');
+    expect(await page.evaluate(() => activeGym().name)).toBe('Hotel');
+
+    await page.click(`[data-dropgym="${id}"]`);
+    expect(await page.evaluate(() => activeGym().name)).toBe('GYM');
+    expect(await page.evaluate(() => gyms().length)).toBe(1);
+
+    await page.click('#toast button');
+    expect(await page.evaluate(() => gyms().map(g => g.name))).toEqual(['GYM', 'Hotel']);
+    expect(await page.evaluate(() => activeGym().name)).toBe('Hotel');
+    await ctx.close();
+  });
+
+  test('the racks sync; which one you are standing at does not',
+    async ({ browser }) => {
+    // Switching gyms on the phone in your hand must not switch them on the
+    // tablet at home, so the choice is a device fact and stays off the wire.
+    const { page, ctx } = await at(browser);
+    await page.click('#gear');
+    await page.click('#gymmanage');
+    await page.click('#gymadd');
+    const keys = await page.evaluate(() => [...records(db).keys()]);
+    expect(keys.filter(k => k.startsWith('gym:'))).toHaveLength(2);
+    expect(keys).not.toContain('cfg:gym');
+    await ctx.close();
+  });
+
+  test('the manager opens over settings without taking it back', async ({ browser }) => {
+    // Refreshing the fields behind it must not re-open the panel: that moves
+    // focus to the settings heading and out of the sheet on top of it.
+    const { page, ctx } = await at(browser);
+    await page.click('#gear');
+    await page.click('#gymmanage');
+    await page.click('#gymadd');
+    expect(await page.evaluate(() =>
+      document.querySelector('#gymsheet').contains(document.activeElement))).toBe(true);
+    await ctx.close();
+  });
+});

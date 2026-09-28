@@ -93,6 +93,36 @@ one you are now; see below.
 A card whose sessions did not all qualify says so: `1 of 2 sessions counted`
 rather than `first session`, which contradicted the rows listed underneath it.
 
+## More than one gym
+
+Plate math is only as good as the list of plates, and there was one list. A
+second gym meant editing it by hand on the way in and editing it back on the
+way out, and forgetting either way silently corrupted every weight the app
+suggests — rounding to plates you do not have, or refusing ones you do.
+
+A gym is a name and the plates in it. **Gyms**, beside the plate picker in
+settings, is where they are added, named and switched; the plates you tick
+always belong to whichever one is current, and the label above them says which
+that is. A gym you have not been to yet starts with a full rack rather than an
+empty one, because an empty rack can load nothing and copying the rack you are
+standing at would be a guess about somewhere else.
+
+There is no location permission and nothing to confirm each session. You are
+where you last said you were until you say otherwise — this is an app with no
+account and no permissions, and knowing which building you are in is not worth
+becoming one that asks.
+
+The racks sync; **which one you are at does not**. Switching gyms on the phone
+in your hand must not switch them on the tablet at home, so that one choice
+stays on the device, alongside the other two facts that describe a phone rather
+than a training log.
+
+Upgrading carries everything across: the inventory you already had becomes a
+gym called `GYM` with exactly those plates, so no number the app gives you
+changes on the way through. The id it migrates to is fixed rather than
+generated, because two phones that both upgrade before they next sync would
+otherwise each invent a gym called `GYM` and leave you with two of them.
+
 ## Which bar is on the rack
 
 **No plate math** now sticks on an exercise that ships with a bar. Choosing it
@@ -676,7 +706,7 @@ instead of failing quietly.
 ## Built like this
 
 Markup, styles and logic in one file; a service worker that precaches the shell
-and keeps the exercise photos in a cache of their own; 412 Playwright tests that
+and keeps the exercise photos in a cache of their own; 420 Playwright tests that
 read real bounding boxes at phone sizes; and Release Please, which tags the
 version and rewrites it in `sw.js` — the thing that makes an installed phone
 notice a release at all. The deploy refuses to publish a build the suite rejects.
