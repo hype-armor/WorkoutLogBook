@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.24.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.23.0...logbook-v1.24.0) (2026-09-28)
+
+
+### Features
+
+* drop sets, rest-pause, and buttons that move by the real jump ([9a67b0d](https://github.com/hype-armor/WorkoutLogBook/commit/9a67b0d913e4880b7170e92853f4539e7b8a64a0))
+* more than one gym, each with its own rack ([0b27a8a](https://github.com/hype-armor/WorkoutLogBook/commit/0b27a8a0b2a108abcdd2f51b1a01168cb1577957))
+* say what your own exercises work, and put them on the chart ([44f365e](https://github.com/hype-armor/WorkoutLogBook/commit/44f365ec68f34e44d60b5aa248b8bc60b832da71))
+* the plan belongs to the gym, and a new gym can copy from others ([861b95b](https://github.com/hype-armor/WorkoutLogBook/commit/861b95b953db6f94e9b10c6878465d6d345885c3))
+
 ## [1.23.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.22.1...logbook-v1.23.0) (2026-09-26)
 
 
