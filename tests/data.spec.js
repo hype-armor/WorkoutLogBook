@@ -1677,7 +1677,7 @@ test.describe('progression', () => {
     await page.waitForSelector('.ex');
     await page.evaluate(([t, o]) => {
       state.day = 'A';
-      db.program = program().map(d => d.id === 'A'
+      activeGym().program = program().map(d => d.id === 'A'
         ? { ...d, ex: [['Leg press', t], ...d.ex.filter(([n]) => n !== 'Leg press')] } : d);
       if (o.kind) (db.ex['Leg press'] ||= {}).kind = o.kind;
       save(); renderDays(); renderExercises();
@@ -1915,10 +1915,15 @@ test.describe('gyms', () => {
 
   test('a single inventory becomes the gym you were already at', async ({ browser }) => {
     const { page, ctx } = await at(browser);
-    expect(await page.evaluate(() => gyms())).toEqual([{
+    expect(await page.evaluate(() => gyms().map(g => ({ ...g, program: g.program.length })))).toEqual([{
       id: 'default', name: 'GYM',
-      plates: { lb: [45, 25, 10, 5, 2.5], kg: [25, 20, 15, 10, 5, 2.5] }
+      plates: { lb: [45, 25, 10, 5, 2.5], kg: [25, 20, 15, 10, 5, 2.5] },
+      program: 4
     }]);
+    // the plan comes across keeping its ids, because sets already logged name
+    // them — regenerating would orphan every session's target
+    expect(await page.evaluate(() => program().map(d => d.id))).toEqual(['A','B','C','D']);
+    expect(await page.evaluate(() => db.program)).toBe(null);
     // nothing about the numbers changes on the way through
     expect(await page.evaluate(() => availablePlates().map(p => p.w)))
       .toEqual([45, 25, 10, 5, 2.5]);
@@ -1952,8 +1957,8 @@ test.describe('gyms', () => {
 
     await page.click('#gymmanage');
     await page.click('#gymadd');
-    const id = await page.evaluate(() => db.gyms[1].id);
-    await page.fill(`[data-gymname="${id}"]`, 'Hotel');
+    await page.fill('#gymnewname', 'Hotel');
+    await page.click('#gymcreate');
     // a gym you have not been to yet starts with a full rack, not an empty one
     expect(await page.evaluate(() => availablePlates().map(p => p.w)))
       .toEqual([45, 35, 25, 10, 5, 2.5]);
@@ -2002,8 +2007,9 @@ test.describe('gyms', () => {
     await page.click('#gear');
     await page.click('#gymmanage');
     await page.click('#gymadd');
+    await page.fill('#gymnewname', 'Hotel');
+    await page.click('#gymcreate');
     const id = await page.evaluate(() => db.gyms[1].id);
-    await page.fill(`[data-gymname="${id}"]`, 'Hotel');
     expect(await page.evaluate(() => activeGym().name)).toBe('Hotel');
 
     await page.click(`[data-dropgym="${id}"]`);
@@ -2024,6 +2030,7 @@ test.describe('gyms', () => {
     await page.click('#gear');
     await page.click('#gymmanage');
     await page.click('#gymadd');
+    await page.click('#gymcreate');
     const keys = await page.evaluate(() => [...records(db).keys()]);
     expect(keys.filter(k => k.startsWith('gym:'))).toHaveLength(2);
     expect(keys).not.toContain('cfg:gym');
@@ -2037,8 +2044,126 @@ test.describe('gyms', () => {
     await page.click('#gear');
     await page.click('#gymmanage');
     await page.click('#gymadd');
+    await page.click('#gymcreate');
     expect(await page.evaluate(() =>
       document.querySelector('#gymsheet').contains(document.activeElement))).toBe(true);
+    await ctx.close();
+  });
+});
+
+/* ---------- the plan belongs to the gym; what you lifted does not ---------- */
+
+test.describe('a plan per gym', () => {
+  const open = async browser => {
+    const ctx = await phone(browser);
+    const page = await ctx.newPage();
+    await seed(page, blankDb({
+      settings: { units: 'lb', bw: { lb: 0, kg: 0 }, lastDay: 'A', alert: 'both',
+                  painSites: ['lower-back'] }
+    }));
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    return { page, ctx };
+  };
+  const addGym = async (page, name, copyFrom = []) => {
+    await page.click('#gear');
+    await page.click('#gymmanage');
+    await page.click('#gymadd');
+    await page.fill('#gymnewname', name);
+    for (const id of copyFrom) await page.click(`[data-copy="${id}"]`);
+    await page.click('#gymcreate');
+    await page.click('#gymdone');
+    await page.click('#setdone');
+  };
+
+  test('a new gym starts from the default plan, with days of its own',
+    async ({ browser }) => {
+    const { page, ctx } = await open(browser);
+    await addGym(page, 'Hotel');
+    // the same four days by name, and not one id shared with the gym it left
+    expect(await page.evaluate(() => program().map(d => d.name)))
+      .toEqual(['Lower A', 'Upper A', 'Lower B', 'Upper B']);
+    expect(await page.evaluate(() => {
+      const home = db.gyms[0].program.map(d => d.id);
+      return db.gyms[1].program.some(d => home.includes(d.id));
+    })).toBe(false);
+    await ctx.close();
+  });
+
+  test('editing one gym plan leaves the other alone', async ({ browser }) => {
+    const { page, ctx } = await open(browser);
+    await addGym(page, 'Hotel');
+    await page.click('#editprog');
+    await page.click('#addex');
+    await page.fill('#exname', 'Landmine press');
+    await page.fill('#extarget', '3 × 10');
+    await page.click('#exsave');
+    await page.click('#editprog');
+    await expect(page.locator('#exlist')).toContainText('Landmine press');
+
+    await page.click('#gear');
+    await page.click('#gymmanage');
+    await page.click('[data-gym="default"]');
+    await page.click('#gymdone');
+    await page.click('#setdone');
+    await expect(page.locator('#exlist')).not.toContainText('Landmine press');
+    await ctx.close();
+  });
+
+  test('a gym can be built from one or more of the others', async ({ browser }) => {
+    const { page, ctx } = await open(browser);
+    // give the first gym a day of its own to tell the copies apart
+    await page.click('#editprog');
+    await page.click('#addday');
+    await page.fill('#dayname', 'Arms');
+    await page.click('#editprog');
+    await addGym(page, 'Hotel');
+    const hotel = await page.evaluate(() => db.gyms[1].id);
+
+    await addGym(page, 'Both', ['default', hotel]);
+    // every day from both, put together, and none of their ids reused
+    const names = await page.evaluate(() => program().map(d => d.name));
+    expect(names.filter(n => n === 'Lower A')).toHaveLength(2);
+    expect(names).toContain('Arms');
+    expect(await page.evaluate(() => {
+      const mine = program().map(d => d.id);
+      return db.gyms.slice(0, 2).flatMap(g => g.program.map(d => d.id))
+        .some(id => mine.includes(id));
+    })).toBe(false);
+    await ctx.close();
+  });
+
+  test('what you lifted is not tied to a gym, and keeps its own targets',
+    async ({ browser }) => {
+    const { page, ctx } = await open(browser);
+    await page.click('.ex[data-ex="Deadlift"]');
+    await page.fill('#wt', '225');
+    await page.fill('#reps', '4');
+    await page.click('#logset');
+    await page.click('#close');
+
+    await addGym(page, 'Hotel');
+    // the session is still there, still named by the day it was done under,
+    // and its target still resolves — against the plan it belongs to, not this one
+    await page.click('#tab-history');
+    await expect(page.locator('#sessions')).toContainText('Lower A');
+    expect(await page.evaluate(() => targetOn('Deadlift', 'A'))).toBe('4 × 4');
+    expect(await page.evaluate(() => heldAt('Deadlift', db.sets[0].d)))
+      .toBe('1 of 4 sets');
+    await ctx.close();
+  });
+
+  test('switching gyms lands on a day that plan actually has', async ({ browser }) => {
+    const { page, ctx } = await open(browser);
+    await addGym(page, 'Hotel');
+    const here = await page.evaluate(() => state.day);
+    expect(await page.evaluate(() => program().some(d => d.id === state.day))).toBe(true);
+
+    await page.click('#gear');
+    await page.click('#gymmanage');
+    await page.click('[data-gym="default"]');
+    expect(await page.evaluate(() => state.day)).not.toBe(here);
+    expect(await page.evaluate(() => program().some(d => d.id === state.day))).toBe(true);
     await ctx.close();
   });
 });

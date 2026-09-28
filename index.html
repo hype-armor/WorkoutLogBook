@@ -810,6 +810,9 @@
   .gymrow{display:flex;align-items:center;gap:6px;padding:4px 0;
     border-bottom:1px solid var(--line)}
   .gymrow:last-child{border-bottom:0}
+  .gymnew{border-top:1px solid var(--line);margin-top:14px;padding-top:14px}
+  .gymnew.hide{display:none}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .gymrow .use{
     flex:none;background:var(--surface-2);border:1px solid var(--line);
     color:var(--ink-2);font-family:inherit;font-size:0.75rem;font-weight:620;
@@ -1280,10 +1283,26 @@
   <div class="sheetbody">
     <div id="gymlist"></div>
     <button class="btn ghost small wide" id="gymadd" style="margin-top:14px">+ Add gym</button>
+
+    <div class="gymnew hide" id="gymnew">
+      <label class="f"><span class="lab">Name</span>
+        <input class="nm" type="text" id="gymnewname" autocomplete="off" placeholder="New gym"></label>
+      <div class="eyebrow" style="margin-top:14px">Copy the plan from</div>
+      <div class="bars" id="gymcopy" style="justify-content:flex-start"></div>
+      <div class="hint">Pick none and it starts from the default four-day plan.
+        Pick more than one and their days are put together. The plates are not
+        copied — a rack is a fact about a building.</div>
+      <div class="row2" style="margin-top:14px">
+        <button class="btn ghost small" id="gymcancel">Cancel</button>
+        <button class="btn small" id="gymcreate">Create gym</button>
+      </div>
+    </div>
+
     <div class="hint">The plates you tick in settings belong to whichever gym is
-      current, so the loader, the stepper and every weight the app suggests
-      follow the rack you are actually standing at. Which one that is stays on
-      this phone — it is never synced to your other devices.</div>
+      current, and so does the plan on the Train tab — an exercise is doable at a
+      gym because it is in that gym's plan, and there is no second list to keep.
+      What you have logged is never tied to a gym. Which gym you are at stays on
+      this phone; it is never synced to your other devices.</div>
   </div>
   <div class="restdock"></div>
   <div class="sheetfoot"><button class="btn" id="gymdone">Done</button></div>
@@ -2807,11 +2826,35 @@ function backupOverdue(){
 // The default is a template too, rather than a second copy of the same list.
 TEMPLATES.find(t => t.id === 'upperlower4').days = DEFAULT_PROGRAM;
 
-const program = () => db.program || DEFAULT_PROGRAM;
+// A day id has to be unique across every gym, not just within one plan. A
+// logged set names its day by id and history is deliberately not tied to a
+// gym, so the same id in two plans would resolve a session done at one gym
+// against the other gym's targets. The gym you started with keeps the ids it
+// already had, because sets already logged name them.
+const freshDays = days => JSON.parse(JSON.stringify(days)).map((d, i) =>
+  ({...d, id: 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2,5) + i}));
+const daysFor = (gym, days) => gym.id === DEFAULT_GYM
+  ? JSON.parse(JSON.stringify(days)) : freshDays(days);
+
+const program = () => activeGym().program || DEFAULT_PROGRAM;
 const dayById = id => program().find(d => d.id === id) || program()[0];
 function ownProgram(){
-  if(!db.program) db.program = JSON.parse(JSON.stringify(DEFAULT_PROGRAM));
-  return db.program;
+  const g = activeGym();
+  if(!g.program) g.program = daysFor(g, DEFAULT_PROGRAM);
+  return g.program;
+}
+// Which plan a logged day belongs to, wherever it was trained. Searched across
+// every gym because the set that names it does not say which one it was.
+function dayAnywhere(id){
+  for(const g of gyms()){
+    const d = (g.program || []).find(x => x.id === id);
+    if(d) return d;
+  }
+  // No fallback to the default plan on purpose. Every gym materialises its own
+  // days, so an id that matches none of them is a day that was deleted — and
+  // resolving it against the default would relabel its past sessions with
+  // whatever day happens to share the id, which is the bug this replaced.
+  return null;
 }
 // Which session is up. The rotation says the one after whatever was trained
 // last; a session still open today is itself the one up, and one already
@@ -3017,7 +3060,7 @@ function roundLoadable(w, ex){
 // The prescription in force on the day those sets were logged, which is not
 // necessarily the day being looked at now.
 function targetOn(ex, dayId){
-  const row = program().find(d => d.id === dayId)?.ex.find(([n]) => n === ex);
+  const row = dayAnywhere(dayId)?.ex.find(([n]) => n === ex);
   return row ? row[1] : null;
 }
 
@@ -3892,7 +3935,11 @@ function gyms(){
     // Everything the single inventory held moves into the first gym, so an
     // upgrade changes nothing about the numbers the app gives you.
     db.gyms = [{id: DEFAULT_GYM, name: 'GYM',
-                plates: db.settings.plates ? {...db.settings.plates} : null}];
+                plates: db.settings.plates ? {...db.settings.plates} : null,
+                // Materialised rather than left to fall back on the default,
+                // so every gym's days are a list with ids of their own.
+                program: JSON.parse(JSON.stringify(db.program || DEFAULT_PROGRAM))}];
+    db.program = null;   // it lives in the gym now
   }
   return db.gyms;
 }
@@ -5009,7 +5056,7 @@ function dayNameFor(sets){
   // Strict lookup, not dayById: that falls back to whichever day is now first,
   // so deleting a day silently relabelled its past sessions — one logged as
   // Lower A came back as Upper A. Better to show no day than the wrong one.
-  if(ids.size === 1) return program().find(d => d.id === [...ids][0])?.name || '';
+  if(ids.size === 1) return dayAnywhere([...ids][0])?.name || '';
   // Older sets carry no day id: infer from where the exercises live.
   const hit = program().find(d => sets.some(s => d.ex.some(([n]) => n === s.e)));
   return hit ? hit.name : '';
@@ -5776,8 +5823,25 @@ function renderGymList(){
   </div>`).join('');
 }
 
+// Off by default: adding a gym is rarer than switching between the ones you
+// have, and the list is what the sheet is for.
+function showGymNew(on){
+  // The form holds the focus while it is open, so hiding it would drop focus
+  // on the body and put a keyboard out of the sheet entirely. Hand it back to
+  // the button that opened the form before the form goes away.
+  const inside = $('#gymnew').contains(document.activeElement);
+  $('#gymnew').classList.toggle('hide', !on);
+  $('#gymadd').classList.toggle('hide', on);
+  if(!on){ if(inside) $('#gymadd').focus(); return; }
+  $('#gymnewname').value = '';
+  $('#gymcopy').innerHTML = gyms().map(g =>
+    `<button data-copy="${esc(g.id)}" aria-pressed="false">${esc(g.name || 'Gym')}</button>`).join('');
+  $('#gymnewname').focus();
+}
+
 function openGyms(){
   renderGymList();
+  showGymNew(false);
   openPanel($('#gymsheet'), $('#gymsheet-title'));
 }
 
@@ -5846,27 +5910,52 @@ $('#unitsel').addEventListener('click', e=>{
   toast('Now in ' + U().label);
 });
 
+// The day on screen is named by an id from the plan you were just in, and the
+// plan you have moved to does not have it. Without this the Train tab falls
+// back to the first day while still calling itself the old one.
+function landOnADay(){
+  const p = program();
+  if(!p.some(d => d.id === state.day)) state.day = p[0].id;
+  db.settings.lastDay = state.day;
+}
+
 $('#gymmanage').addEventListener('click', openGyms);
 $('#gymclose').addEventListener('click', ()=>closePanel($('#gymsheet')));
 $('#gymdone').addEventListener('click', ()=>closePanel($('#gymsheet')));
 
-$('#gymadd').addEventListener('click', ()=>{
+$('#gymadd').addEventListener('click', ()=>showGymNew(true));
+$('#gymcancel').addEventListener('click', ()=>showGymNew(false));
+
+$('#gymcopy').addEventListener('click', e=>{
+  const b = e.target.closest('[data-copy]'); if(!b) return;
+  b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') !== 'true');
+});
+
+$('#gymcreate').addEventListener('click', ()=>{
   const id = 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-  // A new gym starts with a full rack rather than an empty one: an empty rack
-  // can load nothing, and copying the rack you are at would be a guess about
-  // somewhere you have not been yet.
-  gyms().push({id, name: 'New gym', plates: null});
+  const from = [...$('#gymcopy').querySelectorAll('[aria-pressed="true"]')]
+    .map(b => gyms().find(g => g.id === b.dataset.copy)).filter(Boolean);
+  // Days from every gym you picked, in the order you have them, with ids of
+  // their own. Nothing else comes across: a new gym starts with a full rack
+  // rather than an empty one, because an empty rack can load nothing and the
+  // plates at somewhere you have not been are not the plates you just left.
+  const days = from.length
+    ? freshDays(from.flatMap(g => g.program || DEFAULT_PROGRAM))
+    : freshDays(DEFAULT_PROGRAM);
+  gyms().push({id, name: $('#gymnewname').value.trim() || 'New gym',
+               plates: null, program: days});
   db.settings.gym = id;
-  save(); renderGymList(); renderSettings(); rerenderAll();
-  // Straight into the name, because naming it is the only thing left to do.
-  const field = $(`[data-gymname="${id}"]`);
-  field?.focus(); field?.select();
+  state.day = days[0].id;
+  db.settings.lastDay = state.day;
+  save(); showGymNew(false); renderGymList(); renderSettings(); rerenderAll();
+  toast(`Now at ${activeGym().name}`);
 });
 
 $('#gymlist').addEventListener('click', e=>{
   const pick = e.target.closest('[data-gym]');
   if(pick){
     db.settings.gym = pick.dataset.gym;
+    landOnADay();
     save(); renderGymList(); renderSettings();
     // The loader's stock and the stepper's jump both follow from the rack, so
     // an exercise left open behind these two sheets has to catch up.
@@ -5883,12 +5972,14 @@ $('#gymlist').addEventListener('click', e=>{
     if(i < 0) return;
     const [gone] = db.gyms.splice(i, 1);
     if(db.settings.gym === gone.id) db.settings.gym = db.gyms[0].id;
+    landOnADay();
     save(); renderGymList(); renderSettings();
     if(state.ex){ renderPlateMath(); refreshStepperLabels(); }
     rerenderAll();
     toast(`${gone.name || 'Gym'} removed`, {label:'Undo', fn:()=>{
       db.gyms.splice(i, 0, gone);
       db.settings.gym = gone.id;
+      landOnADay();
       save(); renderGymList(); renderSettings(); rerenderAll();
     }});
   }
@@ -6151,7 +6242,11 @@ function syncLater(ms = 4000){
 
 $('#resetprog').addEventListener('click', ()=>{
   if(!confirm('Reset all four days to the default program? Logged sets are kept.')) return;
-  db.program = null; save();
+  const g = activeGym();
+  g.program = daysFor(g, DEFAULT_PROGRAM);
+  state.day = g.program[0].id;
+  db.settings.lastDay = state.day;
+  save();
   renderDays(); renderExercises();
   toast('Program reset');
 });
@@ -6370,8 +6465,9 @@ function applyTemplate(id){
   const t = TEMPLATES.find(x => x.id === id);
   if(!t) return;
   if(!confirm(`Replace your days with ${t.name}? Everything you have logged is kept.`)) return;
-  db.program = JSON.parse(JSON.stringify(t.days));
-  state.day = db.program[0].id;
+  const g = activeGym();
+  g.program = daysFor(g, t.days);
+  state.day = g.program[0].id;
   db.settings.lastDay = state.day;
   state.progEdit = false;
   state.dayPickerOpen = false;
