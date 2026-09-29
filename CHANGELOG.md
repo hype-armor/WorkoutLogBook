@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.24.1](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.24.0...logbook-v1.24.1) (2026-09-29)
+
+
+### Bug Fixes
+
+* make the gym manager look like something you can tap ([a1ed3eb](https://github.com/hype-armor/WorkoutLogBook/commit/a1ed3ebbffe6b88507fc4450a492a001948182ca))
+
 ## [1.24.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.23.0...logbook-v1.24.0) (2026-09-28)
 
 
