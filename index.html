@@ -320,8 +320,21 @@
     font-size:0.75rem;font-weight:620;letter-spacing:.06em;
     text-transform:uppercase;color:var(--ink-3);margin:26px 0 10px;
   }
-  .rowhead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:26px 0 10px}
+  .rowhead{display:flex;align-items:center;justify-content:space-between;
+    flex-wrap:wrap;gap:6px 10px;margin:26px 0 10px}
   .rowhead .eyebrow{margin:0}
+  /* A control in a section heading. The link style beside it works for a verb
+     under a title — "Edit" — but a bare noun in the same grey as the eyebrow
+     next to it reads as a second label rather than something to tap, which is
+     what this one did. Bordered like every other button in the sheet, and
+     named for what it does rather than for what it is about. */
+  .headbtn{
+    flex:none;background:var(--surface-2);border:1px solid var(--line-2);
+    color:var(--ink-2);font-family:inherit;font-size:0.8125rem;font-weight:620;
+    letter-spacing:-.01em;padding:8px 13px;border-radius:999px;cursor:pointer;
+    min-height:36px;white-space:nowrap;
+  }
+  .headbtn:active{opacity:.85}
   .linkbtn{
     background:none;border:0;color:var(--ink-3);font-family:inherit;
     font-size:0.8125rem;font-weight:600;letter-spacing:-.01em;
@@ -1391,7 +1404,7 @@
 
     <div class="rowhead">
       <div class="eyebrow" id="platelab">Plates you have</div>
-      <button class="linkbtn" id="gymmanage">Gyms</button>
+      <button class="headbtn" id="gymmanage">Manage gyms</button>
     </div>
     <div class="bars" id="platesel" style="justify-content:flex-start"></div>
     <div class="hint">Tap to match your rack — plenty of gyms have no 35s, and

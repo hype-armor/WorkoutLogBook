@@ -100,8 +100,8 @@ second gym meant editing it by hand on the way in and editing it back on the
 way out, and forgetting either way silently corrupted every weight the app
 suggests — rounding to plates you do not have, or refusing ones you do.
 
-A gym is a name, the plates in it, and the plan you train there. **Gyms**,
-beside the plate picker in settings, is where they are added, named and
+A gym is a name, the plates in it, and the plan you train there. **Manage
+gyms**, beside the plate picker in settings, is where they are added, named and
 switched; the plates you tick always belong to whichever one is current, and
 the label above them says which that is. A gym you have not been to yet starts
 with a full rack rather than an empty one, because an empty rack can load
@@ -721,7 +721,7 @@ instead of failing quietly.
 ## Built like this
 
 Markup, styles and logic in one file; a service worker that precaches the shell
-and keeps the exercise photos in a cache of their own; 425 Playwright tests that
+and keeps the exercise photos in a cache of their own; 426 Playwright tests that
 read real bounding boxes at phone sizes; and Release Please, which tags the
 version and rewrites it in `sw.js` — the thing that makes an installed phone
 notice a release at all. The deploy refuses to publish a build the suite rejects.

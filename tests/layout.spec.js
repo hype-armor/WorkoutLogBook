@@ -786,3 +786,41 @@ test.describe('text is never cut off', () => {
     });
   }
 });
+
+// The control that opens the gym manager sat in a section heading styled as a
+// link: grey text, no border, beside an eyebrow in the same grey. It read as a
+// second label rather than as something to tap — and the plate pills under it,
+// which are toggles, looked more like buttons than the button did.
+test('the gym manager is reachable from a heading a long name shares',
+  async ({ browser }) => {
+  const ctx = await browser.newContext({ ...PHONE, viewport: { width: 375, height: 667 } });
+  const page = await ctx.newPage();
+  await page.addInitScript(() => {
+    localStorage.setItem('logbook-v1', JSON.stringify({
+      v: 5, sets: [], days: {}, pairs: {}, ex: {}, program: null,
+      settings: { units: 'lb', bw: { lb: 0, kg: 0 }, lastDay: 'A', alert: 'both',
+                  painSites: ['lower-back'], ts: 1.3 },
+      rest: null, timers: null, rev: {}
+    }));
+  });
+  await page.goto(FILE_URL);
+  await page.waitForSelector('.ex');
+  await page.evaluate(() => { gyms()[0].name = 'Bulgarian Barn Strength'; save(); });
+  await page.click('#gear');
+
+  // it says what it does rather than what it is about
+  await expect(page.locator('#gymmanage')).toHaveText('Manage gyms');
+  await expect(page.locator('#platelab')).toHaveText('Plates at Bulgarian Barn Strength');
+
+  // and at the largest text on the narrowest phone the row gives way rather
+  // than squeezing either of them
+  const box = await page.locator('#gymmanage').boundingBox();
+  expect(box.height, 'the button has no height to tap').toBeGreaterThanOrEqual(32);
+  expect(box.width, 'the button was squeezed by the heading').toBeGreaterThanOrEqual(90);
+  expect(await clipped(page), 'settings at 1.3× with a long gym name').toEqual([]);
+
+  // and it still opens the sheet
+  await page.click('#gymmanage');
+  await expect(page.locator('#gymsheet')).toHaveClass(/open/);
+  await ctx.close();
+});
