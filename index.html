@@ -841,6 +841,19 @@
     padding:9px 11px;
   }
   .gymrow .icon.small{width:38px;height:38px;min-width:38px;font-size:1rem;flex:none}
+  /* The chips wrap when there are four of them at a large text size, so the
+     button beside them keeps its own width and sits against the top of the
+     row rather than drifting to the middle of two lines of chips. */
+  .kindhead{display:flex;align-items:flex-start;gap:8px;margin:0 0 2px}
+  .kindhead .bars{flex:1;min-width:0}
+  .kindhead .icon{flex:none}
+  .kinddef{padding:12px 0;border-bottom:1px solid var(--line)}
+  .kinddef:first-child{padding-top:0}
+  .kinddef:last-of-type{border-bottom:0}
+  .kinddef b{display:block;font-size:0.9375rem;font-weight:660;
+    letter-spacing:-.01em;color:var(--ink);margin-bottom:4px}
+  .kinddef p{margin:0;color:var(--ink-2);font-size:0.9062rem;line-height:1.5;
+    letter-spacing:-.005em}
   .guidesteps{margin:0;padding:0 0 0 20px;color:var(--ink-2);font-size:0.9062rem;line-height:1.5;letter-spacing:-.005em}
   .guidesteps li{margin:0 0 8px}
   .guidesteps li::marker{color:var(--ink-3);font-weight:640}
@@ -1113,7 +1126,11 @@
 
     <div id="setlist"></div>
 
-    <div class="bars" id="setkind" style="margin:0 0 2px;justify-content:flex-start"></div>
+    <div class="kindhead">
+      <div class="bars" id="setkind" style="justify-content:flex-start"></div>
+      <button class="icon" id="setkindinfo"
+        aria-label="What each kind of set means">&#9432;</button>
+    </div>
 
     <div class="ramprow hide" id="ramprow">
       <span class="lbl">Warm up</span>
@@ -1264,6 +1281,48 @@
 </section>
 
 <!-- ============ EXERCISE GUIDE ============ -->
+<section class="sheet" id="kindinfo" role="dialog" aria-modal="true" aria-labelledby="kindinfo-title" inert aria-hidden="true">
+  <div class="sheethead">
+    <div class="txt"><h2 id="kindinfo-title" tabindex="-1">Kinds of set</h2>
+      <div class="sub">What each one counts towards.</div></div>
+    <button class="icon" id="kindinfoclose" aria-label="Close">&#215;</button>
+  </div>
+  <div class="sheetbody">
+    <div class="kinddef">
+      <b>Working</b>
+      <p>The sets the target is counting. Everything the app judges a session
+        on comes from these: whether it was completed, whether the weight goes
+        up next time, and how many sets each muscle got.</p>
+    </div>
+    <div class="kinddef">
+      <b>Warm-up</b>
+      <p>Ramping up to the weight you came to lift. It counts towards what you
+        moved and nothing else — no estimated max, no rep band, and no rest
+        timer, because three and a half minutes between ramp sets is not a
+        thing anyone wants.</p>
+    </div>
+    <div class="kinddef">
+      <b>Drop</b>
+      <p>Weight stripped off and the set carried on, with no rest in between.
+        Only offered once there is a set to continue, because the first set of
+        an exercise cannot be a continuation of anything.</p>
+    </div>
+    <div class="kinddef">
+      <b>Rest-pause</b>
+      <p>A few more reps at the same weight after a short pause. The same idea
+        as a drop, from the other direction.</p>
+    </div>
+    <div class="hint">A drop and a rest-pause are work, and neither is another
+      set. They count towards the weight you moved and towards the estimated
+      max, because you lifted them. They do not advance the target, finish the
+      exercise, add a set to the muscle chart, or become the weight the next
+      session comes back to — that is the top set, never the one you dropped
+      to.</div>
+  </div>
+  <div class="restdock"></div>
+  <div class="sheetfoot"><button class="btn" id="kindinfodone">Done</button></div>
+</section>
+
 <section class="sheet" id="exinfo" role="dialog" aria-modal="true" aria-labelledby="exinfo-title" inert aria-hidden="true">
   <div class="sheethead">
     <div class="txt"><h2 id="exinfo-title" tabindex="-1">Exercise</h2>
@@ -6587,6 +6646,11 @@ function openExInfo(ex){
     <div class="guidesrc">${g.approx ? `Shown as <b>${esc(g.src)}</b>, the nearest match in the set. ` : ''}Photos and steps from free-exercise-db, public domain.</div>`;
   openPanel($('#exinfo'), $('#exinfo-title'));
 }
+$('#setkindinfo').addEventListener('click', ()=>
+  openPanel($('#kindinfo'), $('#kindinfo-title')));
+$('#kindinfoclose').addEventListener('click', ()=>closePanel($('#kindinfo'), $('#setkindinfo')));
+$('#kindinfodone').addEventListener('click', ()=>closePanel($('#kindinfo'), $('#setkindinfo')));
+
 $('#exinfobtn').addEventListener('click', ()=>openExInfo(state.ex));
 $('#exinfoclose').addEventListener('click', ()=>closePanel($('#exinfo'), $('#exinfobtn')));
 $('#exinfodone').addEventListener('click', ()=>closePanel($('#exinfo'), $('#exinfobtn')));

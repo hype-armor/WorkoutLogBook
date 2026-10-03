@@ -3765,6 +3765,21 @@ test.describe('drop sets and rest-pause', () => {
       workingSets(setsFor(state.date, 'Leg press')).length)).toBe(1);
   });
 
+  test('every chip is explained, under the same name it carries', async () => {
+    await page.click('#setkindinfo');
+    await expect(page.locator('#kindinfo')).toHaveClass(/open/);
+    // the sheet is only worth having while it keeps up with the chips, so the
+    // headings are checked against the row rather than against a fixed list
+    const chips = await page.$$eval('#setkind button', els => els.map(e => e.textContent));
+    expect(await page.$$eval('.kinddef b', els => els.map(e => e.textContent)))
+      .toEqual(chips);
+    await expect(page.locator('#kindinfo')).toContainText('estimated max');
+    await page.click('#kindinfodone');
+    await expect(page.locator('#kindinfo')).not.toHaveClass(/open/);
+    // and reading about a kind does not change the one being logged
+    await expect(page.locator('#logset')).toHaveText('Log set');
+  });
+
   test('no page errors', () => {
     expect(errs).toEqual([]);
   });

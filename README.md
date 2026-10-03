@@ -496,6 +496,11 @@ muscle chart, or become the weight the next session comes back to. That last one
 matters most: the number to return to is the 200 the set was done at, never the
 140 the drop finished on.
 
+Four chips is two more than anyone asked to learn, so an ⓘ beside them opens a
+sheet that defines each one and says what it counts towards. The definitions are
+checked against the chips themselves in the tests, so a kind added later cannot
+quietly go unexplained.
+
 ## What the weight waits for
 
 A target can name a range, and the range is how you say what should grow before
@@ -721,7 +726,7 @@ instead of failing quietly.
 ## Built like this
 
 Markup, styles and logic in one file; a service worker that precaches the shell
-and keeps the exercise photos in a cache of their own; 426 Playwright tests that
+and keeps the exercise photos in a cache of their own; 427 Playwright tests that
 read real bounding boxes at phone sizes; and Release Please, which tags the
 version and rewrites it in `sw.js` — the thing that makes an installed phone
 notice a release at all. The deploy refuses to publish a build the suite rejects.

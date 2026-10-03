@@ -728,7 +728,7 @@ test.describe('text is never cut off', () => {
           v: 5, sets: [], days: {}, pairs: {}, ex: {}, program: null,
           // the longest pairing the default program can make
           settings: { units: 'lb', bw: { lb: 180, kg: 0 }, lastDay: 'A',
-                      alert: 'both', painSites: ['lower-back'], ts: scale },
+                      alert: 'both', painSites: ['lower-back'], textScale: scale },
           rest: null, timers: null, rev: {}
         }));
       }, ts);
@@ -799,7 +799,7 @@ test('the gym manager is reachable from a heading a long name shares',
     localStorage.setItem('logbook-v1', JSON.stringify({
       v: 5, sets: [], days: {}, pairs: {}, ex: {}, program: null,
       settings: { units: 'lb', bw: { lb: 0, kg: 0 }, lastDay: 'A', alert: 'both',
-                  painSites: ['lower-back'], ts: 1.3 },
+                  painSites: ['lower-back'], textScale: 1.3 },
       rest: null, timers: null, rev: {}
     }));
   });
