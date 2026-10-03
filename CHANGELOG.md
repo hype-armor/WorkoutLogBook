@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.25.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.24.1...logbook-v1.25.0) (2026-10-03)
+
+
+### Features
+
+* explain what each kind of set means ([3f6e375](https://github.com/hype-armor/WorkoutLogBook/commit/3f6e375556eb8195b9a00ef538a781e0757839a7))
+
 ## [1.24.1](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.24.0...logbook-v1.24.1) (2026-09-29)
 
 
