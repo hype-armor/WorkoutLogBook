@@ -4580,13 +4580,35 @@ function keyboardInset(innerH, vvH){
   return Math.min(hidden, innerH * 0.6);
 }
 
+// A keyboard cannot be up with nothing focused to type into, so the viewport
+// arithmetic alone is not enough: a reading that arrives after the keyboard has
+// gone, or one taken while some other chrome is mid-move, leaves an inset
+// behind that nothing will clear. The exercise screen is `bottom: var(--kb)`,
+// so a phantom inset sits it a keyboard's height off the bottom of the screen
+// with the day list showing through the gap underneath — which is what this
+// looked like in the wild.
+const TYPEABLE = 'input:not([type=button]):not([type=submit]):not([type=checkbox])' +
+  ':not([type=radio]):not([type=file]),textarea,select,[contenteditable=""]' +
+  ',[contenteditable="true"]';
+function kbFor(innerH, vvH, active){
+  if(!(active && active.matches && active.matches(TYPEABLE))) return 0;
+  return keyboardInset(innerH, vvH);
+}
+
 function trackKeyboard(){
   const vv = window.visualViewport;
   if(!vv) return;
   const sync = () => document.documentElement.style.setProperty(
-    '--kb', Math.round(keyboardInset(window.innerHeight, vv.height)) + 'px');
+    '--kb', Math.round(kbFor(window.innerHeight, vv.height, document.activeElement)) + 'px');
   vv.addEventListener('resize', sync);
   vv.addEventListener('scroll', sync);
+  // Focus moving is what opens and shuts the keyboard, and it does not always
+  // bring a viewport resize with it. focusout runs before the next element has
+  // taken focus, so it waits a tick — otherwise stepping from the weight field
+  // to the reps field would blank the inset between the two and bounce the
+  // sheet down and back.
+  addEventListener('focusin', sync);
+  addEventListener('focusout', () => setTimeout(sync, 0));
   sync();
 }
 trackKeyboard();
