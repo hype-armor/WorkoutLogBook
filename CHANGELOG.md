@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.25.1](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.25.0...logbook-v1.25.1) (2026-10-10)
+
+
+### Bug Fixes
+
+* a keyboard that has gone no longer shrinks the exercise screen ([0e0c75f](https://github.com/hype-armor/WorkoutLogBook/commit/0e0c75fdad551915ad77768b08eef0058be3beee))
+* a keyboard that has gone no longer shrinks the exercise screen ([87f6947](https://github.com/hype-armor/WorkoutLogBook/commit/87f694720b1a0ee4ba070f694d07c33720d076f0))
+
 ## [1.25.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.24.1...logbook-v1.25.0) (2026-10-03)
 
 
