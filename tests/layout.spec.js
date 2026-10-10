@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { FILE_URL, PHONE, watchErrors, rects, overlaps, clipped, settle } = require('./helpers');
+const { FILE_URL, PHONE, watchErrors, rects, overlaps, clipped, settle, chooseDay } = require('./helpers');
 
 // The bugs these cover were all "the control you need next is underneath
 // something else", which only shows up at a real phone size.
@@ -351,8 +351,15 @@ test.describe('safe-area insets', () => {
       .filter(s => s.top < h), vh);
     expect(intruding, 'a shut sheet is on screen').toEqual([]);
 
-    // and opening one still works while the keyboard is up
+    // and an open sheet with a field in it sits above the keyboard. Opening a
+    // sheet moves focus to its heading, which on a phone is what puts the
+    // keyboard away, so the inset is driven again here with the sheet's own
+    // number field focused — the state a keyboard is actually up in.
     await page.evaluate(() => openSettings());
+    await page.waitForFunction(() => document.querySelector('#settings')
+      .getAnimations().every(a => a.playState === 'finished'));
+    await page.focus('#bwinput');
+    await page.evaluate(() => document.documentElement.style.setProperty('--kb', '400px'));
     await page.waitForFunction(() => document.querySelector('#settings')
       .getAnimations().every(a => a.playState === 'finished'));
     const box = await page.locator('#settings').boundingBox();
@@ -375,6 +382,39 @@ test.describe('safe-area insets', () => {
     expect(await read(784), 'toolbar collapsing').toBe(0);
     expect(await read(508), 'an actual keyboard').toBe(336);
     expect(await read(40), 'nonsense mid-rotation').toBeLessThanOrEqual(844 * 0.6);
+    await ctx.close();
+  });
+
+  test('nothing focused is never a keyboard', async ({ browser }) => {
+    const ctx = await browser.newContext({ ...PHONE });
+    const page = await ctx.newPage();
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await chooseDay(page, 'A');
+    await page.click('.ex[data-ex="Leg press"]');
+
+    // The height arithmetic says keyboard, but a keyboard cannot be up with
+    // nothing to type into. Left ungated, the inset survives the keyboard that
+    // caused it and the exercise screen sits a keyboard's height off the
+    // bottom with the day list showing through the gap.
+    const inset = sel => page.evaluate(
+      s => kbFor(844, 508, s ? document.querySelector(s) : null), sel);
+    expect(await inset('#wt'), 'typing in the weight field').toBe(336);
+    expect(await inset(null), 'nothing focused at all').toBe(0);
+    expect(await inset('#logset'), 'a button, which opens no keyboard').toBe(0);
+
+    // and the screen covers the phone while nothing is focused, rest timer
+    // docked in it or not
+    await page.fill('#wt', '95');
+    await page.fill('#reps', '10');
+    await page.click('#logset');
+    await settle(page);
+    await expect.poll(() => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--kb').trim()))
+      .toBe('0px');
+    const view = await page.locator('#view-exercise').boundingBox();
+    const vh = await page.evaluate(() => innerHeight);
+    expect(Math.round(view.y + view.height), 'day list showing under the screen').toBe(vh);
     await ctx.close();
   });
 
