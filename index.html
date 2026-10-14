@@ -1090,7 +1090,10 @@
   <div id="trends"></div>
   <div class="eyebrow hide" id="bwlabel">Bodyweight</div>
   <div class="card hide" id="bwcard"></div>
-  <div class="eyebrow hide" id="musclelabel">Sets per muscle — last 7 days</div>
+  <div class="rowhead hide" id="musclehead">
+    <div class="eyebrow" id="musclelabel">Sets per muscle — last 7 days</div>
+    <div class="bars" id="musclespan"></div>
+  </div>
   <div class="card hide" id="musclecard"></div>
   <div class="eyebrow">Pain — last 21 rated days</div>
   <div class="card" id="paincard"></div>
@@ -5081,6 +5084,15 @@ function renderHistory(){
 // deadlift is a hamstring set; it is not a calf set, and adding them would say
 // it was. No target is named either — the usual ten-to-twenty is a range with
 // wide individual variation, and this reports what you did.
+// Days rather than sessions, because this counts what a muscle got over a
+// stretch of calendar and not what one lift did. A week is the window the
+// ten-to-twenty landmarks are quoted against, so it stays the default; longer
+// ones are for a split that comes round slower than that, where a week is a
+// coin flip over whether a muscle appears at all.
+const MUSCLE_SPANS = [[7,'7'],[14,'14'],[30,'30'],[90,'90']];
+const muscleSpan = () => MUSCLE_SPANS.some(([v]) => v === state.muscleSpan)
+  ? state.muscleSpan : 7;
+
 function setsPerMuscle(days = 7){
   const t = new Date(); t.setDate(t.getDate() - (days - 1));
   const since = new Date(t.getTime() - t.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -5103,11 +5115,15 @@ function setsPerMuscle(days = 7){
 }
 
 function renderMuscles(){
-  const {rows, unplaced, stray} = setsPerMuscle();
+  const days = muscleSpan();
+  const {rows, unplaced, stray} = setsPerMuscle(days);
   const show = rows.length || unplaced;
-  $('#musclelabel').classList.toggle('hide', !show);
+  $('#musclehead').classList.toggle('hide', !show);
   $('#musclecard').classList.toggle('hide', !show);
   if(!show) return;
+  $('#musclelabel').textContent = `Sets per muscle — last ${days} days`;
+  $('#musclespan').innerHTML = MUSCLE_SPANS.map(([v,label]) =>
+    `<button data-mspan="${v}" aria-pressed="${v===days}">${label}</button>`).join('');
   const top = Math.max(1, ...rows.map(r => r.dir + r.ind));
   $('#musclecard').innerHTML = rows.map(r => `<div class="mrow">
       <div><div class="nm">${esc(r.m)}</div>
@@ -5120,7 +5136,7 @@ function renderMuscles(){
           esc(stray.join(', '))} could not be placed \u2014 open ${
           stray.length === 1 ? 'its' : 'their'} settings to say what ${
           stray.length === 1 ? 'it works' : 'they work'}.`
-        : 'Every set in the last week is counted.'}</div>`;
+        : `Every set in the last ${days} days is counted.`}</div>`;
 }
 
 // The one number here that moves for reasons other than training, which is what
@@ -6742,6 +6758,14 @@ $('#trendspan').addEventListener('click', e=>{
   const b = e.target.closest('[data-span]'); if(!b) return;
   state.trendSpan = b.dataset.span === 'all' ? 'all' : +b.dataset.span;
   renderHistory();
+});
+
+// How far back you are looking is where you are right now rather than a
+// standing preference, so it rides on `state` like the trend span above it.
+$('#musclespan').addEventListener('click', e=>{
+  const b = e.target.closest('[data-mspan]'); if(!b) return;
+  state.muscleSpan = +b.dataset.mspan;
+  renderMuscles();
 });
 
 // Kept on the database rather than in `state`: which of the two you read is a
