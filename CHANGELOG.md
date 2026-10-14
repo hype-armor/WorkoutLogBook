@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.26.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.25.1...logbook-v1.26.0) (2026-10-14)
+
+
+### Features
+
+* choose how far back the muscle chart counts ([07893f6](https://github.com/hype-armor/WorkoutLogBook/commit/07893f63e5fe603b27a1bae47ca4f013a520ff34))
+* choose how far back the muscle chart counts ([d83b283](https://github.com/hype-armor/WorkoutLogBook/commit/d83b283c3c905668fc145fe8534e42de5602db69))
+
 ## [1.25.1](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.25.0...logbook-v1.25.1) (2026-10-10)
 
 
