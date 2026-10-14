@@ -1847,8 +1847,46 @@ test.describe('muscles worked', () => {
     await page.click('#close');
     await page.click('#tab-history');
     await expect(page.locator('#musclecard')).not.toContainText('Landmine press');
-    await expect(page.locator('#musclecard')).toContainText('Every set in the last week is counted');
+    await expect(page.locator('#musclecard')).toContainText('Every set in the last 7 days is counted');
     await expect(page.locator('#musclecard')).toContainText('shoulders');
+  });
+
+  test('the window it counts over can be opened up', async () => {
+    // A week is the window the ten-to-twenty landmarks are quoted against, so
+    // it stays the default. On a split that comes round slower than that, a
+    // week is a coin flip over whether a muscle shows up at all.
+    await expect(page.locator('#musclelabel')).toHaveText('Sets per muscle — last 7 days');
+    expect(await page.$$eval('#musclespan button', els => els.map(e => e.textContent)))
+      .toEqual(['7', '14', '30', '90']);
+
+    // a deadlift three weeks back: outside the week, inside the month
+    await page.evaluate(() => {
+      const d = new Date(); d.setDate(d.getDate() - 20);
+      const day = new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
+      db.sets.push({ id: 'old1', d: day, e: 'Deadlift', w: 225, r: 5, t: Date.now() });
+      save(); renderMuscles();
+    });
+    await expect(page.locator('#musclecard')).not.toContainText('lower back');
+
+    await page.click('#musclespan [data-mspan="30"]');
+    await expect(page.locator('#musclelabel')).toHaveText('Sets per muscle — last 30 days');
+    await expect(page.locator('#musclespan [data-mspan="30"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#musclecard')).toContainText('lower back');
+    // and the sentence under it reports the window it actually counted
+    await expect(page.locator('#musclecard')).toContainText('Every set in the last 30 days is counted');
+
+    await page.click('#musclespan [data-mspan="7"]');
+    await expect(page.locator('#musclecard')).not.toContainText('lower back');
+  });
+
+  test('how far back you are looking is not a saved setting', async () => {
+    // The trend span beside it works the same way: which metric you read is a
+    // standing preference, where you are looking right now is not.
+    await page.click('#musclespan [data-mspan="90"]');
+    await page.reload();
+    await page.waitForSelector('.ex');
+    await page.click('#tab-history');
+    await expect(page.locator('#musclelabel')).toHaveText('Sets per muscle — last 7 days');
   });
 
   test('editing a built-in does not freeze a copy of the guide into the database',

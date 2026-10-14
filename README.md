@@ -256,7 +256,12 @@ was already dated; nothing joined the two. So the app could report that a
 deadlift estimate was up 10.7% over eight sessions and could not report that two
 direct hamstring sets had been done in a fortnight.
 
-History now counts working sets per muscle over the last seven days. Primary and
+History counts working sets per muscle over a window you pick — 7, 14, 30 or 90
+days. A week is the window the ten-to-twenty landmarks are usually quoted
+against, so it is the default; the longer ones are for a split that comes round
+slower than that, where a week is a coin flip over whether a muscle appears at
+all. Like the span beside the trend cards, it is where you are looking rather
+than a setting, so it is not saved. Primary and
 secondary are counted **apart**, never summed: a Romanian deadlift is a hamstring
 set and is not a calf set, and adding them would say it was. No target is named
 — the usual ten-to-twenty is a range with wide individual variation, and this
@@ -726,7 +731,7 @@ instead of failing quietly.
 ## Built like this
 
 Markup, styles and logic in one file; a service worker that precaches the shell
-and keeps the exercise photos in a cache of their own; 428 Playwright tests that
+and keeps the exercise photos in a cache of their own; 430 Playwright tests that
 read real bounding boxes at phone sizes; and Release Please, which tags the
 version and rewrites it in `sw.js` — the thing that makes an installed phone
 notice a release at all. The deploy refuses to publish a build the suite rejects.
