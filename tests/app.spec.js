@@ -3667,7 +3667,7 @@ test.describe('the weight buttons follow the progression', () => {
 // A drop set or a rest-pause burst is work, but it is not another set. Logged
 // as one it said you had done four when you did three, and then called the
 // session complete before it was.
-test.describe('the target is typed as numbers', () => {
+test.describe('the target is stepped, not typed', () => {
   test.describe.configure({ mode: 'serial' });
 
   let page, errs;
@@ -3734,6 +3734,50 @@ test.describe('the target is typed as numbers', () => {
     await page.fill('#exrepsmax', '');
     await page.click('#exsave');
     await expect(page.locator('.ex[data-ex="Leg press"] .target')).toHaveText('3 × max');
+  });
+
+  test('every number has a pair of buttons big enough to hit', async () => {
+    await page.click('[data-edit="Leg press"]');
+    const boxes = await page.$$eval('#extargetfields button',
+      els => els.map(e => { const r = e.getBoundingClientRect();
+        return Math.round(Math.min(r.width, r.height)); }));
+    expect(boxes.length, 'a minus and a plus for each of the four').toBe(8);
+    expect(Math.min(...boxes), 'too small to hit with a thumb').toBeGreaterThanOrEqual(44);
+  });
+
+  test('stepping gets there without a keyboard at all', async () => {
+    await page.fill('#exsets', '3');
+    await page.fill('#exreps', '10');
+    await page.click('[data-step="exsets,1"]');
+    await page.click('[data-step="exreps,1"]');
+    await page.click('[data-step="exreps,1"]');
+    await expect(page.locator('#exsets')).toHaveValue('4');
+    await expect(page.locator('#exreps')).toHaveValue('12');
+  });
+
+  test('a range starts one above the number it is a range from', async () => {
+    // "up to 4" when the bottom is 4 is not a range, so the box opens on the
+    // first value that means anything
+    await page.click('[data-step="exsetsmax,1"]');
+    await expect(page.locator('#exsetsmax')).toHaveValue('5');
+    await page.click('[data-step="exsetsmax,-1"]');
+    await expect(page.locator('#exsetsmax'), 'back to no range').toHaveValue('');
+  });
+
+  test('stepping the reps below one is max', async () => {
+    // a rep target under one is no rep target, and no rep target is max
+    for (let i = 0; i < 12; i++) await page.click('[data-step="exreps,-1"]');
+    await expect(page.locator('#exreps')).toHaveValue('');
+    await page.click('[data-step="exreps,-1"]');
+    await expect(page.locator('#exreps'), 'nowhere below max to go').toHaveValue('');
+    await page.click('[data-step="exreps,1"]');
+    await expect(page.locator('#exreps'), 'and back up out of it').toHaveValue('1');
+  });
+
+  test('but the sets never empty, because a target needs some', async () => {
+    for (let i = 0; i < 12; i++) await page.click('[data-step="exsets,-1"]');
+    await expect(page.locator('#exsets')).toHaveValue('1');
+    await page.click('#exclose');
   });
 
   test('the unit on a distance comes from the kind, not from typing it',

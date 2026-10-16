@@ -544,12 +544,16 @@
      ×, which on a phone is two keyboards deep, and the alphabet came up for a
      field that has never wanted a letter. Each pair is "from" and an optional
      "to", because a target can name a range and a number pad has no hyphen. */
-  .tgrid{display:grid;grid-template-columns:auto 1fr auto 1fr;
+  .tgrid{display:grid;grid-template-columns:auto 1fr;
     align-items:center;gap:8px 10px;margin-top:6px}
   .tgrid .tlab{font-size:0.8125rem;font-weight:620;color:var(--ink-2);
     letter-spacing:-.01em}
-  .tgrid .tsep{font-size:0.8125rem;color:var(--ink-2);text-align:center}
-  .tgrid input{margin:0}
+  /* The same stepper as the weight and reps on the logging screen, at the size
+     a settings sheet can carry four of. The number in the middle is still an
+     input, so it can be typed when that is quicker than tapping. */
+  .stepper.tight{min-height:48px;gap:6px}
+  .stepper.tight input{flex:1 1 auto;font-size:1.0625rem;text-align:center}
+  .stepper.tight button{flex:0 0 48px;font-size:1.125rem}
 
   .fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .f{display:block}
@@ -1209,17 +1213,33 @@
     <div class="f" style="margin-top:10px"><span class="lab">Target</span>
       <div class="tgrid" id="extargetfields">
         <span class="tlab" id="exsetslab">Sets</span>
-        <input type="number" id="exsets" inputmode="numeric" step="1" min="1"
-          aria-labelledby="exsetslab">
-        <span class="tsep">to</span>
-        <input type="number" id="exsetsmax" inputmode="numeric" step="1" min="1"
-          placeholder="same" aria-label="Sets, top of the range">
+        <div class="stepper tight">
+          <button type="button" data-step="exsets,-1" aria-label="One set fewer">&minus;</button>
+          <input type="number" id="exsets" inputmode="numeric" step="1" min="1"
+            aria-labelledby="exsetslab">
+          <button type="button" data-step="exsets,1" aria-label="One set more">+</button>
+        </div>
+        <span class="tlab" id="exsetsmaxlab">up to</span>
+        <div class="stepper tight">
+          <button type="button" data-step="exsetsmax,-1" aria-label="Fewer sets at the top of the range">&minus;</button>
+          <input type="number" id="exsetsmax" inputmode="numeric" step="1" min="1"
+            placeholder="same" aria-labelledby="exsetsmaxlab">
+          <button type="button" data-step="exsetsmax,1" aria-label="More sets at the top of the range">+</button>
+        </div>
         <span class="tlab" id="exrepslab">Reps</span>
-        <input type="number" id="exreps" inputmode="numeric" step="1" min="0"
-          placeholder="max" aria-labelledby="exrepslab">
-        <span class="tsep">to</span>
-        <input type="number" id="exrepsmax" inputmode="numeric" step="1" min="0"
-          placeholder="same" aria-label="Reps, top of the range">
+        <div class="stepper tight">
+          <button type="button" data-step="exreps,-1" aria-label="One rep fewer">&minus;</button>
+          <input type="number" id="exreps" inputmode="numeric" step="1" min="0"
+            placeholder="max" aria-labelledby="exrepslab">
+          <button type="button" data-step="exreps,1" aria-label="One rep more">+</button>
+        </div>
+        <span class="tlab" id="exrepsmaxlab">up to</span>
+        <div class="stepper tight">
+          <button type="button" data-step="exrepsmax,-1" aria-label="Fewer reps at the top of the range">&minus;</button>
+          <input type="number" id="exrepsmax" inputmode="numeric" step="1" min="0"
+            placeholder="same" aria-labelledby="exrepsmaxlab">
+          <button type="button" data-step="exrepsmax,1" aria-label="More reps at the top of the range">+</button>
+        </div>
       </div>
     </div>
     <label class="f" style="margin-top:10px"><span class="lab">Type</span>
@@ -3299,6 +3319,40 @@ function fillTargetFields(target){
   $('#exsetsmax').value = p.setsMax > p.sets ? p.setsMax : '';
   $('#exreps').value = p.min === null ? '' : p.min;
   $('#exrepsmax').value = p.max !== null && p.max > p.min ? p.max : '';
+}
+
+// Stepping the target rather than typing it: these are four small whole
+// numbers, and a keyboard for them is a keyboard you then have to put away.
+// Each one knows its own floor and whether it is allowed to be empty, because
+// empty means something different in each box — "same as the bottom" for a
+// range, and "max" for the reps.
+const TARGET_STEPS = {
+  exsets:    {low: () => 1, empty: false},
+  exsetsmax: {low: () => (Math.round(+$('#exsets').value) || 1) + 1, empty: true},
+  exreps:    {low: () => 1, empty: true},
+  exrepsmax: {low: () => (Math.round(+$('#exreps').value) || 1) + 1, empty: true},
+};
+
+function stepTarget(id, dir){
+  const el = $('#' + id), rule = TARGET_STEPS[id];
+  if(!el || !rule) return;
+  const low = rule.low();
+  const raw = el.value.trim();
+  const cur = raw === '' ? null : Math.round(Math.abs(+raw));
+  let next;
+  if(cur === null || !Number.isFinite(cur)){
+    // Stepping up out of empty lands on the lowest the box can mean; stepping
+    // down out of it has nowhere to go.
+    next = dir > 0 ? low : null;
+  } else {
+    next = cur + dir;
+    // One below the floor is how the two emptiable boxes are emptied: a rep
+    // target stepped below one is no rep target, which the program writes as
+    // max, and a range stepped below its bottom is no range at all.
+    if(next < low) next = rule.empty ? null : low;
+  }
+  el.value = next === null ? '' : next;
+  renderProgFields(state.editingEx);
 }
 
 function currentTarget(){
@@ -5874,6 +5928,11 @@ $('#exmuscles').addEventListener('click', e=>{
 });
 $('#exprogtype').addEventListener('change', ()=>renderProgFields(state.editingEx));
 $('#extargetfields').addEventListener('input', ()=>renderProgFields(state.editingEx));
+$('#extargetfields').addEventListener('click', e=>{
+  const b = e.target.closest('[data-step]'); if(!b) return;
+  const [id, dir] = b.dataset.step.split(',');
+  stepTarget(id, +dir);
+});
 $('#exkind').addEventListener('change', ()=>{
   $('#exrepslab').textContent = repsLabelFor($('#exkind').value);
   renderProgFields(state.editingEx);
