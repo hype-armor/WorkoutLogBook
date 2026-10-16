@@ -2,7 +2,7 @@ const { test, expect } = require('@playwright/test');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { FILE_URL, phone, watchErrors, seed, blankDb, set, settle , chooseDay } = require('./helpers');
+const { FILE_URL, phone, watchErrors, seed, blankDb, set, settle , chooseDay, setTarget} = require('./helpers');
 
 test.describe('backup, restore and export', () => {
   test.describe.configure({ mode: 'serial' });
@@ -1793,7 +1793,7 @@ test.describe('muscles worked', () => {
     await page.click('#editprog');
     await page.click('#addex');
     await page.fill('#exname', 'Landmine press');
-    await page.fill('#extarget', '3 × 10');
+    await setTarget(page, '3 × 10');
     await page.click('#exsave');
     await page.click('#editprog');
     await page.click('.ex[data-ex="Landmine press"]');
@@ -2134,7 +2134,7 @@ test.describe('a plan per gym', () => {
     await page.click('#editprog');
     await page.click('#addex');
     await page.fill('#exname', 'Landmine press');
-    await page.fill('#extarget', '3 × 10');
+    await setTarget(page, '3 × 10');
     await page.click('#exsave');
     await page.click('#editprog');
     await expect(page.locator('#exlist')).toContainText('Landmine press');

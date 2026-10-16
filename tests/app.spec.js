@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { FILE_URL, phone, watchErrors , chooseDay, settle, seed, blankDb } = require('./helpers');
+const { FILE_URL, phone, watchErrors , chooseDay, settle, seed, blankDb, setTarget} = require('./helpers');
 
 test.describe('logging a session', () => {
   test.describe.configure({ mode: 'serial' });
@@ -187,7 +187,7 @@ test.describe('editing the program', () => {
   test('an exercise can be added', async () => {
     await page.click('#addex');
     await page.fill('#exname', 'Hip thrust');
-    await page.fill('#extarget', '3 × 12');
+    await setTarget(page, '3 × 12');
     await page.click('#exsave');
     await expect(page.locator('#exlist')).toContainText('Hip thrust');
   });
@@ -403,14 +403,14 @@ test.describe('one-sided exercises get an even target', () => {
     await page.click('#editprog');
     await page.click('[data-edit="Suitcase carry"]');
     expect(await page.isChecked('#exuni')).toBe(true);
-    await page.fill('#extarget', '3 × 40m');
+    await setTarget(page, '3 × 40m');
     await page.click('#exsave');
     await expect(page.locator('#toast')).toContainText(/rounded to 4 sets/i);
     await expect(page.locator('.ex[data-ex="Suitcase carry"] .target')).toHaveText('4 × 40m');
 
     // an even target is left exactly as typed
     await page.click('[data-edit="Suitcase carry"]');
-    await page.fill('#extarget', '6 × 30m');
+    await setTarget(page, '6 × 30m');
     await page.click('#exsave');
     await expect(page.locator('.ex[data-ex="Suitcase carry"] .target')).toHaveText('6 × 30m');
     await ctx.close();
@@ -425,7 +425,7 @@ test.describe('one-sided exercises get an even target', () => {
     await page.click('#editprog');
     await page.click('[data-edit="Leg curl"]');
     expect(await page.isChecked('#exuni')).toBe(false);
-    await page.fill('#extarget', '3 × 12');
+    await setTarget(page, '3 × 12');
     await page.click('#exsave');
     // nothing unilateral about a leg curl, so 3 stays 3
     await expect(page.locator('.ex[data-ex="Leg curl"] .target')).toHaveText('3 × 12');
@@ -1613,7 +1613,7 @@ test.describe('what the rep count is training', () => {
     await expect(band()).toHaveText('Hypertrophy');
 
     await page.click('#exsettings');
-    await page.fill('#extarget', '4 × 3');
+    await setTarget(page, '4 × 3');
     await page.click('#exsave');
     await expect(page.locator('#reps')).toHaveValue('3');
     await expect(band(), 'the band kept the old target\'s reps').toHaveText('Strength');
@@ -3559,7 +3559,7 @@ test.describe('work measured in time', () => {
     await page.click('#editprog');          // adding to the day needs edit mode
     await page.click('#addex');
     await page.fill('#exname', 'Plank');
-    await page.fill('#extarget', '3 × 30-60s');
+    await setTarget(page, '3 × 30-60s');
     await page.selectOption('#exkind', 'time');
     await page.click('#exsave');
     await page.click('#editprog');          // and back out of it
@@ -3667,6 +3667,134 @@ test.describe('the weight buttons follow the progression', () => {
 // A drop set or a rest-pause burst is work, but it is not another set. Logged
 // as one it said you had done four when you did three, and then called the
 // session complete before it was.
+test.describe('the target is typed as numbers', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await chooseDay(page, 'A');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('every box asks for the number pad, not the alphabet', async () => {
+    await page.click('#editprog');
+    await page.click('[data-edit="Leg press"]');
+    // A target written as one string needed a × — two keyboards deep on a
+    // phone, on a field that has never wanted a letter.
+    expect(await page.$$eval('#extargetfields input',
+      els => els.map(e => `${e.type}/${e.inputMode}`)))
+      .toEqual(['number/numeric', 'number/numeric', 'number/numeric', 'number/numeric']);
+    expect(await page.locator('#extarget').count(), 'the old text box is gone').toBe(0);
+  });
+
+  test('it opens on the target the exercise already has', async () => {
+    await expect(page.locator('#exsets')).toHaveValue('3');
+    await expect(page.locator('#exreps')).toHaveValue('10');
+    // nothing in the range boxes, because 3 × 10 is not a range
+    await expect(page.locator('#exsetsmax')).toHaveValue('');
+    await expect(page.locator('#exrepsmax')).toHaveValue('');
+  });
+
+  test('two numbers save as the target the rest of the app reads', async () => {
+    await page.fill('#exsets', '4');
+    await page.fill('#exreps', '12');
+    await page.click('#exsave');
+    await expect(page.locator('.ex[data-ex="Leg press"] .target')).toHaveText('4 × 12');
+  });
+
+  test('a range needs no hyphen key', async () => {
+    await page.click('[data-edit="Leg press"]');
+    await page.fill('#exsets', '3');
+    await page.fill('#exsetsmax', '4');
+    await page.fill('#exreps', '8');
+    await page.fill('#exrepsmax', '12');
+    await page.click('#exsave');
+    await expect(page.locator('.ex[data-ex="Leg press"] .target')).toHaveText('3-4 × 8-12');
+    // and it reads back into the same four boxes
+    await page.click('[data-edit="Leg press"]');
+    await expect(page.locator('#exsets')).toHaveValue('3');
+    await expect(page.locator('#exsetsmax')).toHaveValue('4');
+    await expect(page.locator('#exreps')).toHaveValue('8');
+    await expect(page.locator('#exrepsmax')).toHaveValue('12');
+  });
+
+  test('left empty, the reps box means max', async () => {
+    // which is what the program has always written for a set measured by what
+    // you have left rather than by a number, so the placeholder says it
+    await expect(page.locator('#exreps')).toHaveAttribute('placeholder', 'max');
+    await page.fill('#exsetsmax', '');
+    await page.fill('#exreps', '');
+    await page.fill('#exrepsmax', '');
+    await page.click('#exsave');
+    await expect(page.locator('.ex[data-ex="Leg press"] .target')).toHaveText('3 × max');
+  });
+
+  test('the unit on a distance comes from the kind, not from typing it',
+    async () => {
+    await page.click('[data-edit="Suitcase carry"]');
+    await page.fill('#exsets', '4');
+    await page.fill('#exreps', '40');
+    await page.click('#exsave');
+    await expect(page.locator('.ex[data-ex="Suitcase carry"] .target')).toHaveText('4 × 40m');
+    await page.click('#editprog');
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
+
+test.describe('the keyboard goes away once the set is in', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await chooseDay(page, 'A');
+    await page.click('.ex[data-ex="Leg press"]');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  // A tap on a button does not move focus on a phone the way a click does
+  // here, so the field would keep focus and keep the keyboard over the screen.
+  // Clicking it from script is the closer match.
+  const tapLog = () => page.evaluate(() => document.querySelector('#logset').click());
+
+  test('logging a set lets the field go', async () => {
+    await page.fill('#wt', '200');
+    await page.fill('#reps', '10');
+    expect(await page.evaluate(() => document.activeElement.id)).toBe('reps');
+    await tapLog();
+    expect(await page.evaluate(() => document.activeElement.id)).toBe('');
+  });
+
+  test('and so does changing one that is already logged', async () => {
+    await page.click('.setrow:last-child .tap');
+    await page.fill('#reps', '8');
+    expect(await page.evaluate(() => document.activeElement.id)).toBe('reps');
+    await tapLog();
+    await expect(page.locator('#toast')).toContainText('Set updated');
+    expect(await page.evaluate(() => document.activeElement.id)).toBe('');
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
+
 test.describe('drop sets and rest-pause', () => {
   test.describe.configure({ mode: 'serial' });
 

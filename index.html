@@ -540,6 +540,17 @@
   }
   .sheetfoot .btn{margin-top:0}
 
+  /* Sets and reps as their own number fields. Written as one box it needed a
+     ×, which on a phone is two keyboards deep, and the alphabet came up for a
+     field that has never wanted a letter. Each pair is "from" and an optional
+     "to", because a target can name a range and a number pad has no hyphen. */
+  .tgrid{display:grid;grid-template-columns:auto 1fr auto 1fr;
+    align-items:center;gap:8px 10px;margin-top:6px}
+  .tgrid .tlab{font-size:0.8125rem;font-weight:620;color:var(--ink-2);
+    letter-spacing:-.01em}
+  .tgrid .tsep{font-size:0.8125rem;color:var(--ink-2);text-align:center}
+  .tgrid input{margin:0}
+
   .fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .f{display:block}
   .f span.lab{
@@ -1195,8 +1206,22 @@
   <div class="sheetbody">
     <label class="f"><span class="lab">Name</span>
       <input type="text" id="exname" autocomplete="off"></label>
-    <label class="f" style="margin-top:10px"><span class="lab">Target</span>
-      <input type="text" id="extarget" placeholder="3 × 10" autocomplete="off"></label>
+    <div class="f" style="margin-top:10px"><span class="lab">Target</span>
+      <div class="tgrid" id="extargetfields">
+        <span class="tlab" id="exsetslab">Sets</span>
+        <input type="number" id="exsets" inputmode="numeric" step="1" min="1"
+          aria-labelledby="exsetslab">
+        <span class="tsep">to</span>
+        <input type="number" id="exsetsmax" inputmode="numeric" step="1" min="1"
+          placeholder="same" aria-label="Sets, top of the range">
+        <span class="tlab" id="exrepslab">Reps</span>
+        <input type="number" id="exreps" inputmode="numeric" step="1" min="0"
+          placeholder="max" aria-labelledby="exrepslab">
+        <span class="tsep">to</span>
+        <input type="number" id="exrepsmax" inputmode="numeric" step="1" min="0"
+          placeholder="same" aria-label="Reps, top of the range">
+      </div>
+    </div>
     <label class="f" style="margin-top:10px"><span class="lab">Type</span>
       <select id="exkind">
         <option value="weight">Weight — barbell, dumbbell, machine</option>
@@ -3262,6 +3287,41 @@ function seedFor(ex){
 
 // Round a target up to an even number of sets, leaving the rest of the string
 // ("× 40m") alone.
+// The target is still stored and read as the same string everywhere else in
+// the app — "3 × 10", "3-4 × 8-12", "4 × max", "4 × 40m". Only the way it is
+// typed changes. These two turn that string into four numbers and back.
+const repsLabelFor = kind => kind === 'distance' ? `Distance (${U().dist})`
+  : kind === 'time' ? 'Seconds' : 'Reps';
+
+function fillTargetFields(target){
+  const p = targetParts(target);
+  $('#exsets').value = p.sets || '';
+  $('#exsetsmax').value = p.setsMax > p.sets ? p.setsMax : '';
+  $('#exreps').value = p.min === null ? '' : p.min;
+  $('#exrepsmax').value = p.max !== null && p.max > p.min ? p.max : '';
+}
+
+function currentTarget(){
+  const num = sel => {
+    const v = $(sel).value.trim();
+    if(v === '') return null;
+    const n = Math.round(Math.abs(+v));
+    return Number.isFinite(n) ? n : null;
+  };
+  // A target with no sets is not a target, so an empty or nonsense sets field
+  // falls back to the same three the sheet opens on rather than writing "0 ×".
+  const sets = num('#exsets') || 3;
+  const setsMax = num('#exsetsmax');
+  const reps = num('#exreps'), repsMax = num('#exrepsmax');
+  const kind = $('#exkind').value;
+  // Left empty means no number to reach, which is what the program has always
+  // written as "max" — so the placeholder says so.
+  const unit = kind === 'distance' ? U().dist : kind === 'time' ? 's' : '';
+  return `${setsMax > sets ? `${sets}-${setsMax}` : sets} × ${
+    reps === null ? 'max'
+      : (repsMax > reps ? `${reps}-${repsMax}` : `${reps}`) + unit}`;
+}
+
 function evenTarget(target){
   const n = targetSets(target);
   if(!n || n % 2 === 0) return target;
@@ -5485,6 +5545,9 @@ $('#logset').addEventListener('click', ()=>{
     $('#canceledit').classList.add('hide');
     renderSetKind();
     save(); renderSetList(); renderSheetSub(); toast('Set updated');
+    // Same as the path below: the keyboard has nothing left to do, and a field
+    // left focused keeps it over the screen.
+    document.activeElement?.blur?.();
     return;
   }
   // Actual rest since the previous set of THIS exercise. On a superset the
@@ -5681,7 +5744,8 @@ function openExEditor(name){
   const row = name ? dayById(state.day).ex.find(([n]) => n === name) : null;
   $('#exsheet-title').textContent = name ? 'Edit exercise' : 'Add exercise';
   $('#exname').value = name || '';
-  $('#extarget').value = row ? row[1] : '3 × 10';
+  fillTargetFields(row ? row[1] : '3 × 10');
+  $('#exrepslab').textContent = repsLabelFor(name ? kindOf(name) : 'weight');
   $('#exkind').value = name ? kindOf(name) : 'weight';
   renderMusclePick(name);
   $('#exuni').checked = name ? isUnilateral(name) : false;
@@ -5711,7 +5775,7 @@ function openExEditor(name){
 $('#exsave').addEventListener('click', ()=>{
   const name = $('#exname').value.trim();
   if(!name){ toast('Name it first'); return; }
-  const typed = $('#extarget').value.trim() || '3 × 10';
+  const typed = currentTarget();
   const uni = $('#exuni').checked;
   // Two arms, two legs: an odd target on a one-sided exercise cannot be shared
   // evenly, so it goes up rather than being accepted as written.
@@ -5809,8 +5873,11 @@ $('#exmuscles').addEventListener('click', e=>{
   renderMuscleHint(state.editingEx);
 });
 $('#exprogtype').addEventListener('change', ()=>renderProgFields(state.editingEx));
-$('#extarget').addEventListener('input', ()=>renderProgFields(state.editingEx));
-$('#exkind').addEventListener('change', ()=>renderProgFields(state.editingEx));
+$('#extargetfields').addEventListener('input', ()=>renderProgFields(state.editingEx));
+$('#exkind').addEventListener('change', ()=>{
+  $('#exrepslab').textContent = repsLabelFor($('#exkind').value);
+  renderProgFields(state.editingEx);
+});
 
 $('#exdelete').addEventListener('click', ()=>{
   const name = state.editingEx; if(!name) return;
@@ -5874,7 +5941,7 @@ function renderProgFields(name){
   // The select wins over the target while the sheet is open: you are allowed
   // to see what a choice does before saving it.
   const type = $('#exprogtype').value
-    || typeFromTarget($('#extarget').value.trim(), $('#exkind').value);
+    || typeFromTarget(currentTarget(), $('#exkind').value);
   const unit = PROG_UNIT[type] || u.label;
   $('#exproglab').textContent = `Progression (${unit})`;
   const stored = type === 'weight'
