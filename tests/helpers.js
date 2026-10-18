@@ -148,10 +148,15 @@ async function chooseDay(page, id) {
 async function setTarget(page, target) {
   const m = /^\s*(\d+)(?:\s*-\s*(\d+))?\s*[\u00d7x]\s*(?:(\d+)(?:\s*-\s*(\d+))?|max)/.exec(target);
   if (!m) throw new Error(`setTarget could not read ${JSON.stringify(target)}`);
+  // The two range boxes live behind a toggle, and turning it off clears them,
+  // so it is set before anything is typed rather than after.
+  await page.setChecked('#exrange', !!(m[2] || m[4]));
   await page.fill('#exsets', m[1]);
-  await page.fill('#exsetsmax', m[2] || '');
   await page.fill('#exreps', m[3] || '');     // blank for "max"
-  await page.fill('#exrepsmax', m[4] || '');
+  if (m[2] || m[4]) {
+    await page.fill('#exsetsmax', m[2] || '');
+    await page.fill('#exrepsmax', m[4] || '');
+  }
 }
 
 module.exports = {

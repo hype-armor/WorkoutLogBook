@@ -1219,8 +1219,8 @@
             aria-labelledby="exsetslab">
           <button type="button" data-step="exsets,1" aria-label="One set more">+</button>
         </div>
-        <span class="tlab" id="exsetsmaxlab">up to</span>
-        <div class="stepper tight">
+        <span class="tlab rangerow" id="exsetsmaxlab">up to</span>
+        <div class="stepper tight rangerow">
           <button type="button" data-step="exsetsmax,-1" aria-label="Fewer sets at the top of the range">&minus;</button>
           <input type="number" id="exsetsmax" inputmode="numeric" step="1" min="1"
             placeholder="same" aria-labelledby="exsetsmaxlab">
@@ -1233,8 +1233,8 @@
             placeholder="max" aria-labelledby="exrepslab">
           <button type="button" data-step="exreps,1" aria-label="One rep more">+</button>
         </div>
-        <span class="tlab" id="exrepsmaxlab">up to</span>
-        <div class="stepper tight">
+        <span class="tlab rangerow" id="exrepsmaxlab">up to</span>
+        <div class="stepper tight rangerow">
           <button type="button" data-step="exrepsmax,-1" aria-label="Fewer reps at the top of the range">&minus;</button>
           <input type="number" id="exrepsmax" inputmode="numeric" step="1" min="0"
             placeholder="same" aria-labelledby="exrepsmaxlab">
@@ -1242,6 +1242,13 @@
         </div>
       </div>
     </div>
+    <label class="toggle" style="margin-top:12px">
+      <input type="checkbox" id="exrange">
+      <span>Grow the target before the weight
+        <span class="sub">Adds a second number to each: work up to it session by
+          session, and the weight only moves once you get there. Most exercises
+          do not need it.</span></span>
+    </label>
     <label class="f" style="margin-top:10px"><span class="lab">Type</span>
       <select id="exkind">
         <option value="weight">Weight — barbell, dumbbell, machine</option>
@@ -3319,6 +3326,18 @@ function fillTargetFields(target){
   $('#exsetsmax').value = p.setsMax > p.sets ? p.setsMax : '';
   $('#exreps').value = p.min === null ? '' : p.min;
   $('#exrepsmax').value = p.max !== null && p.max > p.min ? p.max : '';
+  // A target that already names a range opens with the rows showing, because
+  // hiding what an exercise is actually set to would be a lie about it.
+  $('#exrange').checked = !!($('#exsetsmax').value || $('#exrepsmax').value);
+  renderRangeRows();
+}
+
+// Growing the target before the weight is double progression, which is worth
+// having and is not what most exercises want. Folded away, it stops the two
+// extra boxes from reading as something that needs filling in.
+function renderRangeRows(){
+  const on = $('#exrange').checked;
+  for(const el of document.querySelectorAll('.rangerow')) el.classList.toggle('hide', !on);
 }
 
 // Stepping the target rather than typing it: these are four small whole
@@ -5928,6 +5947,14 @@ $('#exmuscles').addEventListener('click', e=>{
 });
 $('#exprogtype').addEventListener('change', ()=>renderProgFields(state.editingEx));
 $('#extargetfields').addEventListener('input', ()=>renderProgFields(state.editingEx));
+$('#exrange').addEventListener('change', ()=>{
+  // Turned off, the range goes with it. A range still sitting in a hidden box
+  // would go on deciding what grows, with nothing on screen saying so.
+  if(!$('#exrange').checked){ $('#exsetsmax').value = ''; $('#exrepsmax').value = ''; }
+  renderRangeRows();
+  renderProgFields(state.editingEx);
+});
+
 $('#extargetfields').addEventListener('click', e=>{
   const b = e.target.closest('[data-step]'); if(!b) return;
   const [id, dir] = b.dataset.step.split(',');

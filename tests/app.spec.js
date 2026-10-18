@@ -3709,35 +3709,56 @@ test.describe('the target is stepped, not typed', () => {
     await expect(page.locator('.ex[data-ex="Leg press"] .target')).toHaveText('4 × 12');
   });
 
-  test('a range needs no hyphen key', async () => {
+  test('the range boxes are folded away until asked for', async () => {
     await page.click('[data-edit="Leg press"]');
+    // Two extra boxes on every exercise read as something that needs filling
+    // in, and growing the target before the weight is not what most want.
+    await expect(page.locator('#exrange')).not.toBeChecked();
+    await expect(page.locator('#exsetsmax')).toBeHidden();
+    await expect(page.locator('#exrepsmax')).toBeHidden();
+    await page.check('#exrange');
+    await expect(page.locator('#exsetsmax')).toBeVisible();
+    await expect(page.locator('#exrepsmax')).toBeVisible();
+  });
+
+  test('a range needs no hyphen key', async () => {
     await page.fill('#exsets', '3');
     await page.fill('#exsetsmax', '4');
     await page.fill('#exreps', '8');
     await page.fill('#exrepsmax', '12');
     await page.click('#exsave');
     await expect(page.locator('.ex[data-ex="Leg press"] .target')).toHaveText('3-4 × 8-12');
-    // and it reads back into the same four boxes
+    // and it reads back into the same four boxes, with the drawer already open
+    // because hiding what the exercise is set to would be a lie about it
     await page.click('[data-edit="Leg press"]');
+    await expect(page.locator('#exrange')).toBeChecked();
     await expect(page.locator('#exsets')).toHaveValue('3');
     await expect(page.locator('#exsetsmax')).toHaveValue('4');
     await expect(page.locator('#exreps')).toHaveValue('8');
     await expect(page.locator('#exrepsmax')).toHaveValue('12');
   });
 
+  test('folding it away takes the range with it', async () => {
+    // A range left sitting in a hidden box would go on deciding what grows,
+    // with nothing on screen saying so.
+    await page.uncheck('#exrange');
+    await page.click('#exsave');
+    await expect(page.locator('.ex[data-ex="Leg press"] .target')).toHaveText('3 × 8');
+  });
+
   test('left empty, the reps box means max', async () => {
     // which is what the program has always written for a set measured by what
     // you have left rather than by a number, so the placeholder says it
+    await page.click('[data-edit="Leg press"]');
     await expect(page.locator('#exreps')).toHaveAttribute('placeholder', 'max');
-    await page.fill('#exsetsmax', '');
     await page.fill('#exreps', '');
-    await page.fill('#exrepsmax', '');
     await page.click('#exsave');
     await expect(page.locator('.ex[data-ex="Leg press"] .target')).toHaveText('3 × max');
   });
 
   test('every number has a pair of buttons big enough to hit', async () => {
     await page.click('[data-edit="Leg press"]');
+    await page.check('#exrange');          // including the two behind the toggle
     const boxes = await page.$$eval('#extargetfields button',
       els => els.map(e => { const r = e.getBoundingClientRect();
         return Math.round(Math.min(r.width, r.height)); }));
@@ -3758,6 +3779,7 @@ test.describe('the target is stepped, not typed', () => {
   test('a range starts one above the number it is a range from', async () => {
     // "up to 4" when the bottom is 4 is not a range, so the box opens on the
     // first value that means anything
+    await expect(page.locator('#exrange')).toBeChecked();
     await page.click('[data-step="exsetsmax,1"]');
     await expect(page.locator('#exsetsmax')).toHaveValue('5');
     await page.click('[data-step="exsetsmax,-1"]');
