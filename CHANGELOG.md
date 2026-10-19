@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.27.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.26.0...logbook-v1.27.0) (2026-10-19)
+
+
+### Features
+
+* fold the target range behind a toggle ([ba5ed91](https://github.com/hype-armor/WorkoutLogBook/commit/ba5ed91433cb5025a56f450ee9a6c9d2993e197d))
+* set the target without a keyboard ([eedef5f](https://github.com/hype-armor/WorkoutLogBook/commit/eedef5fa51801a08751289c1c8c34079c786e1ce))
+* step the target instead of typing it ([a6b10a1](https://github.com/hype-armor/WorkoutLogBook/commit/a6b10a198e27ec33edbeacbac4314fd4bb926809))
+* type the target as numbers, and let the field go after a set ([b6a16bd](https://github.com/hype-armor/WorkoutLogBook/commit/b6a16bd5ceaac996032929f5f56d12c48ed9d296))
+
+
+### Bug Fixes
+
+* a range that is not a range, and a rep target under one ([1965067](https://github.com/hype-armor/WorkoutLogBook/commit/196506762b101b5aa5215d6c6d14855316945138))
+
 ## [1.26.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.25.1...logbook-v1.26.0) (2026-10-14)
 
 
