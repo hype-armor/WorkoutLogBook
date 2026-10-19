@@ -508,8 +508,28 @@ quietly go unexplained.
 
 ## What the weight waits for
 
-A target can name a range, and the range is how you say what should grow before
-the weight does:
+A target is four numbers — sets, reps, and an optional top for each — and each
+has a minus and a plus, the same stepper the weight and reps use when logging.
+Written as one string it needed a `×`, two keyboards deep on a phone, on a
+field that has never wanted a letter; stepped, it needs no keyboard at all. The
+number in the middle is still a field, so it can be typed when that is quicker.
+
+Stepping the reps below one gives `max` — no rep target is what the program has
+always written that way. The sets never empty, because a target without them is
+not a target.
+
+The second number of each pair is folded behind **Grow the target before the
+weight**. Double progression is worth having and is not what most exercises
+want, and two more boxes on every one of them read as something that needs
+filling in. An exercise that already names a range opens with them showing,
+because hiding what it is set to would be a lie about it, and turning the
+toggle off clears the range rather than leaving it in a hidden box still
+deciding what grows. A range starts one above the number it is a range from,
+since "3 up to 3" is not a range. The unit on a distance or a hold comes from the
+exercise's type rather than from typing an `m` or an `s`.
+
+What is stored is the same string as before, so the grammar below is
+unchanged:
 
 | Target | What moves |
 | --- | --- |
@@ -731,7 +751,7 @@ instead of failing quietly.
 ## Built like this
 
 Markup, styles and logic in one file; a service worker that precaches the shell
-and keeps the exercise photos in a cache of their own; 430 Playwright tests that
+and keeps the exercise photos in a cache of their own; 450 Playwright tests that
 read real bounding boxes at phone sizes; and Release Please, which tags the
 version and rewrites it in `sw.js` — the thing that makes an installed phone
 notice a release at all. The deploy refuses to publish a build the suite rejects.

@@ -140,5 +140,25 @@ async function chooseDay(page, id) {
   await page.click(`[data-day="${id}"]`);
 }
 
+// The target is four number fields now — sets, an optional top of the set
+// range, reps, an optional top of the rep range — so that a phone shows the
+// number pad instead of the alphabet. The tests still say what they mean in
+// the grammar the app stores, and this types it into the right boxes. The unit
+// on a distance or a time comes from the kind, so it is not typed here.
+async function setTarget(page, target) {
+  const m = /^\s*(\d+)(?:\s*-\s*(\d+))?\s*[\u00d7x]\s*(?:(\d+)(?:\s*-\s*(\d+))?|max)/.exec(target);
+  if (!m) throw new Error(`setTarget could not read ${JSON.stringify(target)}`);
+  // The two range boxes live behind a toggle, and turning it off clears them,
+  // so it is set before anything is typed rather than after.
+  await page.setChecked('#exrange', !!(m[2] || m[4]));
+  await page.fill('#exsets', m[1]);
+  await page.fill('#exreps', m[3] || '');     // blank for "max"
+  if (m[2] || m[4]) {
+    await page.fill('#exsetsmax', m[2] || '');
+    await page.fill('#exrepsmax', m[4] || '');
+  }
+}
+
 module.exports = {
+  setTarget,
   chooseDay, APP_PATH, SW_PATH, FILE_URL, SYNC_URL, PHONE, phone, watchErrors, seed, blankDb, set, overlaps, rects, clipped, settle };

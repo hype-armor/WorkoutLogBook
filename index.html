@@ -540,6 +540,21 @@
   }
   .sheetfoot .btn{margin-top:0}
 
+  /* Sets and reps as their own number fields. Written as one box it needed a
+     ×, which on a phone is two keyboards deep, and the alphabet came up for a
+     field that has never wanted a letter. Each pair is "from" and an optional
+     "to", because a target can name a range and a number pad has no hyphen. */
+  .tgrid{display:grid;grid-template-columns:auto 1fr;
+    align-items:center;gap:8px 10px;margin-top:6px}
+  .tgrid .tlab{font-size:0.8125rem;font-weight:620;color:var(--ink-2);
+    letter-spacing:-.01em}
+  /* The same stepper as the weight and reps on the logging screen, at the size
+     a settings sheet can carry four of. The number in the middle is still an
+     input, so it can be typed when that is quicker than tapping. */
+  .stepper.tight{min-height:48px;gap:6px}
+  .stepper.tight input{flex:1 1 auto;font-size:1.0625rem;text-align:center}
+  .stepper.tight button{flex:0 0 48px;font-size:1.125rem}
+
   .fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .f{display:block}
   .f span.lab{
@@ -1195,8 +1210,45 @@
   <div class="sheetbody">
     <label class="f"><span class="lab">Name</span>
       <input type="text" id="exname" autocomplete="off"></label>
-    <label class="f" style="margin-top:10px"><span class="lab">Target</span>
-      <input type="text" id="extarget" placeholder="3 × 10" autocomplete="off"></label>
+    <div class="f" style="margin-top:10px"><span class="lab">Target</span>
+      <div class="tgrid" id="extargetfields">
+        <span class="tlab" id="exsetslab">Sets</span>
+        <div class="stepper tight">
+          <button type="button" data-step="exsets,-1" aria-label="One set fewer">&minus;</button>
+          <input type="number" id="exsets" inputmode="numeric" step="1" min="1"
+            aria-labelledby="exsetslab">
+          <button type="button" data-step="exsets,1" aria-label="One set more">+</button>
+        </div>
+        <span class="tlab rangerow" id="exsetsmaxlab">up to</span>
+        <div class="stepper tight rangerow">
+          <button type="button" data-step="exsetsmax,-1" aria-label="Fewer sets at the top of the range">&minus;</button>
+          <input type="number" id="exsetsmax" inputmode="numeric" step="1" min="1"
+            placeholder="same" aria-labelledby="exsetsmaxlab">
+          <button type="button" data-step="exsetsmax,1" aria-label="More sets at the top of the range">+</button>
+        </div>
+        <span class="tlab" id="exrepslab">Reps</span>
+        <div class="stepper tight">
+          <button type="button" data-step="exreps,-1" aria-label="One rep fewer">&minus;</button>
+          <input type="number" id="exreps" inputmode="numeric" step="1" min="0"
+            placeholder="max" aria-labelledby="exrepslab">
+          <button type="button" data-step="exreps,1" aria-label="One rep more">+</button>
+        </div>
+        <span class="tlab rangerow" id="exrepsmaxlab">up to</span>
+        <div class="stepper tight rangerow">
+          <button type="button" data-step="exrepsmax,-1" aria-label="Fewer reps at the top of the range">&minus;</button>
+          <input type="number" id="exrepsmax" inputmode="numeric" step="1" min="0"
+            placeholder="same" aria-labelledby="exrepsmaxlab">
+          <button type="button" data-step="exrepsmax,1" aria-label="More reps at the top of the range">+</button>
+        </div>
+      </div>
+    </div>
+    <label class="toggle" style="margin-top:12px">
+      <input type="checkbox" id="exrange">
+      <span>Grow the target before the weight
+        <span class="sub">Adds a second number to each: work up to it session by
+          session, and the weight only moves once you get there. Most exercises
+          do not need it.</span></span>
+    </label>
     <label class="f" style="margin-top:10px"><span class="lab">Type</span>
       <select id="exkind">
         <option value="weight">Weight — barbell, dumbbell, machine</option>
@@ -3262,6 +3314,102 @@ function seedFor(ex){
 
 // Round a target up to an even number of sets, leaving the rest of the string
 // ("× 40m") alone.
+// The target is still stored and read as the same string everywhere else in
+// the app — "3 × 10", "3-4 × 8-12", "4 × max", "4 × 40m". Only the way it is
+// typed changes. These two turn that string into four numbers and back.
+const repsLabelFor = kind => kind === 'distance' ? `Distance (${U().dist})`
+  : kind === 'time' ? 'Seconds' : 'Reps';
+
+function fillTargetFields(target){
+  const p = targetParts(target);
+  $('#exsets').value = p.sets || '';
+  $('#exsetsmax').value = p.setsMax > p.sets ? p.setsMax : '';
+  $('#exreps').value = p.min === null ? '' : p.min;
+  $('#exrepsmax').value = p.max !== null && p.max > p.min ? p.max : '';
+  // A target that already names a range opens with the rows showing, because
+  // hiding what an exercise is actually set to would be a lie about it.
+  $('#exrange').checked = !!($('#exsetsmax').value || $('#exrepsmax').value);
+  renderRangeRows();
+}
+
+// Growing the target before the weight is double progression, which is worth
+// having and is not what most exercises want. Folded away, it stops the two
+// extra boxes from reading as something that needs filling in.
+function renderRangeRows(){
+  const on = $('#exrange').checked;
+  for(const el of document.querySelectorAll('.rangerow')) el.classList.toggle('hide', !on);
+}
+
+// Stepping the target rather than typing it: these are four small whole
+// numbers, and a keyboard for them is a keyboard you then have to put away.
+// Each one knows its own floor and whether it is allowed to be empty, because
+// empty means something different in each box — "same as the bottom" for a
+// range, and "max" for the reps.
+const TARGET_STEPS = {
+  exsets:    {low: () => 1, empty: false},
+  exsetsmax: {low: () => (Math.round(+$('#exsets').value) || 1) + 1, empty: true},
+  exreps:    {low: () => 1, empty: true},
+  exrepsmax: {low: () => (Math.round(+$('#exreps').value) || 1) + 1, empty: true},
+};
+
+// A top that is not above its bottom is not a range, and the target built on
+// save drops it. Left sitting in the box it said otherwise — "Reps 15 up to
+// 12", saving 3 × 15 — so the box follows the bottom instead of contradicting
+// it. Only the bottom moving clears it: clearing on every keystroke in the top
+// box would wipe the 1 of a 15 before the 5 arrived.
+function capRangeTops(){
+  for(const [lo, hi] of [['#exsets', '#exsetsmax'], ['#exreps', '#exrepsmax']]){
+    const a = $(lo).value.trim(), b = $(hi).value.trim();
+    if(a !== '' && b !== '' && Math.round(+b) <= Math.round(+a)) $(hi).value = '';
+  }
+}
+
+function stepTarget(id, dir){
+  const el = $('#' + id), rule = TARGET_STEPS[id];
+  if(!el || !rule) return;
+  const low = rule.low();
+  const raw = el.value.trim();
+  const cur = raw === '' ? null : Math.round(Math.abs(+raw));
+  let next;
+  if(cur === null || !Number.isFinite(cur)){
+    // Stepping up out of empty lands on the lowest the box can mean; stepping
+    // down out of it has nowhere to go.
+    next = dir > 0 ? low : null;
+  } else {
+    next = cur + dir;
+    // One below the floor is how the two emptiable boxes are emptied: a rep
+    // target stepped below one is no rep target, which the program writes as
+    // max, and a range stepped below its bottom is no range at all.
+    if(next < low) next = rule.empty ? null : low;
+  }
+  el.value = next === null ? '' : next;
+  if(id === 'exsets' || id === 'exreps') capRangeTops();
+  renderProgFields(state.editingEx);
+}
+
+function currentTarget(){
+  const num = sel => {
+    const v = $(sel).value.trim();
+    if(v === '') return null;
+    const n = Math.round(Math.abs(+v));
+    return Number.isFinite(n) ? n : null;
+  };
+  // A target with no sets is not a target, so an empty or nonsense sets field
+  // falls back to the same three the sheet opens on rather than writing "0 ×".
+  const sets = num('#exsets') || 3;
+  const setsMax = num('#exsetsmax');
+  const reps = num('#exreps'), repsMax = num('#exrepsmax');
+  const kind = $('#exkind').value;
+  // Left empty means no number to reach, which is what the program has always
+  // written as "max" — so the placeholder says so.
+  const unit = kind === 'distance' ? U().dist : kind === 'time' ? 's' : '';
+  // Under one is no rep target, the same as the stepper's floor: typing a 0
+  // meant "3 × 0", which is not a target anything can be judged against.
+  return `${setsMax > sets ? `${sets}-${setsMax}` : sets} × ${
+    reps === null || reps < 1 ? 'max'
+      : (repsMax > reps ? `${reps}-${repsMax}` : `${reps}`) + unit}`;
+}
+
 function evenTarget(target){
   const n = targetSets(target);
   if(!n || n % 2 === 0) return target;
@@ -5485,6 +5633,9 @@ $('#logset').addEventListener('click', ()=>{
     $('#canceledit').classList.add('hide');
     renderSetKind();
     save(); renderSetList(); renderSheetSub(); toast('Set updated');
+    // Same as the path below: the keyboard has nothing left to do, and a field
+    // left focused keeps it over the screen.
+    document.activeElement?.blur?.();
     return;
   }
   // Actual rest since the previous set of THIS exercise. On a superset the
@@ -5681,7 +5832,8 @@ function openExEditor(name){
   const row = name ? dayById(state.day).ex.find(([n]) => n === name) : null;
   $('#exsheet-title').textContent = name ? 'Edit exercise' : 'Add exercise';
   $('#exname').value = name || '';
-  $('#extarget').value = row ? row[1] : '3 × 10';
+  fillTargetFields(row ? row[1] : '3 × 10');
+  $('#exrepslab').textContent = repsLabelFor(name ? kindOf(name) : 'weight');
   $('#exkind').value = name ? kindOf(name) : 'weight';
   renderMusclePick(name);
   $('#exuni').checked = name ? isUnilateral(name) : false;
@@ -5711,7 +5863,7 @@ function openExEditor(name){
 $('#exsave').addEventListener('click', ()=>{
   const name = $('#exname').value.trim();
   if(!name){ toast('Name it first'); return; }
-  const typed = $('#extarget').value.trim() || '3 × 10';
+  const typed = currentTarget();
   const uni = $('#exuni').checked;
   // Two arms, two legs: an odd target on a one-sided exercise cannot be shared
   // evenly, so it goes up rather than being accepted as written.
@@ -5809,8 +5961,27 @@ $('#exmuscles').addEventListener('click', e=>{
   renderMuscleHint(state.editingEx);
 });
 $('#exprogtype').addEventListener('change', ()=>renderProgFields(state.editingEx));
-$('#extarget').addEventListener('input', ()=>renderProgFields(state.editingEx));
-$('#exkind').addEventListener('change', ()=>renderProgFields(state.editingEx));
+$('#extargetfields').addEventListener('input', e=>{
+  if(e.target.id === 'exsets' || e.target.id === 'exreps') capRangeTops();
+  renderProgFields(state.editingEx);
+});
+$('#exrange').addEventListener('change', ()=>{
+  // Turned off, the range goes with it. A range still sitting in a hidden box
+  // would go on deciding what grows, with nothing on screen saying so.
+  if(!$('#exrange').checked){ $('#exsetsmax').value = ''; $('#exrepsmax').value = ''; }
+  renderRangeRows();
+  renderProgFields(state.editingEx);
+});
+
+$('#extargetfields').addEventListener('click', e=>{
+  const b = e.target.closest('[data-step]'); if(!b) return;
+  const [id, dir] = b.dataset.step.split(',');
+  stepTarget(id, +dir);
+});
+$('#exkind').addEventListener('change', ()=>{
+  $('#exrepslab').textContent = repsLabelFor($('#exkind').value);
+  renderProgFields(state.editingEx);
+});
 
 $('#exdelete').addEventListener('click', ()=>{
   const name = state.editingEx; if(!name) return;
@@ -5874,7 +6045,7 @@ function renderProgFields(name){
   // The select wins over the target while the sheet is open: you are allowed
   // to see what a choice does before saving it.
   const type = $('#exprogtype').value
-    || typeFromTarget($('#extarget').value.trim(), $('#exkind').value);
+    || typeFromTarget(currentTarget(), $('#exkind').value);
   const unit = PROG_UNIT[type] || u.label;
   $('#exproglab').textContent = `Progression (${unit})`;
   const stored = type === 'weight'
