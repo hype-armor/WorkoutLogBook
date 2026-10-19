@@ -3802,6 +3802,41 @@ test.describe('the target is stepped, not typed', () => {
     await page.click('#exclose');
   });
 
+  test('the top of a range follows the bottom rather than contradicting it',
+    async () => {
+    await page.click('[data-edit="Leg press"]');
+    await page.check('#exrange');
+    await page.fill('#exreps', '8');
+    await page.fill('#exrepsmax', '12');
+    // raising the bottom to meet the top leaves no range. The target built on
+    // save already dropped it; the box used to go on saying "8 up to 12" with
+    // a 15 beside it, and save 3 × 15.
+    await page.fill('#exreps', '15');
+    await expect(page.locator('#exrepsmax')).toHaveValue('');
+    await page.click('#exsave');
+    await expect(page.locator('.ex[data-ex="Leg press"] .target')).toHaveText('3 × 15');
+  });
+
+  test('but a two-digit top can still be typed one key at a time', async () => {
+    // the 1 of a 12 is below the bottom for exactly one keystroke, and must
+    // survive long enough for the 2 to arrive
+    await page.click('[data-edit="Leg press"]');
+    await page.check('#exrange');
+    await page.fill('#exreps', '8');
+    await page.click('#exrepsmax');
+    await page.type('#exrepsmax', '12', { delay: 50 });
+    await expect(page.locator('#exrepsmax')).toHaveValue('12');
+    await page.uncheck('#exrange');
+  });
+
+  test('a rep target under one is no rep target', async () => {
+    // the stepper floors at one and then empties to max; typing a 0 used to
+    // save "3 × 0", which nothing can be judged against
+    await page.fill('#exreps', '0');
+    await page.click('#exsave');
+    await expect(page.locator('.ex[data-ex="Leg press"] .target')).toHaveText('3 × max');
+  });
+
   test('the unit on a distance comes from the kind, not from typing it',
     async () => {
     await page.click('[data-edit="Suitcase carry"]');
