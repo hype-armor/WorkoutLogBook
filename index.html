@@ -670,15 +670,30 @@
     display:block;color:var(--ink-3);font-size:0.75rem;font-weight:520;
     letter-spacing:-.005em;margin-top:2px;
   }
+  /* A round can hold more than two now, so the row stacks: a label, then one
+     chip per exercise in the day to tick in or out of it. */
   .pairrow{
-    display:flex;align-items:center;gap:10px;margin:0 0 14px;
+    display:block;margin:0 0 14px;
     padding:11px 13px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-md);
   }
-  .pairrow span{
+  .pairrow .pairlab{
+    display:block;margin-bottom:8px;
     font-size:0.75rem;font-weight:620;letter-spacing:.05em;
-    text-transform:uppercase;color:var(--ink-3);white-space:nowrap;
+    text-transform:uppercase;color:var(--ink-3);
   }
-  .pairrow select{flex:1;min-width:0;background:var(--surface-3)}
+  /* Shaped like the muscle chips, but on its own: those capitalise, because
+     muscle names are stored lowercase, and an exercise name is already written
+     the way it should read — "Romanian Deadlift" is not its name. They also
+     colour by a three-way tier, where this is only in or out. */
+  .roundpick{display:flex;flex-wrap:wrap;gap:6px}
+  .roundpick button{
+    font-family:inherit;font-size:0.7812rem;padding:6px 11px;border-radius:999px;
+    border:1px solid var(--line-2);color:var(--ink-3);background:var(--surface-2);
+    cursor:pointer;text-align:left;
+  }
+  .roundpick button[aria-pressed="true"]{border-color:var(--accent);
+    color:var(--accent-ink);background:var(--accent-soft);font-weight:620}
+  .roundpick small{font-weight:450;opacity:.72}
   .rest .mid.jump{cursor:pointer}
 
   /* rest timer */
@@ -1138,8 +1153,8 @@
   <div class="exbody">
     <button class="disclose" id="pairtoggle" aria-expanded="false" aria-controls="pairrow">Superset</button>
     <div class="pairrow hide" id="pairrow">
-      <span>Pair with</span>
-      <select id="pairsel"></select>
+      <span class="pairlab">In this round</span>
+      <div class="roundpick" id="pairpick"></div>
     </div>
 
     <div id="setlist"></div>
@@ -3721,12 +3736,13 @@ function renderExercises(){
   const rows = day.ex.map(([name,target], i)=>{
     const n = workingSets(setsFor(state.date, name)).length;
     const goal = goalSetsOn(name, target);
-    const p = partnerOf(name);
+    const mates = roundMates(name);
     const full = goal && n >= goal;
     const badge = goal ? `${n}/${goal}` : n;
-    const ex = `<button class="ex ${n?'done':''} ${full?'full':''} ${p?'paired':''} ${
+    const ex = `<button class="ex ${n?'done':''} ${full?'full':''} ${mates.length?'paired':''} ${
       i === nextUp ? 'next' : ''}" data-ex="${esc(name)}">
-      <span class="name">${esc(name)}${p?`<span class="pairline">Superset · ${esc(p)}</span>`:''}</span>
+      <span class="name">${esc(name)}${mates.length ? `<span class="pairline">${
+        roundName(mates.length + 1)} · ${esc(mates.join(', '))}</span>` : ''}</span>
       <span class="target">${esc(target)}</span>
       <span class="count">${badge}</span></button>`;
     const tools = state.progEdit ? `<div class="tools">
@@ -4338,34 +4354,77 @@ function renderPlateMath(){
   } else warn.classList.add('hide');
 }
 
-/* ---------- supersets ---------- */
-const partnerOf = ex => db.pairs?.[ex] || null;
+/* ---------- supersets, tri-sets and giant sets ---------- */
+// A round is stored as a ring: each exercise points at the next one in it, and
+// the last points back at the first. A superset is a ring of two, which is
+// exactly the two-way pairing this held before — so everything already saved
+// is already a valid ring, and the record that syncs between phones does not
+// change shape. No migration, no new version.
+const nextOf = ex => db.pairs?.[ex] || null;
 
-function setPair(a, b){
+// Everyone in ex's round, ex first, in the order you rotate through them. The
+// already-seen check is what stops a half-written ring spinning forever.
+function ringOf(ex){
+  const out = [ex];
+  for(let n = nextOf(ex); n && n !== ex && !out.includes(n); n = nextOf(n)) out.push(n);
+  return out;
+}
+const roundMates = ex => ringOf(ex).slice(1);
+// Two is the word everyone uses; past that it is worth being specific, because
+// "superset" on a round of four tells you nothing about what you are in for.
+const roundName = n => n <= 2 ? 'Superset' : n === 3 ? 'Tri-set' : 'Giant set';
+
+// A ring of one is not a round, so the last one left is unlinked rather than
+// left pointing at itself.
+function linkRing(names){
+  if(names.length < 2){ names.forEach(n => delete db.pairs[n]); return; }
+  names.forEach((n, i) => { db.pairs[n] = names[(i + 1) % names.length]; });
+}
+function unlinkFromRound(ex){
   db.pairs ||= {};
-  const oldA = db.pairs[a], oldB = b ? db.pairs[b] : null;
-  if(oldA) delete db.pairs[oldA];
-  if(oldB) delete db.pairs[oldB];
-  delete db.pairs[a];
-  if(b){ db.pairs[a] = b; db.pairs[b] = a; }
+  const rest = ringOf(ex).filter(n => n !== ex);
+  delete db.pairs[ex];
+  linkRing(rest);
+}
+
+// The day's order is the order you go round in, so a round needs no ordering
+// of its own: it is the exercises you ticked, read down the day.
+function inDayOrder(names){
+  const order = (dayById(state.day)?.ex || []).map(([n]) => n);
+  return [...names].sort((a, b) => order.indexOf(a) - order.indexOf(b));
+}
+
+function setRound(ex, mates){
+  db.pairs ||= {};
+  // Everyone involved leaves whatever round they were in first, and the round
+  // they left closes back up behind them.
+  for(const n of [ex, ...mates]) unlinkFromRound(n);
+  linkRing(inDayOrder([ex, ...mates]));
   save();
 }
 
-function renderPairSelect(){
+// `opening` is the sheet being opened on this exercise, which is the only time
+// the row decides for itself whether to be showing. Re-deciding on every
+// render shut the picker under your finger the moment you took the last one
+// out of a round — exactly when you were most likely to be mid-change.
+function renderRound(opening){
   const day = dayById(state.day);
-  const cur = partnerOf(state.ex);
-  const opts = ['<option value="">Nothing — straight sets</option>'].concat(
-    day.ex.map(([n])=>n).filter(n=>n!==state.ex).map(n=>{
-      const other = partnerOf(n);
-      const taken = other && other !== state.ex;
-      return `<option value="${esc(n)}"${n===cur?' selected':''}>${esc(n)}${
-        taken?` (now with ${esc(other)})`:''}</option>`;
-    }));
-  $('#pairsel').innerHTML = opts.join('');
-  const on = !!cur;
-  $('#pairtoggle').setAttribute('aria-expanded', on);
-  $('#pairtoggle').textContent = on ? `Superset · ${cur}` : 'Superset';
-  $('#pairrow').classList.toggle('hide', !on);
+  const mates = roundMates(state.ex);
+  const inRound = new Set(mates);
+  $('#pairpick').innerHTML = day.ex.map(([n]) => n).filter(n => n !== state.ex)
+    .map(n => {
+      // Saying who else they are with: ticking them takes them out of that
+      // round, and finding that out afterwards is no way to be told.
+      const theirs = inRound.has(n) ? [] : roundMates(n);
+      return `<button type="button" data-mate="${esc(n)}" aria-pressed="${inRound.has(n)}">${
+        esc(n)}${theirs.length ? `<small> · with ${esc(theirs.join(', '))}</small>` : ''}</button>`;
+    }).join('');
+  const on = mates.length > 0;
+  $('#pairtoggle').textContent = on
+    ? `${roundName(mates.length + 1)} · ${mates.join(', ')}` : 'Superset';
+  if(opening) $('#pairrow').classList.toggle('hide', !on);
+  $('#pairtoggle').setAttribute('aria-expanded',
+    !$('#pairrow').classList.contains('hide'));
 }
 
 /* ---------- rest timers ---------- */
@@ -4501,14 +4560,14 @@ function chime(times){
 // resting both at once, so both have to be counted at once.
 function startRest(ex){
   hideNextUp();   // a live countdown supersedes it
-  const partner = partnerOf(ex);
+  // Mid-round, the next one in the ring you have not caught up on is where you
+  // are going, and the bar is already under your thumb. Once the round is
+  // level, it isn't. On a round of two this is the partner, as it always was.
+  const mine = setsFor(state.date, ex).length;
   timers[ex] = {
     start: Date.now(),
     target: restTargetFor(ex),
-    // Mid-round on a superset the partner is where you are going next, and the
-    // bar is already under your thumb. Once it has caught up, it isn't.
-    jump: partner && setsFor(state.date, ex).length > setsFor(state.date, partner).length
-          ? partner : null,
+    jump: roundMates(ex).find(n => setsFor(state.date, n).length < mine) || null,
     alerted: false
   };
   // warm up audio inside the tap that logged the set, so the chime can fire later
@@ -4990,7 +5049,7 @@ function openSheet(ex){
   $('#canceledit').classList.add('hide');
   $('#logset').textContent = 'Log set';
   renderSetKind(); renderPlates(); renderSetList(); renderPlateMath();
-  refreshStepperLabels(); renderPairSelect(); renderLoadHint(); renderRamp();
+  refreshStepperLabels(); renderRound(true); renderLoadHint(); renderRamp();
   showExerciseScreen();
 }
 
@@ -5596,13 +5655,19 @@ $('#plates').addEventListener('click', e=>{
 $('#pairtoggle').addEventListener('click', ()=>{
   const open = $('#pairrow').classList.toggle('hide') === false;
   $('#pairtoggle').setAttribute('aria-expanded', open);
-  if(open) $('#pairsel').focus();
+  if(open) $('#pairpick').querySelector('button')?.focus();
 });
 
-$('#pairsel').addEventListener('change', e=>{
-  setPair(state.ex, e.target.value || null);
-  renderPairSelect(); renderExercises();
-  toast(e.target.value ? 'Paired' : 'Unpaired');
+$('#pairpick').addEventListener('click', e=>{
+  const b = e.target.closest('[data-mate]'); if(!b) return;
+  const name = b.dataset.mate;
+  const mates = new Set(roundMates(state.ex));
+  if(mates.has(name)) mates.delete(name); else mates.add(name);
+  setRound(state.ex, [...mates]);
+  renderRound(); renderExercises();
+  const now = roundMates(state.ex);
+  toast(now.length
+    ? `${roundName(now.length + 1)} · ${now.join(', ')}` : 'Straight sets');
 });
 
 $('#nextupclose').addEventListener('click', hideNextUp);
@@ -5876,8 +5941,10 @@ $('#exsave').addEventListener('click', ()=>{
     // Renaming has to carry the logged sets, pairs and settings with it.
     db.sets.forEach(s => { if(s.e === old) s.e = name; });
     if(db.ex[old]){ db.ex[name] = db.ex[old]; delete db.ex[old]; }
-    const p = db.pairs[old];
-    if(p){ delete db.pairs[old]; db.pairs[name] = p; db.pairs[p] = name; }
+    // A ring is pointed into as well as out of, so both ends move.
+    const next = db.pairs[old];
+    if(next){ delete db.pairs[old]; db.pairs[name] = next; }
+    for(const [k, v] of Object.entries(db.pairs)) if(v === old) db.pairs[k] = name;
     program().forEach(d => d.ex.forEach(r => { if(r[0] === old) r[0] = name; }));
   }
   if(old){
@@ -5989,11 +6056,17 @@ $('#exdelete').addEventListener('click', ()=>{
   const i = day.ex.findIndex(([n]) => n === name);
   if(i < 0) return;
   const removed = day.ex[i];
+  // It leaves the round with it, and the round closes up behind it. Left in,
+  // the ring would go on naming an exercise that is not in the day any more.
+  const ring = ringOf(name);
+  unlinkFromRound(name);
   day.ex.splice(i, 1);
   save(); renderExercises();
   closePanel($('#exsheet'), ()=>$('#editprog'));
   toast('Removed', {label:'Undo', fn:()=>{
-    day.ex.splice(i, 0, removed); save(); renderExercises();
+    day.ex.splice(i, 0, removed);
+    if(ring.length > 1) linkRing(ring);   // and the round it was in comes back
+    save(); renderExercises();
   }});
 });
 
