@@ -474,11 +474,22 @@ otherwise looks broken.
 
 Adding load to a session you could not finish is how a lift stalls for a month.
 So is repeating one. After three held sessions in a row the app stops offering
-the same number and backs off about 10%, rounded to the plates, saying
-`stalled 3 sessions — backing off 10%` instead of the reason for the hundredth
-time. Three and ten percent are conventions, not findings; they are there to
-break a loop rather than to be precise about it. Nothing to take off — an
-unweighted bodyweight lift — is not called a deload.
+the same number and backs off about 10%, saying `stalled 3 sessions — backing
+off 10%` instead of the reason for the hundredth time. Three and ten percent
+are conventions, not findings; they are there to break a loop rather than to be
+precise about it.
+
+Where it lands is the exercise's own increment, measured from the bar, not
+wherever a tenth happens to fall. A 10 lb jump off a 45 lb bar is worked at
+225, 235, 245; a tenth off 245 is 220.5, which rounds to a loadable 220 — a
+weight that lift is never at, and one you climb out of at 230, 240, 250,
+never again touching the number that stalled. It backs off to 225 instead, so
+the way back up is the way you came.
+
+Below zero the weight is assistance, so backing off is further down the stack
+rather than nearer to zero: −40 becomes −50, which is more help and not less.
+Seconds and metres are not weight and keep the plain tenth. Nothing to take
+off — an unweighted bodyweight lift — is not called a deload.
 
 ## Drop sets and rest-pause
 
@@ -776,7 +787,7 @@ instead of failing quietly.
 ## Built like this
 
 Markup, styles and logic in one file; a service worker that precaches the shell
-and keeps the exercise photos in a cache of their own; 460 Playwright tests that
+and keeps the exercise photos in a cache of their own; 463 Playwright tests that
 read real bounding boxes at phone sizes; and Release Please, which tags the
 version and rewrites it in `sw.js` — the thing that makes an installed phone
 notice a release at all. The deploy refuses to publish a build the suite rejects.

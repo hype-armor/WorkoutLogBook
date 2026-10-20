@@ -3256,9 +3256,32 @@ function stallRun(ex, through){
 // Ten percent easier, not ten percent lighter: on an assisted machine the
 // weight is negative and easier means more help, so the sign decides which way
 // the number moves.
+// Ten percent off, landed on the grid the + and − buttons walk rather than
+// wherever a tenth happens to fall. A 10 lb jump off a 45 lb bar is worked at
+// 225, 235, 245; a stall at 245 used to come back at 220, which is not a weight
+// you would ever load, and climbing out of it went 230, 240, 250 — never again
+// touching the number you stalled at. The drop is a tenth; where it lands is
+// the exercise's own increment.
 function deloadTo(w, ex){
-  const next = w >= 0 ? w * (1 - DELOAD_PCT) : w * (1 + DELOAD_PCT);
-  return Math.max(minWeight(ex), roundLoadable(next, ex));
+  // An unweighted bodyweight lift has nothing to take off. Stepping down from
+  // zero would hang weight off you to make a pull-up easier, which is not a
+  // thing, and the caller reads an unchanged number as "no deload".
+  if(!w) return w;
+  const target = w >= 0 ? w * (1 - DELOAD_PCT) : w * (1 + DELOAD_PCT);
+  const step = measured(ex) ? 0 : progressionFor(ex);
+  if(!(step > 0)) return Math.max(minWeight(ex), roundLoadable(target, ex));
+  // Measured from the bar, for the same reason the buttons are: multiples of
+  // the step counted from nothing put a 45 lb bar and a 10 lb jump at 60.
+  const bar = isLoadable(ex) ? (barFor(ex) || 0) : 0;
+  const snap = k => roundLoadable(bar + k * step, ex);
+  let k = Math.round((target - bar) / step);
+  // A deload that does not come down is not a deload: rounding to the nearest
+  // grid point can land back on the weight that stalled. Down is down whichever
+  // side of zero it is on — less on the bar, or more help off a stack, which is
+  // further below zero. The bound is for a rounding that swallows the step
+  // whole: better to leave the weight alone than to count forever.
+  for(let guard = 0; guard < 64 && snap(k) >= w; guard++) k--;
+  return Math.max(minWeight(ex), snap(k));
 }
 
 // What to put in the fields when the sheet opens.
