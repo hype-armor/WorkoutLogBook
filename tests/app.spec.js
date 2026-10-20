@@ -3302,6 +3302,151 @@ test.describe('the order of a day', () => {
   });
 });
 
+test.describe('tri-sets and giant sets', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  const openRound = async ex => {
+    await page.click(`.ex[data-ex="${ex}"]`);
+    if (await page.isHidden('#pairrow')) await page.click('#pairtoggle');
+  };
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    // a superset saved by the two-way pairing this replaces
+    await page.addInitScript(() => localStorage.setItem('logbook-v1', JSON.stringify({
+      v: 5, sets: [], days: {}, ex: {}, program: null,
+      pairs: { 'Deadlift': 'Leg press', 'Leg press': 'Deadlift' },
+      settings: { units: 'lb', bw: { lb: 0, kg: 0 }, lastDay: 'A', alert: 'both',
+                  painSites: ['lower-back'] },
+      rest: null, timers: null, rev: {} })));
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await chooseDay(page, 'A');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('a superset saved before any of this still reads as one', async () => {
+    // A round is a ring now — each one points at the next, the last back at the
+    // first — and a two-way pairing is already exactly that, so there is
+    // nothing to migrate and nothing new to sync.
+    expect(await page.evaluate(() => ringOf('Deadlift'))).toEqual(['Deadlift', 'Leg press']);
+    await expect(page.locator('.ex[data-ex="Deadlift"] .pairline'))
+      .toHaveText('Superset · Leg press');
+  });
+
+  test('a third makes it a tri-set, and a fourth a giant set', async () => {
+    await openRound('Deadlift');
+    await page.click('#pairpick [data-mate="Romanian deadlift"]');
+    await expect(page.locator('#pairtoggle'))
+      .toHaveText('Tri-set · Leg press, Romanian deadlift');
+    await page.click('#pairpick [data-mate="Leg curl"]');
+    await expect(page.locator('#pairtoggle'))
+      .toHaveText('Giant set · Leg press, Romanian deadlift, Leg curl');
+    expect(await page.evaluate(() => ringOf('Deadlift')))
+      .toEqual(['Deadlift', 'Leg press', 'Romanian deadlift', 'Leg curl']);
+  });
+
+  test('the chips show who is in, and keep their own names', async () => {
+    // Borrowed from the muscle chips, these came styled by a three-way tier
+    // this has no use for, so everything looked unselected; and capitalised,
+    // because muscle names are stored lowercase. "Romanian Deadlift" is not
+    // the name of anything.
+    const pressed = await page.$$eval('#pairpick button',
+      els => els.filter(e => e.getAttribute('aria-pressed') === 'true').map(e => e.textContent.trim()));
+    expect(pressed).toEqual(['Leg press', 'Romanian deadlift', 'Leg curl']);
+    const lit = await page.$$eval('#pairpick button[aria-pressed="true"]',
+      els => els.map(e => getComputedStyle(e).backgroundColor));
+    const dim = await page.$$eval('#pairpick button[aria-pressed="false"]',
+      els => els.map(e => getComputedStyle(e).backgroundColor));
+    expect(new Set(lit).size, 'all three look the same').toBe(1);
+    expect(dim.every(c => c !== lit[0]), 'in and out look different').toBe(true);
+    expect(await page.$$eval('#pairpick button',
+      els => els.map(e => getComputedStyle(e).textTransform))).toEqual(
+      ['none', 'none', 'none', 'none']);
+  });
+
+  test('the ring closes up behind whoever leaves it', async () => {
+    await page.click('#pairpick [data-mate="Leg press"]');
+    expect(await page.evaluate(() => ringOf('Deadlift')))
+      .toEqual(['Deadlift', 'Romanian deadlift', 'Leg curl']);
+    // and the one that left is on its own, not pointing at itself
+    expect(await page.evaluate(() => db.pairs['Leg press'] ?? null)).toBe(null);
+    expect(await page.evaluate(() => ringOf('Leg press'))).toEqual(['Leg press']);
+  });
+
+  test('down to one is not a round at all', async () => {
+    await page.click('#pairpick [data-mate="Romanian deadlift"]');
+    await page.click('#pairpick [data-mate="Leg curl"]');
+    await expect(page.locator('#pairtoggle')).toHaveText('Superset');
+    expect(await page.evaluate(() => db.pairs)).toEqual({});
+    await expect(page.locator('.ex[data-ex="Deadlift"] .pairline')).toHaveCount(0);
+  });
+
+  test('the day decides the order you go round in', async () => {
+    // ticked bottom-up, it still rotates down the day rather than in the order
+    // the chips happened to be tapped
+    await page.click('#pairpick [data-mate="Leg curl"]');
+    await page.click('#pairpick [data-mate="Leg press"]');
+    expect(await page.evaluate(() => ringOf('Deadlift')))
+      .toEqual(['Deadlift', 'Leg press', 'Leg curl']);
+  });
+
+  test('the picker stays open while you are using it', async () => {
+    // Taking the last one out of a round used to shut the row under your
+    // finger, which is exactly when you were most likely to be mid-change.
+    await page.click('#pairpick [data-mate="Leg curl"]');
+    await page.click('#pairpick [data-mate="Leg press"]');
+    expect(await page.evaluate(() => db.pairs)).toEqual({});
+    await expect(page.locator('#pairrow')).toBeVisible();
+    // and it opens by itself on an exercise that is already in one
+    await page.click('#pairpick [data-mate="Leg press"]');
+    await page.click('#close');
+    await page.click('.ex[data-ex="Leg press"]');
+    await expect(page.locator('#pairrow')).toBeVisible();
+    await expect(page.locator('#pairtoggle')).toHaveText('Superset · Deadlift');
+    // but not on one that is not
+    await page.click('#close');
+    await page.click('.ex[data-ex="Leg curl"]');
+    await expect(page.locator('#pairrow')).toBeHidden();
+    await page.click('#close');
+    await page.click('.ex[data-ex="Deadlift"]');
+    await page.click('#pairpick [data-mate="Leg curl"]');
+  });
+
+  test('the clock sends you to the one behind, not merely the next one',
+    async () => {
+    await page.click('#close');
+    // Deadlift and Leg press have had their round; Leg curl has not
+    await page.evaluate(() => {
+      const d = state.date;
+      db.sets = [
+        { id: 'a', t: 1, d, e: 'Deadlift', dy: 'A', w: 225, r: 5, rir: 2, u: 'lb' },
+        { id: 'b', t: 2, d, e: 'Leg press', dy: 'A', w: 300, r: 10, rir: 2, u: 'lb' },
+      ];
+      save(); startRest('Deadlift');
+    });
+    expect(await page.evaluate(() => timers['Deadlift'].jump)).toBe('Leg curl');
+  });
+
+  test('a whole ring syncs, one link at a time', async () => {
+    expect(await page.evaluate(() => {
+      const recs = [...records(db)].filter(([k]) => k.startsWith('pair:'));
+      const fresh = blank();
+      for (const [k, v] of recs) putRecord(fresh, k, v);
+      return fresh.pairs;
+    })).toEqual({ 'Deadlift': 'Leg press', 'Leg press': 'Leg curl', 'Leg curl': 'Deadlift' });
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
+
 // A superset is the case the single timer could not describe: two exercises
 // resting at the same time, each with its own rest to finish.
 test.describe('two exercises resting at once', () => {

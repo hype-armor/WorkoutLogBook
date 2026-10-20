@@ -1,7 +1,7 @@
 # Logbook
 
 A lifting logbook that works with no signal, in a gym, on a phone that is
-face-down between sets. Sets, plate math, a rest timer, superset pairing and
+face-down between sets. Sets, plate math, a rest timer, supersets and giant sets, and
 pain tracking by site. Data lives in the browser on your device, and stays
 there unless you decide otherwise — and if you do, it leaves as ciphertext a
 server cannot read.
@@ -612,9 +612,34 @@ A phone can hold one scheduled alert, so it goes to whichever clock comes up
 first. The others are announced by the app itself, which is open — the second
 half of a superset is the reason you are still looking at it.
 
-Mid-round the bar reads `Chest press → Cable row` and taps through to the
-partner, because that is where you are going next. Once the partner has caught
-up it stops saying so.
+Mid-round the bar reads `Chest press → Cable row` and taps through, because
+that is where you are going next. On a round of more than two it names the next
+one you have not caught up on rather than merely the next one along. Once the
+round is level it stops saying so.
+
+## Rounds of more than two
+
+**Superset** on an exercise opens a list of everything else in the day; tick
+whichever belong in the round with it. Two is a superset, three a tri-set, four
+or more a giant set, and the app calls it what it is rather than calling
+everything a superset.
+
+A round is stored as a ring: each exercise points at the next one in it, and
+the last points back at the first. The order you rotate through them is the
+order they sit in the day, so a round needs no ordering of its own — it is the
+exercises you ticked, read down the day.
+
+Two things fall out of that shape. A superset is a ring of two, which is
+exactly the two-way pairing this used to hold, so every round already saved is
+already a valid ring: nothing to migrate, and the record that syncs between
+phones does not change. And taking one out closes the ring behind it rather
+than breaking the round — a tri-set minus one is a superset, and a superset
+minus one is straight sets, with the exercise that left pointing at nothing
+rather than at itself.
+
+Deleting an exercise takes it out of its round as well, since a ring that goes
+on naming something no longer in the day is a round you cannot do. Undo puts
+both back.
 
 ## When the rest timer outlives the app
 
@@ -751,7 +776,7 @@ instead of failing quietly.
 ## Built like this
 
 Markup, styles and logic in one file; a service worker that precaches the shell
-and keeps the exercise photos in a cache of their own; 450 Playwright tests that
+and keeps the exercise photos in a cache of their own; 460 Playwright tests that
 read real bounding boxes at phone sizes; and Release Please, which tags the
 version and rewrites it in `sw.js` — the thing that makes an installed phone
 notice a release at all. The deploy refuses to publish a build the suite rejects.
