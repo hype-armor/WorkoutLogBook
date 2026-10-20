@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.28.1](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.28.0...logbook-v1.28.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* a stalled lift backs off onto its own increment ([2a7dc24](https://github.com/hype-armor/WorkoutLogBook/commit/2a7dc249cc3f79ec999e097189e08e17e88208e7))
+* a stalled lift backs off onto its own increment ([afc48b9](https://github.com/hype-armor/WorkoutLogBook/commit/afc48b9a3f4e237d088be0ab31580f4e55934c42))
+
 ## [1.28.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.27.0...logbook-v1.28.0) (2026-10-20)
 
 
