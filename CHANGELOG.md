@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.28.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.27.0...logbook-v1.28.0) (2026-10-20)
+
+
+### Features
+
+* tri-sets and giant sets ([ac803d0](https://github.com/hype-armor/WorkoutLogBook/commit/ac803d05faa5f318ea865326d4b8ef531a29660f))
+* tri-sets and giant sets ([274562b](https://github.com/hype-armor/WorkoutLogBook/commit/274562b9d1a6017c8c5d3156e807f1aa837507d8))
+
 ## [1.27.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.26.0...logbook-v1.27.0) (2026-10-19)
 
 
