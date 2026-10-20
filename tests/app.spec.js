@@ -2669,7 +2669,49 @@ test.describe('a lift that will not move', () => {
     await page.click('#close');
   });
 
+  test('it backs off onto the increment, not onto a tenth', async () => {
+    // A 10 lb jump off a 45 lb bar is worked at 225, 235, 245. A tenth off 245
+    // is 220.5, which rounds to a loadable 220 — and 220 is not a weight this
+    // lift is ever at. Climbing out of it went 230, 240, 250, never again
+    // touching the number that stalled.
+    await page.evaluate(() => { db.ex['Deadlift'] = { prog: { lb: 10, kg: 5 } }; save(); });
+    await stalledSessions(3, 245);
+    await page.click('.ex[data-ex="Deadlift"]');
+    await expect(page.locator('#sheet-sub')).toContainText('stalled 3 sessions');
+    expect(await page.inputValue('#wt')).toBe('225');
+    // and it is a weight the buttons can walk back up to the one that stalled
+    expect(await page.evaluate(() => {
+      const bar = barFor('Deadlift') || 0, step = progressionFor('Deadlift');
+      const climb = [];
+      for (let w = 225; w <= 245; w += step) climb.push(w);
+      return { onGrid: climb.every(w => (w - bar) % step === 0), climb };
+    })).toEqual({ onGrid: true, climb: [225, 235, 245] });
+    await page.click('#close');
+  });
+
+  test('more help is how an assisted machine backs off', async () => {
+    // Below zero the weight is assistance, so backing off is further down the
+    // stack, not nearer to zero.
+    expect(await page.evaluate(() => {
+      db.ex['Assisted pull-up'] = { kind: 'bodyweight', assist: true, prog: { lb: 10, kg: 5 } };
+      save();
+      return [-40, -60].map(w => deloadTo(w, 'Assisted pull-up'));
+    })).toEqual([-50, -70]);
+  });
+
+  test('seconds and metres are not weight, and keep the plain tenth',
+    async () => {
+    expect(await page.evaluate(() => {
+      db.ex['Plank'] = { kind: 'time' };
+      db.ex['Suitcase carry'] = { kind: 'distance' };
+      save();
+      return [deloadTo(60, 'Plank'), deloadTo(40, 'Suitcase carry')];
+    })).toEqual([54, 36]);
+  });
+
   test('a session that earned its weight resets the count', async () => {
+    await page.evaluate(() => { delete db.ex['Deadlift']; save(); });
+    await stalledSessions(3);
     await page.evaluate(() => {
       // the most recent session completed: four of four, none to failure
       const d = todayISO();
