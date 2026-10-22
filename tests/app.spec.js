@@ -2850,19 +2850,40 @@ test.describe('sets per muscle', () => {
 
   test.afterAll(async () => { await page?.context().close(); });
 
+  const reads = name => page.locator('.mrow', { hasText: name })
+    .locator('.n').evaluate(e => e.textContent.replace(/\s+/g, ' ').trim());
+  const tally = name => page.evaluate(n => {
+    const r = setsPerMuscle(7).rows.find(x => x.m === n);
+    return r ? [r.dir, r.ind, r.hard] : null; }, name);
+
   test('direct and indirect are counted apart', async () => {
-    const row = page.locator('.mrow', { hasText: 'hamstrings' });
-    // 3 Romanian deadlifts + 2 leg curls direct; nothing indirect
-    await expect(row.locator('.n')).toHaveText('5 · 0');
+    // 3 Romanian deadlifts + 2 leg curls direct; nothing indirect, and every
+    // one of them at two in reserve, so every one of them hard
+    expect(await tally('hamstrings'), 'direct, indirect, hard').toEqual([5, 0, 5]);
+    expect(await reads('hamstrings')).toBe('5/5 hard');
     // a Romanian deadlift is a hamstring set and is not a calf set — summing
     // them would say it was
-    await expect(page.locator('.mrow', { hasText: 'calves' }).locator('.n')).toHaveText('0 · 3');
+    expect(await tally('calves')).toEqual([0, 3, 0]);
+    // nothing direct, so nothing to be hard: the column says what it has
+    expect(await reads('calves')).toBe('3 indirect');
+  });
+
+  test('the bar is one run of three weights, strongest first', async () => {
+    // Length is sets; the colour is how much of it was pushed. A muscle with
+    // no hard work has no bright segment, which is the thing you should be
+    // able to see without reading a number.
+    const segs = name => page.locator('.mrow', { hasText: name })
+      .locator('.bar i').evaluateAll(els => els.map(e => e.className));
+    expect(await segs('hamstrings'), 'all five direct, all hard').toEqual(['hard']);
+    expect(await segs('calves'), 'only ever along for the ride').toEqual(['ind']);
+    // and the legend names them, so no row needs the sentence underneath
+    expect(await page.$$eval('.mlegend span', els => els.map(e => e.textContent)))
+      .toEqual(['hard', 'direct', 'indirect']);
   });
 
   test('warm-ups are not training here either', async () => {
     // 3 working Romanian deadlifts, not 4
-    const n = await page.locator('.mrow', { hasText: 'glutes' }).locator('.n').textContent();
-    expect(n).toBe('0 · 3');
+    expect(await reads('glutes')).toBe('3 indirect');
   });
 
   test('an exercise the guide does not know is named, not dropped', async () => {

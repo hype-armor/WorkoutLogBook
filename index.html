@@ -613,19 +613,39 @@
   .bars button[aria-pressed="true"]{
     background:linear-gradient(180deg,var(--accent-fill-2),var(--accent-fill));
     color:var(--on-accent);border-color:var(--accent-fill)}
-  .mrow{display:grid;grid-template-columns:1fr 96px;align-items:center;gap:12px;padding:9px 0}
+  .mrow{display:grid;grid-template-columns:1fr 104px;align-items:center;gap:12px;padding:9px 0}
   .mrow + .mrow{border-top:1px solid var(--line)}
   .mrow .nm{font-size:0.9375rem;letter-spacing:-.01em;text-transform:capitalize;color:var(--ink)}
-  /* Direct sets fill the bar; indirect sit behind them at a lower weight,
-     because a Romanian deadlift is a hamstring set and is not a calf set. */
-  .mrow .bar{position:relative;height:7px;border-radius:999px;background:var(--surface-3);
-    margin-top:6px;overflow:hidden}
-  .mrow .bar i{position:absolute;left:0;top:0;bottom:0;border-radius:999px}
-  .mrow .bar .ind{background:var(--accent-soft)}
-  .mrow .bar .dir{background:var(--accent)}
+  /* Three weights of the same colour, strongest first: what was pushed hard,
+     what was direct but left in reserve, and what the muscle only helped with.
+     Laid end to end rather than stacked, so each tone is itself rather than
+     two of them composited — and so the eye reads one bar left to right.
+     Opacity rather than mixed colours, because the accent is themed. */
+  .mrow .bar{position:relative;height:9px;border-radius:999px;background:var(--surface-3);
+    margin-top:7px;overflow:hidden}
+  .mrow .bar i{position:absolute;top:0;bottom:0;background:var(--accent)}
+  .mrow .bar .hard{opacity:1;border-radius:999px 0 0 999px}
+  .mrow .bar .easy{opacity:.52}
+  .mrow .bar .ind{opacity:.24;border-radius:0 999px 999px 0}
+  .mrow .bar i:only-child{border-radius:999px}
+
+  /* Named once at the top of the card, so no row needs decoding and the
+     sentence underneath is there for detail rather than for translation. */
+  .mlegend{display:flex;flex-wrap:wrap;gap:4px 14px;margin:0 0 10px;
+    font-size:0.75rem;color:var(--ink-3);letter-spacing:-.005em}
+  .mlegend span{display:inline-flex;align-items:center;gap:6px}
+  .mlegend i{width:10px;height:10px;border-radius:3px;background:var(--accent)}
+  .mlegend .k2{opacity:.52}
+  .mlegend .k3{opacity:.24}
   .mrow .n{text-align:right;font-size:0.8438rem;font-weight:600;color:var(--ink-2);
     font-variant-numeric:tabular-nums;letter-spacing:-.01em}
   .mrow .n small{color:var(--ink-3);font-weight:500}
+  /* Sets and effort are different questions, so the bar keeps its two layers
+     for what was worked and this says how hard it was pushed. On its own line
+     rather than a third number beside the pair, which would read as part of
+     them. */
+  .mrow .n .hard{display:block;margin-top:2px;font-size:0.75rem;font-weight:500;
+    color:var(--ink-3);letter-spacing:0}
 
   /* Top-aligned, not centred: a ramp that wraps to two rows left the label
      sitting beside the second one. Same reason the guide's muscle labels are
@@ -5149,6 +5169,11 @@ function e1rm(s){
 // on the scale producing the highest estimate.
 const E1RM_MAX_RIR = 2;
 const countsForMax = s => !isWarmup(s) && s.rir <= E1RM_MAX_RIR;
+// The same line the estimated max draws. At three or more in reserve a set is
+// below the useful range for a hard one, which is what the picker already says
+// under the number. Deliberately the same constant: two definitions of "hard"
+// would drift, and the chart would stop agreeing with the rest of the app.
+const HARD_RIR = E1RM_MAX_RIR;
 
 // The estimate is only ever as fine as the plates can make it. Rounding to the
 // smallest jump the rack allows stops a change of one reported rep in reserve
@@ -5326,7 +5351,7 @@ const muscleSpan = () => MUSCLE_SPANS.some(([v]) => v === state.muscleSpan)
 function setsPerMuscle(days = 7){
   const t = new Date(); t.setDate(t.getDate() - (days - 1));
   const since = new Date(t.getTime() - t.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-  const direct = {}, indirect = {}, stray = new Set();
+  const direct = {}, indirect = {}, hard = {}, stray = new Set();
   let unplaced = 0;
   for(const s of db.sets){
     if(isWarmup(s) || isExtension(s) || s.d < since) continue;
@@ -5335,11 +5360,18 @@ function setsPerMuscle(days = 7){
     // silently dropped. A chart that quietly ignores a third of the work is
     // worse than no chart.
     if(!g){ unplaced++; stray.add(s.e); continue; }
-    for(const m of g.primary) direct[m] = (direct[m] || 0) + 1;
+    for(const m of g.primary){
+      direct[m] = (direct[m] || 0) + 1;
+      // Reps in reserve describes the set, which is to say the muscle that ran
+      // out first. A row taken to failure for the lats had the biceps along for
+      // the ride and nowhere near their own limit, so counting an indirect set
+      // as hard would overstate the very thing this is here to show.
+      if(s.rir <= HARD_RIR) hard[m] = (hard[m] || 0) + 1;
+    }
     for(const m of g.secondary) indirect[m] = (indirect[m] || 0) + 1;
   }
   const rows = [...new Set([...Object.keys(direct), ...Object.keys(indirect)])]
-    .map(m => ({m, dir: direct[m] || 0, ind: indirect[m] || 0}))
+    .map(m => ({m, dir: direct[m] || 0, ind: indirect[m] || 0, hard: hard[m] || 0}))
     .sort((a, b) => b.dir - a.dir || b.ind - a.ind || a.m.localeCompare(b.m));
   return {rows, unplaced, stray: [...stray].sort()};
 }
@@ -5355,13 +5387,21 @@ function renderMuscles(){
   $('#musclespan').innerHTML = MUSCLE_SPANS.map(([v,label]) =>
     `<button data-mspan="${v}" aria-pressed="${v===days}">${label}</button>`).join('');
   const top = Math.max(1, ...rows.map(r => r.dir + r.ind));
-  $('#musclecard').innerHTML = rows.map(r => `<div class="mrow">
+  const seg = (cls, from, width) => width <= 0 ? ''
+    : `<i class="${cls}" style="left:${(from / top * 100).toFixed(1)}%;width:${
+        (width / top * 100).toFixed(1)}%"></i>`;
+  $('#musclecard').innerHTML =
+    `<div class="mlegend"><span><i></i>hard</span><span><i class="k2"></i>direct</span>`
+    + `<span><i class="k3"></i>indirect</span></div>`
+    + rows.map(r => `<div class="mrow">
       <div><div class="nm">${esc(r.m)}</div>
-        <div class="bar"><i class="ind" style="width:${((r.dir + r.ind) / top * 100).toFixed(1)}%"></i>
-          <i class="dir" style="width:${(r.dir / top * 100).toFixed(1)}%"></i></div></div>
-      <div class="n">${r.dir}<small> \u00b7 ${r.ind}</small></div>
+        <div class="bar">${seg('hard', 0, r.hard)}${seg('easy', r.hard, r.dir - r.hard)}${
+          seg('ind', r.dir, r.ind)}</div></div>
+      <div class="n">${r.dir ? `${r.hard}/${r.dir}<small> hard</small>`
+        : `<small>${r.ind} indirect</small>`}</div>
     </div>`).join('')
-    + `<div class="sessmeta" style="margin-top:10px">Direct \u00b7 indirect sets. ${
+    + `<div class="sessmeta" style="margin-top:10px">Hard is two reps in reserve or
+        fewer, counted on direct sets only. ${
         unplaced ? `${unplaced} set${unplaced === 1 ? '' : 's'} of ${
           esc(stray.join(', '))} could not be placed \u2014 open ${
           stray.length === 1 ? 'its' : 'their'} settings to say what ${
