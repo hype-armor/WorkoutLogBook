@@ -1895,13 +1895,11 @@ test.describe('muscles worked', () => {
   test('a muscle with nothing direct is not given a hard count', async () => {
     // Nought out of nothing is not a reading, and fourteen of them would be
     // noise down the side of the card.
-    const seen = await page.$$eval('.mrow', els => els.map(e => ({
-      name: e.querySelector('.nm').textContent,
-      hard: e.querySelector('.n .hard')?.textContent ?? null })));
-    const back = seen.find(r => r.name === 'lower back');
-    const traps = seen.find(r => r.name === 'traps');
-    expect(back.hard).toBe('1 hard');
-    expect(traps.hard, 'indirect only, so nothing to say').toBe(null);
+    const seen = await page.$$eval('.mrow', els => els.map(e => [
+      e.querySelector('.nm').textContent,
+      e.querySelector('.n').textContent.replace(/\s+/g, ' ').trim()]));
+    expect(new Map(seen).get('lower back')).toBe('1/1 hard');
+    expect(new Map(seen).get('traps'), 'indirect only, so no ratio').toBe('1 indirect');
   });
 
   test('the window it counts over can be opened up', async () => {

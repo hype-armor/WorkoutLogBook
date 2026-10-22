@@ -268,22 +268,23 @@ set and is not a calf set, and adding them would say it was. No target is named
 reports what you did.
 
 Sets say what got worked and not whether any of it was near enough to failure
-to be worth much, so each row also carries how many of its **direct** sets were
-hard: two reps in reserve or fewer, the same line the estimated max draws.
-Four sets left at four or more in reserve is a muscle with room to be pushed,
-and now reads as one — a long bar beside `0 hard`.
+to be worth much, so the bar says both. Its length is still sets; its colour is
+how hard they were. One run, three weights of the accent, strongest first:
+**hard**, then **direct** work left in reserve, then **indirect**. A legend at
+the top of the card names them, so no row needs translating.
 
-It stays out of the bar on purpose. The bar's length is sets and its two
-shades are direct against indirect, which answers whether the number is really
-that muscle's work; a second split inside it would fight the first for the same
-few pixels. Effort is a different question, so it gets its own line rather than
-a third number beside the pair.
+Hard is two reps in reserve or fewer — the same line the estimated max draws,
+and what the rep picker already says under the number. The figure beside each
+bar reads `2/4 hard`, and a muscle with room to be pushed is the one with no
+bright segment at all: a long bar beside `0/4`, which you can find by scanning
+rather than by reading.
 
 Only direct sets are counted hard. Reps in reserve describes the set, which is
 to say the muscle that ran out first: a deadlift taken to failure says nothing
 about what the traps had left, and calling that a hard set for them would
 overstate the very thing the number is for. A muscle with nothing direct gets
-no hard count at all, because nought out of nothing is not a reading.
+no ratio at all — it reads `3 indirect` instead, because nought out of nothing
+is not a reading.
 
 Anything the app has not been told about — an exercise you added yourself — is
 counted and named rather than dropped. A chart that quietly ignores a third of
@@ -805,7 +806,7 @@ instead of failing quietly.
 ## Built like this
 
 Markup, styles and logic in one file; a service worker that precaches the shell
-and keeps the exercise photos in a cache of their own; 467 Playwright tests that
+and keeps the exercise photos in a cache of their own; 468 Playwright tests that
 read real bounding boxes at phone sizes; and Release Please, which tags the
 version and rewrites it in `sw.js` — the thing that makes an installed phone
 notice a release at all. The deploy refuses to publish a build the suite rejects.
