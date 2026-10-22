@@ -1851,6 +1851,59 @@ test.describe('muscles worked', () => {
     await expect(page.locator('#musclecard')).toContainText('shoulders');
   });
 
+  test('how hard it was pushed, beside how much it was worked', async () => {
+    // Sets say what got worked; they do not say whether any of it was near
+    // enough to failure to be worth much. Four sets left at four or more in
+    // reserve is a muscle with room to be pushed, and reads as one.
+    const rows = await page.evaluate(() => {
+      const d = todayISO();
+      db.sets = [];
+      for (let i = 0; i < 3; i++)   // close to failure
+        db.sets.push({ id: 'h' + i, t: i, d, e: 'Deadlift', dy: 'A', w: 225, r: 5, rir: 1, u: 'lb' });
+      for (let i = 0; i < 4; i++)   // nowhere near it
+        db.sets.push({ id: 'e' + i, t: 10 + i, d, e: 'Leg press', dy: 'A', w: 200, r: 10, rir: 4, u: 'lb' });
+      save(); renderMuscles();
+      return Object.fromEntries(setsPerMuscle(7).rows
+        .map(r => [r.m, [r.dir, r.ind, r.hard]]));
+    });
+    expect(rows['lower back'], 'direct, indirect, hard').toEqual([3, 0, 3]);
+    expect(rows['quadriceps'], 'worked, but never pushed').toEqual([4, 3, 0]);
+  });
+
+  test('an indirect set is not hard for the muscle along for the ride',
+    async () => {
+    // Reps in reserve describes the set, which is the muscle that ran out
+    // first. A deadlift to failure says nothing about what the traps had left.
+    const rows = await page.evaluate(() => {
+      const d = todayISO();
+      db.sets = [{ id: 'f1', t: 1, d, e: 'Deadlift', dy: 'A', w: 405, r: 1, rir: 0, u: 'lb' }];
+      save(); renderMuscles();
+      return Object.fromEntries(setsPerMuscle(7).rows
+        .map(r => [r.m, [r.dir, r.ind, r.hard]]));
+    });
+    expect(rows['lower back'], 'the primary, taken to failure').toEqual([1, 0, 1]);
+    expect(rows['traps'], 'secondary: worked, not pushed').toEqual([0, 1, 0]);
+  });
+
+  test('hard is the same line the estimated max draws', async () => {
+    // Two definitions of "hard" would drift apart, and the chart would stop
+    // agreeing with the rest of the app about what counts.
+    expect(await page.evaluate(() => HARD_RIR === E1RM_MAX_RIR)).toBe(true);
+    expect(await page.evaluate(() => HARD_RIR)).toBe(2);
+  });
+
+  test('a muscle with nothing direct is not given a hard count', async () => {
+    // Nought out of nothing is not a reading, and fourteen of them would be
+    // noise down the side of the card.
+    const seen = await page.$$eval('.mrow', els => els.map(e => ({
+      name: e.querySelector('.nm').textContent,
+      hard: e.querySelector('.n .hard')?.textContent ?? null })));
+    const back = seen.find(r => r.name === 'lower back');
+    const traps = seen.find(r => r.name === 'traps');
+    expect(back.hard).toBe('1 hard');
+    expect(traps.hard, 'indirect only, so nothing to say').toBe(null);
+  });
+
   test('the window it counts over can be opened up', async () => {
     // A week is the window the ten-to-twenty landmarks are quoted against, so
     // it stays the default. On a split that comes round slower than that, a
@@ -1859,11 +1912,16 @@ test.describe('muscles worked', () => {
     expect(await page.$$eval('#musclespan button', els => els.map(e => e.textContent)))
       .toEqual(['7', '14', '30', '90']);
 
-    // a deadlift three weeks back: outside the week, inside the month
+    // Seeded outright rather than added to whatever ran before: a deadlift
+    // three weeks back, outside the week and inside the month, and something
+    // recent so the card is on screen either way.
     await page.evaluate(() => {
       const d = new Date(); d.setDate(d.getDate() - 20);
       const day = new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
-      db.sets.push({ id: 'old1', d: day, e: 'Deadlift', w: 225, r: 5, t: Date.now() });
+      db.sets = [
+        { id: 'old1', d: day, e: 'Deadlift', w: 225, r: 5, rir: 2, t: Date.now() },
+        { id: 'new1', d: todayISO(), e: 'Landmine press', w: 95, r: 10, rir: 2, t: Date.now() },
+      ];
       save(); renderMuscles();
     });
     await expect(page.locator('#musclecard')).not.toContainText('lower back');

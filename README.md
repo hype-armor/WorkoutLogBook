@@ -267,6 +267,24 @@ set and is not a calf set, and adding them would say it was. No target is named
 — the usual ten-to-twenty is a range with wide individual variation, and this
 reports what you did.
 
+Sets say what got worked and not whether any of it was near enough to failure
+to be worth much, so each row also carries how many of its **direct** sets were
+hard: two reps in reserve or fewer, the same line the estimated max draws.
+Four sets left at four or more in reserve is a muscle with room to be pushed,
+and now reads as one — a long bar beside `0 hard`.
+
+It stays out of the bar on purpose. The bar's length is sets and its two
+shades are direct against indirect, which answers whether the number is really
+that muscle's work; a second split inside it would fight the first for the same
+few pixels. Effort is a different question, so it gets its own line rather than
+a third number beside the pair.
+
+Only direct sets are counted hard. Reps in reserve describes the set, which is
+to say the muscle that ran out first: a deadlift taken to failure says nothing
+about what the traps had left, and calling that a hard set for them would
+overstate the very thing the number is for. A muscle with nothing direct gets
+no hard count at all, because nought out of nothing is not a reading.
+
 Anything the app has not been told about — an exercise you added yourself — is
 counted and named rather than dropped. A chart that quietly ignores a third of
 the work is worse than no chart. But being named on a list of what could not be
@@ -787,7 +805,7 @@ instead of failing quietly.
 ## Built like this
 
 Markup, styles and logic in one file; a service worker that precaches the shell
-and keeps the exercise photos in a cache of their own; 463 Playwright tests that
+and keeps the exercise photos in a cache of their own; 467 Playwright tests that
 read real bounding boxes at phone sizes; and Release Please, which tags the
 version and rewrites it in `sw.js` — the thing that makes an installed phone
 notice a release at all. The deploy refuses to publish a build the suite rejects.

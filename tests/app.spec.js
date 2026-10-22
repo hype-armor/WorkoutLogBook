@@ -2850,19 +2850,25 @@ test.describe('sets per muscle', () => {
 
   test.afterAll(async () => { await page?.context().close(); });
 
+  // The counts sit in their own text node, with how hard the direct ones were
+  // on a line under them, so the pair is read off the node rather than off
+  // everything the column holds.
+  const counts = name => page.locator('.mrow', { hasText: name })
+    .locator('.n').evaluate(e => [...e.childNodes]
+      .filter(n => !n.classList?.contains('hard'))
+      .map(n => n.textContent).join('').trim());
+
   test('direct and indirect are counted apart', async () => {
-    const row = page.locator('.mrow', { hasText: 'hamstrings' });
     // 3 Romanian deadlifts + 2 leg curls direct; nothing indirect
-    await expect(row.locator('.n')).toHaveText('5 · 0');
+    expect(await counts('hamstrings')).toBe('5 · 0');
     // a Romanian deadlift is a hamstring set and is not a calf set — summing
     // them would say it was
-    await expect(page.locator('.mrow', { hasText: 'calves' }).locator('.n')).toHaveText('0 · 3');
+    expect(await counts('calves')).toBe('0 · 3');
   });
 
   test('warm-ups are not training here either', async () => {
     // 3 working Romanian deadlifts, not 4
-    const n = await page.locator('.mrow', { hasText: 'glutes' }).locator('.n').textContent();
-    expect(n).toBe('0 · 3');
+    expect(await counts('glutes')).toBe('0 · 3');
   });
 
   test('an exercise the guide does not know is named, not dropped', async () => {

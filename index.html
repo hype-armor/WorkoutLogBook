@@ -626,6 +626,12 @@
   .mrow .n{text-align:right;font-size:0.8438rem;font-weight:600;color:var(--ink-2);
     font-variant-numeric:tabular-nums;letter-spacing:-.01em}
   .mrow .n small{color:var(--ink-3);font-weight:500}
+  /* Sets and effort are different questions, so the bar keeps its two layers
+     for what was worked and this says how hard it was pushed. On its own line
+     rather than a third number beside the pair, which would read as part of
+     them. */
+  .mrow .n .hard{display:block;margin-top:2px;font-size:0.75rem;font-weight:500;
+    color:var(--ink-3);letter-spacing:0}
 
   /* Top-aligned, not centred: a ramp that wraps to two rows left the label
      sitting beside the second one. Same reason the guide's muscle labels are
@@ -5149,6 +5155,11 @@ function e1rm(s){
 // on the scale producing the highest estimate.
 const E1RM_MAX_RIR = 2;
 const countsForMax = s => !isWarmup(s) && s.rir <= E1RM_MAX_RIR;
+// The same line the estimated max draws. At three or more in reserve a set is
+// below the useful range for a hard one, which is what the picker already says
+// under the number. Deliberately the same constant: two definitions of "hard"
+// would drift, and the chart would stop agreeing with the rest of the app.
+const HARD_RIR = E1RM_MAX_RIR;
 
 // The estimate is only ever as fine as the plates can make it. Rounding to the
 // smallest jump the rack allows stops a change of one reported rep in reserve
@@ -5326,7 +5337,7 @@ const muscleSpan = () => MUSCLE_SPANS.some(([v]) => v === state.muscleSpan)
 function setsPerMuscle(days = 7){
   const t = new Date(); t.setDate(t.getDate() - (days - 1));
   const since = new Date(t.getTime() - t.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-  const direct = {}, indirect = {}, stray = new Set();
+  const direct = {}, indirect = {}, hard = {}, stray = new Set();
   let unplaced = 0;
   for(const s of db.sets){
     if(isWarmup(s) || isExtension(s) || s.d < since) continue;
@@ -5335,11 +5346,18 @@ function setsPerMuscle(days = 7){
     // silently dropped. A chart that quietly ignores a third of the work is
     // worse than no chart.
     if(!g){ unplaced++; stray.add(s.e); continue; }
-    for(const m of g.primary) direct[m] = (direct[m] || 0) + 1;
+    for(const m of g.primary){
+      direct[m] = (direct[m] || 0) + 1;
+      // Reps in reserve describes the set, which is to say the muscle that ran
+      // out first. A row taken to failure for the lats had the biceps along for
+      // the ride and nowhere near their own limit, so counting an indirect set
+      // as hard would overstate the very thing this is here to show.
+      if(s.rir <= HARD_RIR) hard[m] = (hard[m] || 0) + 1;
+    }
     for(const m of g.secondary) indirect[m] = (indirect[m] || 0) + 1;
   }
   const rows = [...new Set([...Object.keys(direct), ...Object.keys(indirect)])]
-    .map(m => ({m, dir: direct[m] || 0, ind: indirect[m] || 0}))
+    .map(m => ({m, dir: direct[m] || 0, ind: indirect[m] || 0, hard: hard[m] || 0}))
     .sort((a, b) => b.dir - a.dir || b.ind - a.ind || a.m.localeCompare(b.m));
   return {rows, unplaced, stray: [...stray].sort()};
 }
@@ -5359,9 +5377,11 @@ function renderMuscles(){
       <div><div class="nm">${esc(r.m)}</div>
         <div class="bar"><i class="ind" style="width:${((r.dir + r.ind) / top * 100).toFixed(1)}%"></i>
           <i class="dir" style="width:${(r.dir / top * 100).toFixed(1)}%"></i></div></div>
-      <div class="n">${r.dir}<small> \u00b7 ${r.ind}</small></div>
+      <div class="n">${r.dir}<small> \u00b7 ${r.ind}</small>${
+        r.dir ? `<span class="hard">${r.hard} hard</span>` : ''}</div>
     </div>`).join('')
-    + `<div class="sessmeta" style="margin-top:10px">Direct \u00b7 indirect sets. ${
+    + `<div class="sessmeta" style="margin-top:10px">Direct \u00b7 indirect sets, and how
+        many of the direct ones were hard \u2014 two reps in reserve or fewer. ${
         unplaced ? `${unplaced} set${unplaced === 1 ? '' : 's'} of ${
           esc(stray.join(', '))} could not be placed \u2014 open ${
           stray.length === 1 ? 'its' : 'their'} settings to say what ${
