@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.29.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.28.1...logbook-v1.29.0) (2026-10-22)
+
+
+### Features
+
+* how hard each muscle was pushed, beside how much it was worked ([560ac90](https://github.com/hype-armor/WorkoutLogBook/commit/560ac9072a1b596436bce746da39027414b27709))
+* how hard each muscle was pushed, shown in the bar ([0c151b8](https://github.com/hype-armor/WorkoutLogBook/commit/0c151b87446a67b2a98ef42f70d9ad95eea16d8b))
+
+
+### Refactoring
+
+* the muscle bar shows effort, not a second set of counts ([a9aa0f8](https://github.com/hype-armor/WorkoutLogBook/commit/a9aa0f863eae7f4ff3c018ce3d2b4caa0747b315))
+
 ## [1.28.1](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.28.0...logbook-v1.28.1) (2026-10-20)
 
 
