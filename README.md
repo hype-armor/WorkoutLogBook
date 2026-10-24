@@ -624,6 +624,39 @@ session still open, or a day whose targets carry no set count (`max` rather
 than `3 × max`), since without one there is no way to know how many sets are
 coming.
 
+## Rest that follows the set
+
+How long you need back is not the same after a set you walked away from as
+after one that finished you, and the log already knows which it was. Two reps
+in reserve is the usual working target — the rep picker says exactly that — so
+the exercise's own rest setting sits there and the clock only moves when the
+set was genuinely easy or genuinely done:
+
+| Reps in reserve | 2:30 target | 1:00 target |
+| --- | --- | --- |
+| 0 — failure | 3:00 | 1:10 |
+| 2 — the usual | 2:30 | 1:00 |
+| 4+ — plenty left | 2:00 | 0:50 |
+
+A tenth each step rather than a fixed number of seconds, because fifteen
+seconds is a quarter of a minute's rest and nothing at all on a five-minute
+one. Across the whole scale that is 0.8× to 1.2× — worth having, and small
+enough that the number still looks like the one you set.
+
+Three things it deliberately does not do. It does not touch the rest target
+itself: the session estimate works out how long the lifting costs by
+subtracting that target from the rests you actually took, and a baseline that
+moved would make the arithmetic meaningless, so only the clock in front of you
+moves. It leaves drop sets and rest-pause alone, since those are at failure by
+construction and the rule would add a fifth to the rest after every one of
+them. And it says so — `Set 2 of 3 · resting 2:00, a set with plenty left` —
+because a timer reading two minutes when the settings say two and a half is
+otherwise a bug with no visible cause.
+
+Tapping the target still picks a number outright, and a number you picked is a
+decision rather than a guess, so it stays. **Rest with the set** in settings
+turns the whole thing off.
+
 ## Two exercises resting at once
 
 A superset is two exercises resting at the same time. Every exercise keeps its
@@ -646,6 +679,13 @@ Mid-round the bar reads `Chest press → Cable row` and taps through, because
 that is where you are going next. On a round of more than two it names the next
 one you have not caught up on rather than merely the next one along. Once the
 round is level it stops saying so.
+
+Which one that is gets worked out every time the bar is drawn rather than once
+when the clock started. A stored answer goes stale under you: walk over, log
+the other half, and the clock you left behind went on offering an exercise you
+had finished with. It also never offers the exercise already on screen — going
+where you already are looks exactly like a button that does not work, which is
+how this turned up.
 
 ## Rounds of more than two
 
@@ -806,7 +846,7 @@ instead of failing quietly.
 ## Built like this
 
 Markup, styles and logic in one file; a service worker that precaches the shell
-and keeps the exercise photos in a cache of their own; 468 Playwright tests that
+and keeps the exercise photos in a cache of their own; 484 Playwright tests that
 read real bounding boxes at phone sizes; and Release Please, which tags the
 version and rewrites it in `sw.js` — the thing that makes an installed phone
 notice a release at all. The deploy refuses to publish a build the suite rejects.

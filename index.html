@@ -1570,6 +1570,13 @@
     <div class="hint hide" id="alerthint">This browser gives a web page no way to
       vibrate the phone, so only sound is offered.</div>
     <label class="toggle" style="margin-top:14px">
+      <input type="checkbox" id="adaptrestbox">
+      <span>Rest with the set
+        <span class="sub">A set taken near failure earns a longer rest and an easy
+          one a shorter, a tenth either way per rep in reserve. Two in reserve is
+          the exercise's own target, so most sets are unchanged.</span></span>
+    </label>
+    <label class="toggle" style="margin-top:14px">
       <input type="checkbox" id="notifybox">
       <span>Also notify when the app is in the background
         <span class="sub">Reaches you if you switch apps mid-rest. It cannot wake a
@@ -3501,6 +3508,38 @@ function barFor(ex){
 }
 const isLoadable = ex => barFor(ex) !== null && barFor(ex) !== undefined;
 const restTargetFor = ex => meta(ex).rest ?? REST_DEFAULT[ex] ?? 120;
+
+// How long you need back is not the same after a set you walked away from as
+// after one that finished you. Two in reserve is the usual working target —
+// the rep picker says exactly that — so the exercise's own rest setting sits
+// there, and the clock only moves when the set was genuinely easy or genuinely
+// done. A tenth each step, which is 0.8x to 1.2x across the whole scale: worth
+// having, and small enough that the number still looks like the one you set.
+//
+// Proportional rather than a flat number of seconds, because a flat fifteen is
+// a quarter of a minute's rest on an isolation lift and nothing at all on a
+// five-minute squat rest.
+const REST_PER_RIR = 0.10;
+const REST_FLOOR = 30;
+const adaptsRest = () => db.settings.adaptRest !== false;
+
+// The nominal target stays what the session estimate measures against: it
+// subtracts this from the rests you actually took to work out how long the
+// lifting itself costs, and a baseline that moves would make that arithmetic
+// meaningless. Only the clock in front of you moves.
+function restForSet(ex, set){
+  const base = restTargetFor(ex);
+  // A drop set and a rest-pause are at failure by construction, so the rule
+  // would add a fifth to the rest after every one of them — a lot of behaviour
+  // falling out of a rule that was not aimed at them.
+  if(!adaptsRest() || !set || isExtension(set)) return {target: base, why: null};
+  const rir = +set.rir;
+  if(!Number.isFinite(rir) || rir === 2) return {target: base, why: null};
+  const target = Math.max(REST_FLOOR,
+    Math.round(base * (1 + (2 - rir) * REST_PER_RIR) / 5) * 5);
+  if(target === base) return {target: base, why: null};
+  return {target, why: rir < 2 ? 'a set taken near failure' : 'a set with plenty left'};
+}
 // "4 × 8" -> 8, "3 × 40m" -> 40, "4 × max" -> null. The target already states
 // the prescription, so it is what a fresh set should offer.
 // A target can name a range on either side of the ×, and the range is how you
@@ -4601,18 +4640,13 @@ function chime(times){
 
 // Starting one clock never stops another. Pairing two exercises is a way of
 // resting both at once, so both have to be counted at once.
-function startRest(ex){
+function startRest(ex, set){
   hideNextUp();   // a live countdown supersedes it
   // Mid-round, the next one in the ring you have not caught up on is where you
   // are going, and the bar is already under your thumb. Once the round is
   // level, it isn't. On a round of two this is the partner, as it always was.
-  const mine = setsFor(state.date, ex).length;
-  timers[ex] = {
-    start: Date.now(),
-    target: restTargetFor(ex),
-    jump: roundMates(ex).find(n => setsFor(state.date, n).length < mine) || null,
-    alerted: false
-  };
+  const {target, why} = restForSet(ex, set);
+  timers[ex] = {start: Date.now(), target, why, alerted: false};
   // warm up audio inside the tap that logged the set, so the chime can fire later
   if(wantsSound()){
     try{ const AC = window.AudioContext||window.webkitAudioContext;
@@ -4644,9 +4678,26 @@ function focusTimer(){
   return best;
 }
 
+// Where the bar sends you next: the first one along the ring you are still
+// ahead of. Worked out every time the bar is drawn rather than once when the
+// clock started, because the round moves on underneath a stored answer — walk
+// to the other half and log it, and the clock you left behind went on pointing
+// at an exercise you had already finished with.
+//
+// Never the exercise already open either. The bar sat there reading
+// "Leg press → Leg curl" while Leg curl was on screen, and tapping it did
+// nothing at all: going where you already are looks exactly like a button that
+// does not work.
+function jumpFor(ex){
+  const mine = setsFor(state.date, ex).length;
+  const next = roundMates(ex).find(n => setsFor(state.date, n).length < mine);
+  if(!next || (exerciseScreenOpen() && next === state.ex)) return null;
+  return dayById(state.day)?.ex.some(([n]) => n === next) ? next : null;
+}
+
 function persistRest(){
   const live = Object.entries(timers).map(([ex, t]) =>
-    [ex, {start:t.start, target:t.target, jump:t.jump}]);
+    [ex, {start:t.start, target:t.target, why:t.why}]);
   db.timers = live.length ? Object.fromEntries(live) : null;
   db.rest = null;   // the single-timer field this replaced
   save();
@@ -4770,17 +4821,22 @@ function tickRest(){
     const t = timers[ex], el = (now - t.start)/1000;
     bar.classList.add('show');
     $('#restclock').textContent = mmss(el);
-    $('#restex').textContent = t.jump ? `${ex} → ${t.jump}` : ex;
+    const jump = jumpFor(ex);
+    $('#restex').textContent = jump ? `${ex} → ${jump}` : ex;
     // Just the number: "3:30 target" took 88px of a 147px row at the largest
     // text size, which is most of the room the exercise name needed. The word
     // is still said where it is not redundant — to a screen reader, where
     // there is no countdown beside it to make it obvious.
     $('#resttarget').textContent = mmss(t.target);
-    $('#resttarget').setAttribute('aria-label',
-      `Rest target ${mmss(t.target)}, tap to change`);
+    // The row is 147px at the largest text size and the name needs most of it,
+    // so the reason is said out loud rather than written beside the number —
+    // and in the toast, once, at the moment the clock is set.
+    $('#resttarget').setAttribute('aria-label', t.why
+      ? `Rest target ${mmss(t.target)}, ${t.why}, tap to change`
+      : `Rest target ${mmss(t.target)}, tap to change`);
     $('#restfill').style.width = Math.min(100, el/t.target*100) + '%';
     bar.classList.toggle('ready', el >= t.target);
-    $('#restmid').classList.toggle('jump', !!t.jump);
+    $('#restmid').classList.toggle('jump', !!jump);
     renderRestOthers(ex, now);
     padForRest();
   } finally { ticking = false; }
@@ -5775,8 +5831,9 @@ $('#logset').addEventListener('click', ()=>{
   if(db.days[state.date]?.done) delete db.days[state.date].done;
   const newId = now + '' + Math.random().toString(36).slice(2,6);
   state.justLogged = newId;
+  let logged = null;
   const ext = state.kind === 'drop' || state.kind === 'rp' ? state.kind : null;
-  db.sets.push({id: newId, t: now,
+  db.sets.push(logged = {id: newId, t: now,
                 d: state.date, e: state.ex, dy: state.day,
                 w, r, rir: state.rir, rest: restTaken, u: units(),
                 ...(state.kind === 'warm' ? {wu: true} : {}),
@@ -5791,15 +5848,22 @@ $('#logset').addEventListener('click', ()=>{
     // rest you are about to take starts now. It never finishes the exercise:
     // the set it continues already counted, and this one does not count again.
     toast(`${EXT_NAME[ext][0].toUpperCase()}${EXT_NAME[ext].slice(1)} logged`);
-    startRest(state.ex);
+    startRest(state.ex, logged);
   } else {
     const done = workingSets(setsFor(state.date, state.ex)).length;
     const goal = goalSetsOn(state.ex, state.target);
-    toast(goal && done <= goal ? `Set ${done} of ${goal}` : `Set ${done} logged`);
+    const said = goal && done <= goal ? `Set ${done} of ${goal}` : `Set ${done} logged`;
     // A rest timer after the set that finishes an exercise is timing a rest
     // before nothing. Say what is next instead.
-    if(goal && done >= goal){ stopRest(state.ex); showNextUp(state.ex); }
-    else startRest(state.ex);
+    if(goal && done >= goal){ stopRest(state.ex); showNextUp(state.ex); toast(said); }
+    else {
+      startRest(state.ex, logged);
+      // Said once, as the clock is set, because a timer reading two minutes
+      // when the settings say two and a half is otherwise a bug you cannot
+      // see the cause of.
+      const t = timers[state.ex];
+      toast(t?.why ? `${said} \u00b7 resting ${mmss(t.target)}, ${t.why}` : said);
+    }
   }
   // Deliberately no focus() here: it opens the numeric keyboard over the
   // rest timer you just started.
@@ -5854,7 +5918,12 @@ $('#scrim').addEventListener('click', closeTop);
 $('#resttarget').addEventListener('click', ()=>{
   const ex = focusTimer(); if(!ex) return;
   const t = timers[ex];
-  t.target = REST_OPTIONS[(REST_OPTIONS.indexOf(t.target) + 1) % REST_OPTIONS.length];
+  // Cycled from the exercise's own setting rather than from whatever is on the
+  // clock: an adapted target is not one of the options, so indexOf would miss
+  // and send every tap back to the top of the list.
+  const from = restTargetFor(ex);
+  t.target = REST_OPTIONS[(REST_OPTIONS.indexOf(from) + 1) % REST_OPTIONS.length];
+  t.why = null;                       // picking a number is a decision, not a guess
   (db.ex[ex] ||= {}).rest = t.target;
   t.alerted = (Date.now() - t.start)/1000 >= t.target;
   persistRest();
@@ -5863,8 +5932,9 @@ $('#resttarget').addEventListener('click', ()=>{
   tickRest();
 });
 $('#restmid').addEventListener('click', ()=>{
-  const ex = focusTimer(), jump = ex && timers[ex].jump;
-  if(jump && dayById(state.day).ex.some(([n]) => n === jump)) openSheet(jump);
+  const ex = focusTimer();
+  const jump = ex && jumpFor(ex);
+  if(jump) openSheet(jump);
 });
 // A chip is the other half of the superset, still counting. Tapping it opens
 // that exercise, which is also what puts its clock on the bar.
@@ -6280,6 +6350,7 @@ function renderSettings(){
     `<option value="${v}">${esc(label)}</option>`).join('');
   $('#alertsel').value = alertMode();
   $('#alerthint').classList.toggle('hide', canVibrate());
+  $('#adaptrestbox').checked = adaptsRest();
   $('#notifybox').checked = !!db.settings.notify &&
     typeof Notification !== 'undefined' && Notification.permission === 'granted';
   $('#storagesub').textContent = storageBroken
@@ -6447,6 +6518,14 @@ $('#alertsel').addEventListener('change', e=>{
   // Preview on change: picking "sound only" should tell you what that sounds
   // like now, not in three minutes.
   fireAlert();
+});
+
+// Written only when turned off, so the default stays the default rather than
+// becoming a `true` on every database that has ever opened settings.
+$('#adaptrestbox').addEventListener('change', e=>{
+  if(e.target.checked) delete db.settings.adaptRest;
+  else db.settings.adaptRest = false;
+  save();
 });
 
 $('#notifybox').addEventListener('change', async e=>{

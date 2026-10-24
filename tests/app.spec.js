@@ -3493,7 +3493,23 @@ test.describe('tri-sets and giant sets', () => {
       ];
       save(); startRest('Deadlift');
     });
-    expect(await page.evaluate(() => timers['Deadlift'].jump)).toBe('Leg curl');
+    expect(await page.evaluate(() => jumpFor('Deadlift'))).toBe('Leg curl');
+  });
+
+  test('and it stops pointing once you have gone there', async () => {
+    // The bar used to carry the answer it was given when the clock started, so
+    // after you walked over and logged, it went on offering an exercise you
+    // had finished with — and offering the one already on screen, where
+    // tapping it did nothing at all.
+    await page.evaluate(() => {
+      db.sets.push({ id: 'c', t: 3, d: state.date, e: 'Leg curl', dy: 'A',
+                     w: 90, r: 10, rir: 2, u: 'lb' });
+      save();
+    });
+    expect(await page.evaluate(() => jumpFor('Deadlift')),
+      'the round is level now').toBe(null);
+    expect(await page.evaluate(() => 'jump' in timers['Deadlift']),
+      'nothing stored to go stale').toBe(false);
   });
 
   test('a whole ring syncs, one link at a time', async () => {
@@ -3503,6 +3519,170 @@ test.describe('tri-sets and giant sets', () => {
       for (const [k, v] of recs) putRecord(fresh, k, v);
       return fresh.pairs;
     })).toEqual({ 'Deadlift': 'Leg press', 'Leg press': 'Leg curl', 'Leg curl': 'Deadlift' });
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
+
+test.describe('rest that follows the set', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await chooseDay(page, 'A');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  const scale = base => page.evaluate(b => {
+    db.ex['Leg press'] = { rest: b }; save();
+    return [0, 1, 2, 3, 4].map(rir => restForSet('Leg press', { rir }).target);
+  }, base);
+
+  test('two in reserve is the target you set, and the rest moves around it',
+    async () => {
+    // The rep picker already calls two in reserve the usual working target, so
+    // that is where the exercise's own setting sits and most sets never move.
+    expect(await scale(150)).toEqual([180, 165, 150, 135, 120]);
+  });
+
+  test('a tenth of the rest, not a fixed number of seconds', async () => {
+    // Fifteen seconds is a quarter of a minute's rest and nothing at all on a
+    // five-minute one, so the step is proportional to what you set.
+    expect(await scale(60)).toEqual([70, 65, 60, 55, 50]);
+    expect(await scale(300)).toEqual([360, 330, 300, 270, 240]);
+  });
+
+  test('a drop set is at failure by construction, and is left alone',
+    async () => {
+    expect(await page.evaluate(() => {
+      db.ex['Leg press'] = { rest: 150 }; save();
+      return [restForSet('Leg press', { rir: 0, ext: 'drop' }),
+              restForSet('Leg press', { rir: 0, ext: 'rp' })];
+    })).toEqual([{ target: 150, why: null }, { target: 150, why: null }]);
+  });
+
+  test('an unrated set, or none, is the plain target', async () => {
+    expect(await page.evaluate(() => [
+      restForSet('Leg press', { rir: undefined }).target,
+      restForSet('Leg press', null).target,
+    ])).toEqual([150, 150]);
+  });
+
+  test('the clock says why, where there is room to say it', async () => {
+    await page.click('.ex[data-ex="Leg press"]');
+    await page.click('#plates [data-v="4"]');
+    await page.fill('#wt', '200');
+    await page.fill('#reps', '10');
+    await page.click('#logset');
+    // A timer reading two minutes when the settings say two and a half is
+    // otherwise a bug with no visible cause.
+    await expect(page.locator('#toast')).toContainText('resting 2:00, a set with plenty left');
+    await expect(page.locator('#resttarget')).toHaveText('2:00');
+    await expect(page.locator('#resttarget'))
+      .toHaveAttribute('aria-label', /2:00, a set with plenty left/);
+  });
+
+  test('what the session estimate measures against does not move', async () => {
+    // It works out how long the lifting itself costs by subtracting the target
+    // from the rests actually taken, so a baseline that moved would make that
+    // arithmetic meaningless.
+    expect(await page.evaluate(() => restTargetFor('Leg press'))).toBe(150);
+  });
+
+  test('tapping the target is a decision, and it wins', async () => {
+    // Cycled from the exercise's own setting: an adapted target is not one of
+    // the options, and indexOf missing sent every tap back to the top of them.
+    await page.click('#resttarget');
+    await expect(page.locator('#resttarget')).toHaveText('3:00');
+    expect(await page.evaluate(() => timers['Leg press'].why)).toBe(null);
+    expect(await page.evaluate(() => db.ex['Leg press'].rest)).toBe(180);
+  });
+
+  test('and it can be turned off outright', async () => {
+    expect(await page.evaluate(() => {
+      db.settings.adaptRest = false; save();
+      const off = restForSet('Leg press', { rir: 0 });
+      delete db.settings.adaptRest; save();
+      return off;
+    })).toEqual({ target: 180, why: null });
+    await page.click('#close');
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
+
+test.describe('the switch on the rest bar', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  const log = async (ex, w, r) => {
+    await page.evaluate(e => openSheet(e), ex);
+    await page.fill('#wt', String(w));
+    await page.fill('#reps', String(r));
+    await page.click('#logset');
+    await settle(page);
+  };
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await chooseDay(page, 'A');
+    await page.evaluate(() => setRound('Leg press', ['Leg curl']));
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  test('one set in, it offers the other half', async () => {
+    await log('Leg press', 200, 10);
+    await expect(page.locator('#restex')).toHaveText('Leg press → Leg curl');
+    await expect(page.locator('#restmid')).toHaveClass(/jump/);
+  });
+
+  test('tapping it goes there, and it stops offering', async () => {
+    await page.click('#restmid');
+    await settle(page);
+    expect(await page.evaluate(() => state.ex)).toBe('Leg curl');
+    // This is the bug: the bar went on reading "Leg press → Leg curl" with
+    // Leg curl already on screen, so the next tap went where you already were
+    // and looked like a button that did not work.
+    await expect(page.locator('#restex')).toHaveText('Leg press');
+    await expect(page.locator('#restmid')).not.toHaveClass(/jump/);
+  });
+
+  test('tapping it again does not take you somewhere else', async () => {
+    await page.click('#restmid');
+    await settle(page);
+    expect(await page.evaluate(() => state.ex)).toBe('Leg curl');
+  });
+
+  test('a level round offers nothing', async () => {
+    await log('Leg curl', 90, 10);
+    await expect(page.locator('#restex')).toHaveText('Leg curl');
+    await expect(page.locator('#restmid')).not.toHaveClass(/jump/);
+  });
+
+  test('and it comes back the moment you are ahead again', async () => {
+    await log('Leg press', 200, 10);
+    await expect(page.locator('#restex')).toHaveText('Leg press → Leg curl');
+    await page.click('#restmid');
+    await settle(page);
+    expect(await page.evaluate(() => state.ex)).toBe('Leg curl');
+    await page.click('#close');
   });
 
   test('no page errors', () => {
@@ -3632,9 +3812,12 @@ test('a timer saved before there could be two comes back as its own', async ({ b
   await page.goto(FILE_URL);
   await page.waitForSelector('.ex');
   // keyed by the exercise it was actually counting, not by the arrow it was
-  // labelled with — the label is rebuilt from the key and the jump
+  // labelled with
   expect(await page.evaluate(() => Object.keys(timers))).toEqual(['Leg press']);
-  await expect(page.locator('#restex')).toHaveText('Leg press → Cable row');
+  // and the arrow is worked out from the round as the bar is drawn rather than
+  // carried in the save, so a restored clock with no round left to run shows
+  // the exercise and nothing else
+  await expect(page.locator('#restex')).toHaveText('Leg press');
   expect(await page.evaluate(() => db.rest)).toBe(null);
   await ctx.close();
 });
