@@ -680,6 +680,13 @@ that is where you are going next. On a round of more than two it names the next
 one you have not caught up on rather than merely the next one along. Once the
 round is level it stops saying so.
 
+Which one that is gets worked out every time the bar is drawn rather than once
+when the clock started. A stored answer goes stale under you: walk over, log
+the other half, and the clock you left behind went on offering an exercise you
+had finished with. It also never offers the exercise already on screen — going
+where you already are looks exactly like a button that does not work, which is
+how this turned up.
+
 ## Rounds of more than two
 
 **Superset** on an exercise opens a list of everything else in the day; tick
@@ -839,7 +846,7 @@ instead of failing quietly.
 ## Built like this
 
 Markup, styles and logic in one file; a service worker that precaches the shell
-and keeps the exercise photos in a cache of their own; 477 Playwright tests that
+and keeps the exercise photos in a cache of their own; 484 Playwright tests that
 read real bounding boxes at phone sizes; and Release Please, which tags the
 version and rewrites it in `sw.js` — the thing that makes an installed phone
 notice a release at all. The deploy refuses to publish a build the suite rejects.
