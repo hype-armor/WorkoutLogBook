@@ -3510,6 +3510,102 @@ test.describe('tri-sets and giant sets', () => {
   });
 });
 
+test.describe('rest that follows the set', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page, errs;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await phone(browser);
+    page = await ctx.newPage();
+    errs = watchErrors(page);
+    await page.goto(FILE_URL);
+    await page.waitForSelector('.ex');
+    await chooseDay(page, 'A');
+  });
+
+  test.afterAll(async () => { await page?.context().close(); });
+
+  const scale = base => page.evaluate(b => {
+    db.ex['Leg press'] = { rest: b }; save();
+    return [0, 1, 2, 3, 4].map(rir => restForSet('Leg press', { rir }).target);
+  }, base);
+
+  test('two in reserve is the target you set, and the rest moves around it',
+    async () => {
+    // The rep picker already calls two in reserve the usual working target, so
+    // that is where the exercise's own setting sits and most sets never move.
+    expect(await scale(150)).toEqual([180, 165, 150, 135, 120]);
+  });
+
+  test('a tenth of the rest, not a fixed number of seconds', async () => {
+    // Fifteen seconds is a quarter of a minute's rest and nothing at all on a
+    // five-minute one, so the step is proportional to what you set.
+    expect(await scale(60)).toEqual([70, 65, 60, 55, 50]);
+    expect(await scale(300)).toEqual([360, 330, 300, 270, 240]);
+  });
+
+  test('a drop set is at failure by construction, and is left alone',
+    async () => {
+    expect(await page.evaluate(() => {
+      db.ex['Leg press'] = { rest: 150 }; save();
+      return [restForSet('Leg press', { rir: 0, ext: 'drop' }),
+              restForSet('Leg press', { rir: 0, ext: 'rp' })];
+    })).toEqual([{ target: 150, why: null }, { target: 150, why: null }]);
+  });
+
+  test('an unrated set, or none, is the plain target', async () => {
+    expect(await page.evaluate(() => [
+      restForSet('Leg press', { rir: undefined }).target,
+      restForSet('Leg press', null).target,
+    ])).toEqual([150, 150]);
+  });
+
+  test('the clock says why, where there is room to say it', async () => {
+    await page.click('.ex[data-ex="Leg press"]');
+    await page.click('#plates [data-v="4"]');
+    await page.fill('#wt', '200');
+    await page.fill('#reps', '10');
+    await page.click('#logset');
+    // A timer reading two minutes when the settings say two and a half is
+    // otherwise a bug with no visible cause.
+    await expect(page.locator('#toast')).toContainText('resting 2:00, a set with plenty left');
+    await expect(page.locator('#resttarget')).toHaveText('2:00');
+    await expect(page.locator('#resttarget'))
+      .toHaveAttribute('aria-label', /2:00, a set with plenty left/);
+  });
+
+  test('what the session estimate measures against does not move', async () => {
+    // It works out how long the lifting itself costs by subtracting the target
+    // from the rests actually taken, so a baseline that moved would make that
+    // arithmetic meaningless.
+    expect(await page.evaluate(() => restTargetFor('Leg press'))).toBe(150);
+  });
+
+  test('tapping the target is a decision, and it wins', async () => {
+    // Cycled from the exercise's own setting: an adapted target is not one of
+    // the options, and indexOf missing sent every tap back to the top of them.
+    await page.click('#resttarget');
+    await expect(page.locator('#resttarget')).toHaveText('3:00');
+    expect(await page.evaluate(() => timers['Leg press'].why)).toBe(null);
+    expect(await page.evaluate(() => db.ex['Leg press'].rest)).toBe(180);
+  });
+
+  test('and it can be turned off outright', async () => {
+    expect(await page.evaluate(() => {
+      db.settings.adaptRest = false; save();
+      const off = restForSet('Leg press', { rir: 0 });
+      delete db.settings.adaptRest; save();
+      return off;
+    })).toEqual({ target: 180, why: null });
+    await page.click('#close');
+  });
+
+  test('no page errors', () => {
+    expect(errs).toEqual([]);
+  });
+});
+
 // A superset is the case the single timer could not describe: two exercises
 // resting at the same time, each with its own rest to finish.
 test.describe('two exercises resting at once', () => {
