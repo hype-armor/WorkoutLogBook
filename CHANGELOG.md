@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.30.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.29.0...logbook-v1.30.0) (2026-10-24)
+
+
+### Features
+
+* rest that follows how hard the set was ([a394fcc](https://github.com/hype-armor/WorkoutLogBook/commit/a394fcc3faee761d277ae6c8495589e30ee80e70))
+* rest that follows how hard the set was ([047b2fa](https://github.com/hype-armor/WorkoutLogBook/commit/047b2fa811c9dd703fa2ca3da2bf0abe8f60a646))
+
+
+### Bug Fixes
+
+* the rest bar's switch stops offering where you already are ([8561113](https://github.com/hype-armor/WorkoutLogBook/commit/8561113787aa9bc5401c7f9fa8d9534f476bafbc))
+
 ## [1.29.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.28.1...logbook-v1.29.0) (2026-10-22)
 
 
