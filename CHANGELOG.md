@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.31.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.30.0...logbook-v1.31.0) (2026-11-08)
+
+
+### Features
+
+* add single-stack and two-sided machine plate math ([8d81826](https://github.com/hype-armor/WorkoutLogBook/commit/8d81826ff906c1b169d8b556235c3834eae1ac81))
+
 ## [1.30.0](https://github.com/hype-armor/WorkoutLogBook/compare/logbook-v1.29.0...logbook-v1.30.0) (2026-10-24)
 
 
