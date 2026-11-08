@@ -1308,7 +1308,8 @@
     </label>
 
     <label class="f" style="margin-top:14px"><span class="lab">Bar / plate math</span>
-      <select id="exbar"></select></label>
+      <select id="exbar" aria-describedby="exbarhint"></select></label>
+    <div class="hint hide" id="exbarhint">Enter the total plate weight across both sides. No bar or machine weight is added; the diagram shows plates per side.</div>
     <label class="f" style="margin-top:10px"><span class="lab">Progression moves</span>
       <select id="exprogtype"></select></label>
     <label class="f" style="margin-top:10px">
@@ -1783,7 +1784,7 @@ const UNITS = {
   lb:{
     label:'lb', defaultBar:45, bars:[45,35,55,25,20,15,0],
     barLabel:{45:'45 bar',35:'35 bar',55:'55 trap',
-              25:'25 EZ',20:'20 EZ',15:'15 EZ',0:'per side'},
+              25:'25 EZ',20:'20 EZ',15:'15 EZ',0:'Plate-loaded machine (two sides, no bar)'},
     plates:[{w:45,c:'#E5484D',h:60,t:11},{w:35,c:'#3E7BFA',h:52,t:10},{w:25,c:'#B08C0E',h:44,t:9},
             {w:10,c:'#29AA63',h:32,t:7},{w:5,c:'#C6CEDA',h:24,t:6},{w:2.5,c:'#8A94A6',h:18,t:5},
             {w:1.25,c:'#5A6373',h:14,t:4}],
@@ -1792,7 +1793,7 @@ const UNITS = {
   kg:{
     label:'kg', defaultBar:20, bars:[20,15,25,10,9,7,0],
     barLabel:{20:'20 bar',15:'15 bar',25:'25 trap',
-              10:'10 EZ',9:'9 EZ',7:'7 EZ',0:'per side'},
+              10:'10 EZ',9:'9 EZ',7:'7 EZ',0:'Plate-loaded machine (two sides, no bar)'},
     plates:[{w:25,c:'#E5484D',h:60,t:11},{w:20,c:'#3E7BFA',h:54,t:10},{w:15,c:'#B08C0E',h:48,t:9},
             {w:10,c:'#29AA63',h:38,t:8},{w:5,c:'#C6CEDA',h:28,t:6},{w:2.5,c:'#8A94A6',h:20,t:5},
             {w:1.25,c:'#5A6373',h:15,t:4},{w:0.5,c:'#454E5D',h:12,t:3}],
@@ -3156,7 +3157,7 @@ function progressionFor(ex){
   const m = meta(ex).prog;
   const set = m && typeof m === 'object' ? m[units()] : null;
   if(set > 0) return set;
-  return isLoadable(ex) ? smallestPlate() * 2 : U().otherStep;
+  return isLoadable(ex) ? smallestPlate() * plateGroupsFor(ex) : U().otherStep;
 }
 
 // How often that jump is taken. Adding to every completed session is right for
@@ -3220,7 +3221,7 @@ function roundLoadable(w, ex){
     const step = U().otherStep || 1;
     return +(Math.round(w / step) * step).toFixed(2);
   }
-  const bar = barFor(ex) || 0, step = smallestPlate() * 2;
+  const bar = barFor(ex) || 0, step = smallestPlate() * plateGroupsFor(ex);
   if(!(step > 0)) return w;
   // Below the bar there is nothing to round to.
   return w <= bar ? bar : +(bar + Math.round((w - bar) / step) * step).toFixed(2);
@@ -3507,6 +3508,9 @@ function barFor(ex){
   return d ? d[units()] : null;
 }
 const isLoadable = ex => barFor(ex) !== null && barFor(ex) !== undefined;
+// Old zero-bar settings keep their two-sided meaning. Single-stack machines
+// load the full entered weight in one place, in either unit.
+const plateGroupsFor = ex => barFor(ex) === 0 && meta(ex).plateLoading === 'single' ? 1 : 2;
 const restTargetFor = ex => meta(ex).rest ?? REST_DEFAULT[ex] ?? 120;
 
 // How long you need back is not the same after a set you walked away from as
@@ -4331,7 +4335,9 @@ function renderPlateMath(){
     warn.textContent = `The bar alone is ${bar} ${u.label}.`; warn.classList.remove('hide'); return;
   }
 
-  const perSide = (total - bar) / 2;
+  const groups = plateGroupsFor(state.ex);
+  const loadLabel = groups === 1 ? 'total plates' : 'per side';
+  const perSide = (total - bar) / groups;
   const {plates, remainder} = solvePlates(perSide);
 
   // Shaped like the real thing: a heavier plate is both wider across and
@@ -4419,15 +4425,15 @@ function renderPlateMath(){
 
   svg.innerHTML = parts.join('');
   svg.setAttribute('aria-label', plates.length
-    ? `${plates.map(p=>p.w).join(', ')} ${u.label} per side on a ${bar} ${u.label} bar`
-    : 'Empty bar');
+    ? `${plates.map(p=>p.w).join(', ')} ${u.label} ${loadLabel}${bar ? ` on a ${bar} ${u.label} bar` : ' on a plate-loaded machine'}`
+    : bar ? 'Empty bar' : 'No plates');
 
   txt.innerHTML = plates.length
-    ? `${plates.map(p=>p.w).join(' · ')} <span class="per">per side</span>`
-    : `<span class="per">Empty bar</span>`;
+    ? `${plates.map(p=>p.w).join(' · ')} <span class="per">${loadLabel}</span>`
+    : `<span class="per">${bar ? 'Empty bar' : 'No plates'}</span>`;
 
   if(remainder > 0.01){
-    const actual = +(bar + (perSide - remainder) * 2).toFixed(2);
+    const actual = +(bar + (perSide - remainder) * groups).toFixed(2);
     const couldHelp = u.plates.some(p => p.w < smallestPlate());
     warn.textContent = couldHelp
       ? `Closest is ${actual} ${u.label}. Add smaller plates in settings to hit ${total}.`
@@ -5235,7 +5241,7 @@ const HARD_RIR = E1RM_MAX_RIR;
 // smallest jump the rack allows stops a change of one reported rep in reserve
 // from reading as progress.
 function stepFor(ex){
-  return isLoadable(ex) ? smallestPlate() * 2 : U().otherStep;
+  return isLoadable(ex) ? smallestPlate() * plateGroupsFor(ex) : U().otherStep;
 }
 function roundToStep(v, ex){
   const step = stepFor(ex);
@@ -6024,6 +6030,15 @@ $('#notes').addEventListener('input', ()=>{
 });
 
 /* ---------- exercise editor ---------- */
+function renderBarHint(){
+  const value = $('#exbar').value;
+  $('#exbarhint').classList.toggle('hide', value !== '0' && value !== 'single');
+  $('#exbarhint').textContent = value === 'single'
+    ? 'Enter the total plate weight loaded on the machine. All plates are counted together, with no bar or machine weight added.'
+    : 'Enter the total plate weight across both sides. No bar or machine weight is added; the diagram shows plates per side.';
+}
+$('#exbar').addEventListener('change', renderBarHint);
+
 function openExEditor(name){
   state.editingEx = name;
   const u = U();
@@ -6037,8 +6052,11 @@ function openExEditor(name){
   $('#exuni').checked = name ? isUnilateral(name) : false;
   $('#exassist').checked = name ? allowsAssist(name) : false;
   $('#exbar').innerHTML = [`<option value="">No plate math</option>`]
-    .concat(u.bars.map(b => `<option value="${b}">${esc(u.barLabel[b])}</option>`)).join('');
-  $('#exbar').value = name && isLoadable(name) ? String(barFor(name)) : '';
+    .concat(u.bars.map(b => `<option value="${b}">${esc(u.barLabel[b])}</option>`))
+    .concat('<option value="single">Plate-loaded machine (single stack, no bar)</option>').join('');
+  $('#exbar').value = name && isLoadable(name)
+    ? (plateGroupsFor(name) === 1 ? 'single' : String(barFor(name))) : '';
+  renderBarHint();
   $('#exevery').innerHTML = PROGRESS_EVERY.map(([v, label]) =>
     `<option value="${v}">${esc(label)}</option>`).join('');
   $('#exevery').value = String(name ? progressEveryFor(name) : 1);
@@ -6098,7 +6116,10 @@ $('#exsave').addEventListener('click', ()=>{
   // record that you do not want it. One without a bar to override needs no
   // such record, and writing one would put it in every synced database.
   if(barVal === '') { if(DEFAULT_BAR[name]) m.bar = false; else delete m.bar; }
+  else if(barVal === 'single') m.bar = {lb:0, kg:0};
   else m.bar = Object.assign({}, m.bar || {}, {[units()]: +barVal});
+  if(barVal === 'single') m.plateLoading = 'single';
+  else delete m.plateLoading;
 
   const every = +$('#exevery').value;
   if(every > 1) m.every = every; else delete m.every;

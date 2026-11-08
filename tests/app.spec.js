@@ -3860,7 +3860,8 @@ test.describe('curl bars', () => {
     await page.click('#exsettings');
     expect(await page.$$eval('#exbar option', els => els.map(e => e.textContent)))
       .toEqual(['No plate math', '45 bar', '35 bar', '55 trap',
-                '25 EZ', '20 EZ', '15 EZ', 'per side']);
+                '25 EZ', '20 EZ', '15 EZ', 'Plate-loaded machine (two sides, no bar)',
+                'Plate-loaded machine (single stack, no bar)']);
     await expect(page.locator('#exbar')).toHaveValue('25');
     await page.click('#exsave');
 
@@ -3868,7 +3869,8 @@ test.describe('curl bars', () => {
     await page.click('#exsettings');
     expect(await page.$$eval('#exbar option', els => els.map(e => e.textContent)))
       .toEqual(['No plate math', '20 bar', '15 bar', '25 trap',
-                '10 EZ', '9 EZ', '7 EZ', 'per side']);
+                '10 EZ', '9 EZ', '7 EZ', 'Plate-loaded machine (two sides, no bar)',
+                'Plate-loaded machine (single stack, no bar)']);
     await page.click('#exsave');
     await page.evaluate(() => { db.settings.units = 'lb'; save(); rerenderAll(); });
   });
@@ -3892,14 +3894,69 @@ test.describe('curl bars', () => {
     await expect(page.locator('#platemath')).toBeVisible();
   });
 
-  test('per side means the same thing in either unit', async () => {
+  test('a two-sided plate-loaded machine has no bar weight in either unit', async () => {
     await page.click('#exsettings');
-    await page.selectOption('#exbar', '0');
+    await expect(page.locator('#exbarhint')).toBeHidden();
+    await page.selectOption('#exbar', { label: 'Plate-loaded machine (two sides, no bar)' });
+    await expect(page.locator('#exbarhint')).toBeVisible();
+    await expect(page.locator('#exbarhint')).toContainText('total plate weight across both sides');
+    await page.click('#exsave');
+    await page.fill('#wt', '180');
+    await expect(page.locator('#pmtext')).toHaveText('45 · 45 per side');
+    await expect(page.locator('#barsvg')).toHaveAttribute('aria-label',
+      '45, 45 lb per side on a plate-loaded machine');
+    await expect(page.locator('#pmwarn')).toBeHidden();
+    await page.fill('#wt', '181');
+    await expect(page.locator('#pmwarn')).toContainText('Closest is 180 lb');
+    await page.reload();
+    await page.waitForSelector('.ex');
+    await chooseDay(page, 'D');
+    await page.click('.ex[data-ex="Barbell curl"]');
+    await page.click('#exsettings');
+    await expect(page.locator('#exbar')).toHaveValue('0');
+    await expect(page.locator('#exbarhint')).toBeVisible();
     await page.click('#exsave');
     expect(await page.evaluate(() => {
       db.settings.units = 'kg'; const v = barFor('Barbell curl');
       db.settings.units = 'lb'; return v;
     })).toBe(0);
+  });
+
+  test('a single-stack machine counts all plates together and survives reload', async () => {
+    await page.click('#exsettings');
+    await page.selectOption('#exbar', { label: 'Plate-loaded machine (single stack, no bar)' });
+    await expect(page.locator('#exbarhint')).toContainText('All plates are counted together');
+    await page.click('#exsave');
+    await page.fill('#wt', '90');
+    await expect(page.locator('#pmtext')).toHaveText('45 · 45 total plates');
+    await expect(page.locator('#barsvg')).toHaveAttribute('aria-label',
+      '45, 45 lb total plates on a plate-loaded machine');
+    await expect(page.locator('#pmwarn')).toBeHidden();
+    await page.fill('#wt', '91');
+    await expect(page.locator('#pmwarn')).toContainText('Closest is 90 lb');
+    expect(await page.evaluate(() => ({
+      step: stepFor('Barbell curl'), progression: progressionFor('Barbell curl'),
+      rounded: roundLoadable(92.5, 'Barbell curl'),
+      ramp: warmupRamp('Barbell curl', 25)
+    }))).toEqual({step:2.5, progression:2.5, rounded:92.5,
+      ramp:[{w:10,r:5},{w:15,r:3},{w:20,r:2}]});
+    await page.reload();
+    await page.waitForSelector('.ex');
+    await chooseDay(page, 'D');
+    await page.click('.ex[data-ex="Barbell curl"]');
+    await page.click('#exsettings');
+    await expect(page.locator('#exbar')).toHaveValue('single');
+    await page.click('#exsave');
+    await page.evaluate(() => { db.settings.units = 'kg'; save(); rerenderAll(); });
+    await page.fill('#wt', '50');
+    await expect(page.locator('#pmtext')).toHaveText('25 · 25 total plates');
+    await page.click('#exsettings');
+    await expect(page.locator('#exbar')).toHaveValue('single');
+    await page.selectOption('#exbar', '0');
+    await page.click('#exsave');
+    await page.fill('#wt', '50');
+    await expect(page.locator('#pmtext')).toHaveText('25 per side');
+    expect(await page.evaluate(() => meta('Barbell curl').plateLoading)).toBeUndefined();
   });
 
   test('no page errors', () => {
