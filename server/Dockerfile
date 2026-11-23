@@ -26,7 +26,12 @@ COPY server/src/ ./server/src/
 
 # Owned by the unprivileged user the image already has, so the database
 # directory is writable with a read-only root filesystem everywhere else.
-RUN mkdir -p /data && chown -R node:node /data
+# COPY preserves source modes. Restricted checkouts can contain 0600 files
+# and 0700 directories, which the runtime node user cannot read or traverse.
+# Keep application files root-owned and readable, but not writable, by node.
+RUN find /app -type d -exec chmod 755 {} + \
+    && find /app -type f -exec chmod 644 {} + \
+    && mkdir -p /data && chown -R node:node /data
 
 ENV NODE_ENV=production \
     LOGBOOK_PORT=8080 \

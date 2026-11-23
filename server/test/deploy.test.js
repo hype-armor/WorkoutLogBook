@@ -54,6 +54,17 @@ describe('what the deployment must not lose', () => {
     assert.match(compose, /no-new-privileges:true/);
   });
 
+  test('the image normalizes restrictive checkout modes before switching users', () => {
+    const dockerfile = code('server/Dockerfile');
+    const directories = dockerfile.indexOf('find /app -type d -exec chmod 755 {} +');
+    const files = dockerfile.indexOf('find /app -type f -exec chmod 644 {} +');
+    const user = dockerfile.indexOf('USER node');
+    assert.ok(directories >= 0, 'runtime user must traverse copied directories');
+    assert.ok(files >= 0, 'runtime user must read copied files');
+    assert.ok(directories > dockerfile.lastIndexOf('COPY '));
+    assert.ok(files > directories && user > files);
+  });
+
   test('the private half of the key is a file, not an environment variable', () => {
     // One `docker inspect`, or one `kubectl get pod -o yaml`, away otherwise.
     assert.match(read('deploy/stack.yml'), /LOGBOOK_VAPID_PRIVATE_FILE/);
